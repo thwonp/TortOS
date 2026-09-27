@@ -4355,7 +4355,12 @@ static bool confirm_panel(app *a, const char *heading, const char *msg,
 	for (;;) {
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; return false; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { power_off(a); return false; }
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) { power_off(a); return false; }
+		}
 		if (menu_leaving(a)) return false;
 
 		/* Only the two answerable rows are reachable; row 0 is the question. */
@@ -4490,9 +4495,14 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		musec_poll();
 		aout_apply(false);
 		if (a->in.quit_requested) { a->running = false; return MENU_LEFT_GONE; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) {
-			if (!st->on_power) { power_off(a); return MENU_LEFT_GONE; }
-			if (st->on_power(a, ctx) == MENU_DONE) return MENU_LEFT_GONE;
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) {
+				if (!st->on_power) { power_off(a); return MENU_LEFT_GONE; }
+				if (st->on_power(a, ctx) == MENU_DONE) return MENU_LEFT_GONE;
+			}
 		}
 		if (menu_leaving(a))
 			return MENU_LEFT_BACK;
@@ -5019,10 +5029,15 @@ static void xfer_screen(app *a)
 		 * and the countdown resumes. */
 		if (busy || st.clients > 0) a->idle.since_ms = now;
 
-		if (a->in.pressed[IN_POWER] || idle_due(a)) {
-			hare_stop();
-			power_off(a);
-			return;
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) {
+				hare_stop();
+				power_off(a);
+				return;
+			}
 		}
 		if (menu_leaving(a)) done = true;
 
@@ -5243,10 +5258,15 @@ static void art_screen(app *a, const char *only, const char *one,
 
 				plat_input_poll(&a->in);
 				if (a->in.quit_requested) { ss_run_cancel(); a->running = false; return; }
-				if (a->in.pressed[IN_POWER] || idle_due(a)) {
-					ss_run_cancel();
-					power_off(a);
-					return;
+				{
+					pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+					if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+					if (pa == PWR_SLEEP) plat_sleep();
+					else if (pa == PWR_POWEROFF) {
+						ss_run_cancel();
+						power_off(a);
+						return;
+					}
 				}
 				if (menu_leaving(a)) {
 					ss_run_cancel();
@@ -5364,10 +5384,15 @@ static void art_screen(app *a, const char *only, const char *one,
 		 * there, a person was at the other end. Here the device is talking to
 		 * itself, and a library left scraping unattended on battery is
 		 * exactly what Auto Off is for. */
-		if (a->in.pressed[IN_POWER] || idle_due(a)) {
-			art_cancel();
-			power_off(a);
-			return;
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) {
+				art_cancel();
+				power_off(a);
+				return;
+			}
 		}
 		if (menu_leaving(a)) {
 			art_cancel();
@@ -5622,7 +5647,12 @@ static void bt_screen(app *a)
 		musec_poll();                       /* see menu_run_body */
 		aout_apply(false);
 		if (a->in.quit_requested) { a->running = false; return; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { power_off(a); return; }
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) { power_off(a); return; }
+		}
 		if (menu_leaving(a)) done = true;
 		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
 
@@ -5912,7 +5942,12 @@ static bool stats_screen(app *a)
 
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; return false; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { power_off(a); return false; }
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) { power_off(a); return false; }
+		}
 		if (menu_leaving(a)) done = true;
 		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
 
@@ -6067,7 +6102,12 @@ static void about_screen(app *a)
 
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; return; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { power_off(a); return; }
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) { power_off(a); return; }
+		}
 		if (menu_leaving(a)) done = true;
 		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
 
@@ -6114,7 +6154,12 @@ static void controls_screen(app *a)
 
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; return; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { power_off(a); return; }
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) { power_off(a); return; }
+		}
 		if (menu_leaving(a)) done = true;
 		/* SELECT opens Muse here as it does on every other menu screen -
 		 * which is one of the things this page exists to tell you. */
@@ -6801,10 +6846,15 @@ static int slot_strip(app *a, SDL_Texture *bg, int saving)
 		/* This screen used to ignore the power button outright - the one
 		 * screen in the launcher that did. Stop the game and close with
 		 * nothing chosen; game_menu sees the flag and closes behind us. */
-		if (a->in.pressed[IN_POWER] || idle_due(a)) {
-			plat_note_power_pressed();
-			plat_resident_line("STOP");
-			done = -1;
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) {
+				plat_note_power_pressed();
+				plat_resident_line("STOP");
+				done = -1;
+			}
 		}
 
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
@@ -7004,12 +7054,17 @@ static bool cheevo_detail_screen(app *a, SDL_Texture *bg, bool over_shelf,
 		 * plat_resident_wait, so nothing else is watching power for it. Over
 		 * the shelf there is no game to stop, and stopping one is not what
 		 * power means there. */
-		if (a->in.pressed[IN_POWER] || idle_due(a)) {
-			if (over_shelf) { power_off(a); break; }
-			plat_note_power_pressed();
-			plat_resident_line("STOP");
-			done = 1;
-			close_all = true;
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) {
+				if (over_shelf) { power_off(a); break; }
+				plat_note_power_pressed();
+				plat_resident_line("STOP");
+				done = 1;
+				close_all = true;
+			}
 		}
 
 		chv_backdrop(a, bg, over_shelf);
@@ -7500,7 +7555,12 @@ static muse_exit muse_now_screen(app *a)
 		mn = musec_now();
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; how = MUSE_CLOSE; break; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { muse_power(a); how = MUSE_CLOSE; break; }
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) { muse_power(a); how = MUSE_CLOSE; break; }
+		}
 		if (a->in.pressed[IN_BACK]) break;
 		if (a->in.pressed[IN_SELECT]) { how = MUSE_CLOSE; break; }
 		if (a->in.pressed[IN_MENU]) {
@@ -7718,7 +7778,12 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		}
 		if (a->in.pressed[IN_BACK]) done = 1;
 		if (a->in.pressed[IN_SELECT]) { how = MUSE_CLOSE; break; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { muse_power(a); how = MUSE_CLOSE; break; }
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) { muse_power(a); how = MUSE_CLOSE; break; }
+		}
 		/* After a rescan `al` is gone with the old library: not one more
 		 * frame from it. */
 		if (a->in.pressed[IN_MENU]) {
@@ -7869,7 +7934,12 @@ static void muse_shelf_screen(app *a, bool now)
 		cover_answers();
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; break; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { muse_power(a); break; }
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) { muse_power(a); break; }
+		}
 		/* B and SELECT both leave, which is the rule everywhere in Muse: one
 		 * button in, the same button out, and B for the level below. */
 		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
@@ -8075,10 +8145,15 @@ static void album_art_screen(app *a)
 
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { museart_cancel(); a->running = false; return; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) {
-			museart_cancel();
-			power_off(a);
-			return;
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) {
+				museart_cancel();
+				power_off(a);
+				return;
+			}
 		}
 		if (menu_leaving(a)) done = true;
 		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
@@ -8135,7 +8210,12 @@ static void synopsis_screen(app *a, const char *title, const char *text,
 		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
 		/* Nothing else watches power for this screen, the same as every other
 		 * loop the launcher runs outside plat_resident_wait. */
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { power_off(a); break; }
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) { power_off(a); break; }
+		}
 
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -8219,11 +8299,16 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 		 *
 		 * Opened from the game details screen there is no game to stop, and
 		 * power means what it means everywhere else on the shelf. */
-		if (a->in.pressed[IN_POWER] || idle_due(a)) {
-			if (over_shelf) { power_off(a); break; }
-			plat_note_power_pressed();
-			plat_resident_line("STOP");
-			done = 1;
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) {
+				if (over_shelf) { power_off(a); break; }
+				plat_note_power_pressed();
+				plat_resident_line("STOP");
+				done = 1;
+			}
 		}
 
 		chv_backdrop(a, bg, over_shelf);
@@ -8313,10 +8398,15 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 		}
 
 		if (menu_leaving(a)) done = 1;
-		if (a->in.pressed[IN_POWER] || idle_due(a)) {
-			plat_note_power_pressed();
-			plat_resident_line("STOP");
-			done = 1;
+		{
+			pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) {
+				plat_note_power_pressed();
+				plat_resident_line("STOP");
+				done = 1;
+			}
 		}
 
 		for (i = 0; i < HK_ROW_COUNT; i++)
@@ -10795,7 +10885,12 @@ int main(int argc, char *argv[])
 		 * device 2026-08-30 at a 30s timeout. Counting the charger as
 		 * activity is also what the setting says: unplugging starts a whole
 		 * fresh countdown, because until then the timeout was not running. */
-		if (a.in.pressed[IN_POWER] || idle_due(&a)) { power_off(&a); break; }
+		{
+			pwr_action pa = plat_power_tap_or_hold(a.in.down[IN_POWER]);
+			if (pa == PWR_NONE && idle_due(&a)) pa = plat_power_idle_action();
+			if (pa == PWR_SLEEP) plat_sleep();
+			else if (pa == PWR_POWEROFF) { power_off(&a); break; }
+		}
 
 		if (in_repeat(&a.in, IN_VOLUP))    plat_volume_nudge(+1);
 		if (in_repeat(&a.in, IN_VOLDN))    plat_volume_nudge(-1);

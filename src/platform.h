@@ -186,6 +186,22 @@ void plat_leds_off(void);
 bool plat_sleep_supported(void);
 void plat_sleep(void);
 
+/* A tap sleeps (or powers off, when sleep is unsupported or "power.tap" says
+ * not to); a hold still powers off immediately, same as it always has - see
+ * platform.c for the 400ms line between the two. Fed the button's current
+ * level every time a caller already polls it: once a frame from the
+ * shelf/menu path (a->in.down[IN_POWER]), once a tick from diatom_wait()'s
+ * raw evdev watchdog during a game. One call handles both grains, because
+ * only one of those two ever runs at a time - the same assumption fd_power
+ * itself already makes. */
+typedef enum { PWR_NONE, PWR_SLEEP, PWR_POWEROFF } pwr_action;
+pwr_action plat_power_tap_or_hold(bool down);
+
+/* Auto Off's own decision, and Diatom's mid-game IDLE: sleep if supported and
+ * "power.idle" allows it, else today's poweroff. No duration to track, so
+ * nothing stateful. */
+pwr_action plat_power_idle_action(void);
+
 /* The two level scales, stated once. TortOS shares them verbatim with
  * launch.sh and with Diatom, so a level crossing the socket needs no
  * conversion - which only holds while every place that rescales a level agrees

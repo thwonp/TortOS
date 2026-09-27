@@ -1187,6 +1187,7 @@ static int diatom_wait(void)
 	int sent_stop = 0;
 	unsigned stop_at = 0, start = plat_now_ms();
 	int autostop_s = getenv("TORTOS_AUTOSTOP_S") ? atoi(getenv("TORTOS_AUTOSTOP_S")) : 0;
+	bool pwr_down = false;   /* the button's level, not just its edges - see below */
 
 #ifdef __linux__
 	{
@@ -1225,14 +1226,19 @@ static int diatom_wait(void)
 			else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
 			else if (strncmp(l, "CHEEVO\t", 7) == 0) d_note_cheevo(l);
 			/* Nobody has pressed anything for as long as the player asked.
-			 * Handled exactly as a power press: STOP the game, and the
-			 * launcher's existing after-the-game check powers the device
-			 * down. No new path, and the autosave happens either way. */
+			 * Sleep needs none of what follows - it freezes the game
+			 * along with everything else and there is nothing to stop -
+			 * so only the poweroff decision still goes through STOP and
+			 * the launcher's existing after-the-game check. */
 			else if (strncmp(l, "IDLE", 4) == 0 && !sent_stop) {
-				run_power_pressed = true;
-				sent_stop = 1;
-				stop_at = plat_now_ms();
-				dsend("STOP");
+				if (plat_power_idle_action() == PWR_SLEEP) {
+					plat_sleep();
+				} else {
+					run_power_pressed = true;
+					sent_stop = 1;
+					stop_at = plat_now_ms();
+					dsend("STOP");
+				}
 			}
 			else if (strncmp(l, "EXIT", 4) == 0) {
 				/* A crash and a quit arrive on the SAME line, and only the
@@ -1286,9 +1292,19 @@ static int diatom_wait(void)
 		{
 			struct input_event ev;
 			while (fd_power >= 0 &&
-			       read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) {
-				if (ev.type == EV_KEY && ev.code == KEY_POWER && ev.value == 1 &&
-				    !sent_stop) {
+			       read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+				if (ev.type == EV_KEY && ev.code == KEY_POWER)
+					pwr_down = ev.value != 0;
+
+			/* plat_input_poll isn't running - the game owns input - so this
+			 * is the only place watching the level at all; checked every
+			 * pass regardless of whether a new event just arrived, the same
+			 * as the shelf/menu path checks a->in.down every frame. */
+			if (!sent_stop) {
+				pwr_action pa = plat_power_tap_or_hold(pwr_down);
+				if (pa == PWR_SLEEP) {
+					plat_sleep();
+				} else if (pa == PWR_POWEROFF) {
 					run_power_pressed = true;
 					sent_stop = 1;
 					stop_at = plat_now_ms();
@@ -2100,6 +2116,38 @@ void plat_sleep(void)
 
 	apply_brightness(saved);
 #endif
+}
+
+#define POWER_HOLD_MS 400u
+
+/* The one press either caller could currently be watching - a->in.down every
+ * frame from the shelf/menu path, or a level tracked locally from raw evdev
+ * once a tick during a game. Only one of those runs at a time, so one timer
+ * is enough. 0 means no press is open right now. */
+static unsigned pwr_since;
+
+pwr_action plat_power_tap_or_hold(bool down)
+{
+	unsigned now = plat_now_ms();
+
+	if (down) {
+		if (!pwr_since) pwr_since = now ? now : 1;
+		if (now - pwr_since >= POWER_HOLD_MS) {
+			pwr_since = 0;          /* fire once per press */
+			return PWR_POWEROFF;
+		}
+		return PWR_NONE;
+	}
+	if (!pwr_since) return PWR_NONE;   /* not pressed, nothing just ended */
+	pwr_since = 0;
+	return (plat_sleep_supported() && db_get_int(db_dev(), "power.tap", 1))
+	       ? PWR_SLEEP : PWR_POWEROFF;
+}
+
+pwr_action plat_power_idle_action(void)
+{
+	return (plat_sleep_supported() && db_get_int(db_dev(), "power.idle", 1))
+	       ? PWR_SLEEP : PWR_POWEROFF;
 }
 
 /* ---- battery ---- */
