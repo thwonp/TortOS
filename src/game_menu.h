@@ -101,7 +101,8 @@ int gi_rows(menu_row *out, const game_info *gi, bool net);
 /* ---------- the in-game menu ---------------------------------------------- */
 
 typedef enum {
-	GM_CONTINUE, GM_SAVE, GM_LOAD, GM_DISPLAY, GM_CHEEVOS, GM_RESET, GM_QUIT,
+	GM_CONTINUE, GM_SAVE, GM_LOAD, GM_DISPLAY, GM_CHEEVOS, GM_SLEEP, GM_RESET,
+	GM_QUIT,
 	GM_ROWS
 } gm_row;
 
@@ -110,6 +111,8 @@ typedef struct {
 	const char *dmode;    /* the display mode's label */
 	int         earned;
 	int         total;    /* 0: this game has no achievement set */
+	bool        sleep_supported;  /* plat_sleep_supported(), asked once by the
+	                               * caller so this header stays free of platform.h */
 } gm_ui;
 
 /* Where the Cheevos row's text lives; the caller owns it, because a row holds

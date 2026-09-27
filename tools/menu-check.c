@@ -721,8 +721,9 @@ static void info_rows(void)
 
 /* ---------- the in-game menu ---------------------------------------------- */
 
-/* Cheevos is the only row that can be dead, and it is dead exactly when the
- * game has no set. Everything else is always something A does. */
+/* Cheevos and Sleep are the only rows that can be dead: Cheevos exactly when
+ * the game has no set, Sleep exactly when the kernel does not offer suspend.
+ * Everything else is always something A does. */
 static void ingame_rows(void)
 {
 	gm_ui u;
@@ -730,15 +731,16 @@ static void ingame_rows(void)
 	menu_row rows[GM_ROWS];
 	int got[GM_ROWS], n, k;
 
-	u.dmode = "Native"; u.earned = 12; u.total = 40;
+	u.dmode = "Native"; u.earned = 12; u.total = 40; u.sleep_supported = true;
 	n = gm_rows(&u, rows, &b);
 
-	printf("in-game menu, a game with a set:\n");
-	ck(n == GM_ROWS, "seven rows");
+	printf("in-game menu, a game with a set, sleep supported:\n");
+	ck(n == GM_ROWS, "eight rows");
 	ck(!strcmp(rows[GM_CONTINUE].label, "Continue"), "Continue leads");
 	ck(!strcmp(val(&rows[GM_DISPLAY]), "Native"), "Display carries the mode");
 	ck(!strcmp(val(&rows[GM_CHEEVOS]), "12 / 40"), "Cheevos counts the set");
 	ck(rows[GM_CHEEVOS].live, "and is reachable");
+	ck(rows[GM_SLEEP].live, "Sleep is reachable");
 	k = reachable(rows, n, got, GM_ROWS);
 	ck(k == GM_ROWS, "every row is a stop");
 
@@ -752,6 +754,15 @@ static void ingame_rows(void)
 	ck(!holds(got, k, GM_CHEEVOS), "and never rests on it");
 	ck(holds(got, k, GM_QUIT) && holds(got, k, GM_CONTINUE),
 	   "the rows either side of it still work");
+
+	u.earned = 12; u.total = 40; u.sleep_supported = false;
+	n = gm_rows(&u, rows, &b);
+	printf("in-game menu, sleep unsupported:\n");
+	ck(!strcmp(val(&rows[GM_SLEEP]), "unsupported"), "Sleep says why");
+	ck(!rows[GM_SLEEP].live, "and does nothing");
+	k = reachable(rows, n, got, GM_ROWS);
+	ck(k == GM_ROWS - 1, "so the cursor steps over it too");
+	ck(!holds(got, k, GM_SLEEP), "and never rests on it");
 }
 
 /* The save slots, and the one constant that survived a rename by being written

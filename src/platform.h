@@ -170,6 +170,15 @@ bool plat_resident_sync_rect(int timeout_ms);
 void plat_request_poweroff(void);
 void plat_leds_off(void);
 
+/* Real suspend-to-RAM, distinct from Auto Off's power-off (sys_menu.c). See
+ * platform.c for what "supported" actually probes and why sleep needs no
+ * protocol message to Diatom. plat_sleep() blocks for the whole suspend and
+ * returns once the device wakes; a caller resumes exactly where it called
+ * from, with nothing to poll for in between. Both are safe no-ops - never
+ * a crash, never a wrong write - when this kernel does not offer it. */
+bool plat_sleep_supported(void);
+void plat_sleep(void);
+
 /* The two level scales, stated once. TortOS shares them verbatim with
  * launch.sh and with Diatom, so a level crossing the socket needs no
  * conversion - which only holds while every place that rescales a level agrees
