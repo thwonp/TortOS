@@ -38,6 +38,7 @@ cp "$ROOT/build/btplayer" "$P/"           # lets a headset's volume through Blue
 cp "$ROOT/build/muse" "$P/"               # the audio player's engine; Muse cannot play without it
 cp "$ROOT/sd/tortos/launch.sh" "$P/"
 cp "$ROOT/sd/tortos/bt-alsa.sh" "$P/"     # sourced by launch.sh, run by the launcher
+cp "$ROOT/sd/tortos/radio.sh" "$P/"       # sourced by launch.sh AND by plat_sleep()
 # Only systems.cfg is shipped now. tortos.cfg, turbo.cfg and coreopts.cfg are
 # compiled into the launcher and seed the settings database on first run, so
 # there is no file to ship and none to drift from the code that reads it.

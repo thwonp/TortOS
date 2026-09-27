@@ -23,6 +23,7 @@
 #include <sys/types.h>
 #include <sys/un.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 /* The front function keys report on the gamepad node as BTN_THUMBL/BTN_THUMBR
@@ -2061,7 +2062,21 @@ void plat_brightness_set(int level)
  * including Diatom, mid-frame or not - is frozen by the kernel along with
  * it and resumes exactly where it was. There is nothing for the launcher
  * to tell Diatom in advance that the kernel is not already doing for
- * every process uniformly, audio codec included. */
+ * every process uniformly, audio codec included.
+ *
+ * RETROFITTED to match NextUI's real suspend script (skeleton/SYSTEM/tg5040/
+ * bin/suspend) exactly, per this epic's 1:1 standing rule (see bd show
+ * TortOS-1v7.1.2): ALSA mixer state is saved before sleep and deliberately
+ * never restored (NextUI's own restore call is commented out in its shipped
+ * script - replicated as-is, not fixed); Bluetooth/Wi-Fi are stopped before
+ * sleep only if they were actually running, and restarted after waking in
+ * the background via plat_spawn_detached() (mirrors NextUI's `after &`, so a
+ * slow bt_on() never blocks wake); the write itself is wrapped in NextUI's
+ * 5-attempt retry loop with its time-based false-negative workaround. Not
+ * ported: NextUI's pre-sleep.d/post-resume.d hook-plugin system - verified a
+ * no-op on every stock install including NextUI's own (run_hooks.sh exits
+ * immediately when its hook directory doesn't exist, and it doesn't exist
+ * anywhere in NextUI's tree), and TortOS has no PAK ecosystem to serve it. */
 bool plat_sleep_supported(void)
 {
 #ifdef __linux__
@@ -2074,12 +2089,84 @@ bool plat_sleep_supported(void)
 #endif
 }
 
+#ifdef __linux__
+/* Fork+exec argv, block for exit, report whether it exited zero. Stdin closed
+ * since nothing here reads from a terminal; nothing between fork and exec
+ * that is not async-signal-safe - the launcher has threads (see
+ * child_environ() above for why that matters). */
+static bool run_argv(char *const argv[])
+{
+	pid_t pid = fork();
+	int st;
+
+	if (pid < 0) return false;
+	if (pid == 0) {
+		int null = open("/dev/null", O_RDONLY);
+		if (null >= 0) { dup2(null, 0); close(null); }
+		execv(argv[0], argv);
+		_exit(127);
+	}
+	if (waitpid(pid, &st, 0) != pid) return false;
+	return WIFEXITED(st) && WEXITSTATUS(st) == 0;
+}
+
+static bool sh_c(const char *cmd)
+{
+	char *argv[4];
+	argv[0] = (char *)"/bin/sh";
+	argv[1] = (char *)"-c";
+	argv[2] = (char *)cmd;
+	argv[3] = NULL;
+	return run_argv(argv);
+}
+
+/* No -x: measured on-device (2026-09-27) that this busybox pgrep's -x fails
+ * to match "bluetoothd" against its own /proc/pid/comm, even though plain
+ * substring pgrep finds it fine - silently skipping the whole bt stop/
+ * restart path. Matches radio.sh's and NextUI's own suspend script's pgrep
+ * calls, neither of which uses -x either. */
+static bool proc_running(const char *name)
+{
+	char cmd[64];
+	if (snprintf(cmd, sizeof cmd, "pgrep %s > /dev/null", name)
+	    >= (int)sizeof cmd)
+		return false;
+	return sh_c(cmd);
+}
+
+/* Runs one of sd/tortos/radio.sh's functions the same way bt_asoundrc()
+ * (src/bt.c) runs bt_write_asoundrc: sourced from its own path, passed as
+ * argv so it is never read as shell. `fn` is always a literal from a call
+ * site below, never external data - see bt_asoundrc()'s own comment on why
+ * that distinction is what makes this safe. `background` runs it detached
+ * (plat_spawn_detached) rather than blocking, for the post-wake restart. */
+static bool radio_sh_call(const char *fn, bool background)
+{
+	char script[512], cmd[64];
+	char *argv[5];
+
+	if (snprintf(script, sizeof script, "%s/radio.sh", P_ROOT)
+	    >= (int)sizeof script)
+		return false;
+	if (snprintf(cmd, sizeof cmd, ". \"$0\" && %s", fn) >= (int)sizeof cmd)
+		return false;
+	argv[0] = (char *)"/bin/sh";
+	argv[1] = (char *)"-c";
+	argv[2] = cmd;
+	argv[3] = script;
+	argv[4] = NULL;
+	return background ? plat_spawn_detached(argv, NULL, NULL) : run_argv(argv);
+}
+#endif
+
 void plat_sleep(void)
 {
 #ifdef __linux__
 	char states[128] = { 0 };
 	int fd, saved;
 	ssize_t n;
+	bool bt_was_up, wifi_was_up;
+	int fd2, tries;
 
 	if (!plat_sleep_supported()) return;
 
@@ -2097,10 +2184,36 @@ void plat_sleep(void)
 	saved = cur_bright;
 	apply_brightness(0);
 
-	/* Blocks for the entire duration of the suspend. The process, and the
-	 * whole device with it, resumes on this line when something wakes it -
-	 * there is no callback, no event, nothing to poll for in between. */
-	write_str("/sys/power/state", "mem");
+	/* before(): only touch a radio that was actually running - a player who
+	 * turned Bluetooth or Wi-Fi off in settings must not find it back on
+	 * after a sleep cycle. Mirrors NextUI's own pgrep-gated before(). */
+	bt_was_up = proc_running("bluetoothd");
+	wifi_was_up = proc_running("wpa_supplicant");
+	sh_c("mkdir -p /tmp/asound-suspend && "
+	     "alsactl --file /tmp/asound-suspend/asound.state.pre store");
+	if (bt_was_up) radio_sh_call("bt_off", false);
+	if (wifi_was_up) radio_sh_call("wifi_stop_once", false);
+
+	/* The write itself, wrapped in NextUI's exact 5-attempt retry loop:
+	 * wall-clock time (not plat_now_ms()/SDL_GetTicks(), which is monotonic
+	 * and not guaranteed to advance across a real suspend) measures how long
+	 * the write call itself was blocked, to catch a kernel that suspended
+	 * fine but still returned nonzero - see the time_asleep check below,
+	 * ported verbatim from the shipped script's own comment on it. */
+	for (tries = 0; tries < 5; tries++) {
+		time_t went, woke;
+		ssize_t wrote;
+
+		went = time(NULL);
+		fd2 = open("/sys/power/state", O_WRONLY);
+		wrote = fd2 < 0 ? -1 : write(fd2, "mem", 3);
+		if (fd2 >= 0) close(fd2);
+		if (wrote == 3) break;
+
+		woke = time(NULL);
+		if (woke - went > 5) break;   /* false-negative override */
+		sleep(3);
+	}
 
 	/* POWER is the ordinary way to wake the device, and that very press is
 	 * still sitting on fd_power once we resume - without this, the next
@@ -2113,6 +2226,12 @@ void plat_sleep(void)
 		       read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
 			; /* drain the wake press */
 	}
+
+	/* after(): backgrounded, same as NextUI's `after &`, so a slow bt_on()
+	 * (rfkill rail-cycle, hciattach retries) never blocks the first frame
+	 * after wake. */
+	if (wifi_was_up) radio_sh_call("wifi_on", true);
+	if (bt_was_up) radio_sh_call("bt_on", true);
 
 	apply_brightness(saved);
 #endif
