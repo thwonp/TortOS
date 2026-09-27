@@ -110,16 +110,20 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	 * answer to the row above rather than a separate idea. */
 	out[PM_XFER]         = (menu_row){ "Over The Hare", NEEDS_WIFI(net), net };
 	out[PM_STATS]        = (menu_row){ "Play Time",  NULL,      true  };
-	out[PM_SLEEP]        = (menu_row){ "Auto Off",  b->c,      true  };
+	/* Auto Sleep suspends to RAM (src/platform.c's plat_sleep) and resumes
+	 * instantly; Auto Off powers down and relies on resume-into-game to put
+	 * you back. Mutually exclusive, matching NextUI - see main.c's
+	 * PM_SLEEP/PM_AUTO_OFF handling - so at most one of the two labels below
+	 * is ever a real interval; the other always reads "never". */
+	out[PM_SLEEP]        = (menu_row){ "Auto Sleep", b->c,     true  };
+	sys_menu_auto_off_label(u->auto_off, b->c, sizeof b->c);
+	out[PM_AUTO_OFF]     = (menu_row){ "Auto Off",  b->a,      true  };
+	sys_menu_auto_off_label(u->auto_poweroff, b->a, sizeof b->a);
 	/* Both change how the shelf looks and nothing about what is on it. They
 	 * are what is left of that group: Text Size stood here until the band it
 	 * offered turned out to be too narrow to matter - src/ui.c. */
 	out[PM_THEME]        = (menu_row){ "UI Theme",  u->cards,     true };
 	out[PM_DIR]          = (menu_row){ "UI Direction", u->cards_dir, true };
-	/* Not "Sleep". The device has no suspend and is not getting one - see the
-	 * backlog. This powers off, and resume-into-game brings you back where you
-	 * were, which is what sleep would have been for. */
-	sys_menu_auto_off_label(u->auto_off, b->c, sizeof b->c);
 	out[PM_SCRAPE]       = (menu_row){ "Box Art",   NEEDS_WIFI(net), net };
 	out[PM_ACHIEVEMENTS] = (menu_row){ "Cheevos",
 	                                   u->ra_in ? u->ra_name : "sign in",

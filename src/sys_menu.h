@@ -34,7 +34,7 @@
 typedef enum {
 	PM_STATS,
 	PM_WIFI, PM_BT, PM_AUDIO, PM_XFER,
-	PM_SLEEP, PM_THEME, PM_DIR, PM_SCRAPE, PM_ACHIEVEMENTS, PM_SS,
+	PM_SLEEP, PM_AUTO_OFF, PM_THEME, PM_DIR, PM_SCRAPE, PM_ACHIEVEMENTS, PM_SS,
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
 } pm_row;
 
@@ -69,7 +69,7 @@ typedef enum {
  * ROM folder and no display mode. Album order was Eric's, 2026-09-19. */
 #define SM_MUSE_ROWS 4
 
-#define MENU_MAX_ROWS 13
+#define MENU_MAX_ROWS 14
 
 /* The array every caller declares must hold every row a build can produce, and
  * on 2026-09-16 it stopped: PM_ROWS went to 13 against a cap of 12 when the
@@ -119,7 +119,9 @@ typedef struct {
 	const char *ss_name;     /* only read when ss_in */
 	const char *cards;       /* the showing card set's name, from CARD_SETS */
 	const char *cards_dir;   /* which way the shelves run, from CARD_DIRS */
-	int         auto_off;    /* seconds, 0 for off */
+	int         auto_off;    /* Auto Sleep, seconds, 0 for off */
+	int         auto_poweroff; /* Auto Off, seconds, 0 for off - mutually
+	                             * exclusive with auto_off, see PM_AUTO_OFF */
 	/* Where sound goes: the policy the player set, and where it actually ends
 	 * up under that policy. Both, because the row has to name a place - "Auto"
 	 * on its own is a rule, not somewhere you can hear. */

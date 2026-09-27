@@ -150,7 +150,9 @@ typedef struct {
 	 * opens with the menu up. Cleared as it is used, so quitting to the
 	 * shelf and launching the same game again behaves normally. */
 	bool resume_menu;
-	int  auto_off;              /* seconds without input, 0 off */
+	int  auto_off;              /* Auto Sleep, seconds without input, 0 off */
+	int  auto_poweroff;         /* Auto Off, seconds without input, 0 off -
+	                             * mutually exclusive with auto_off */
 	idle_clock idle;            /* Auto Off's clock - src/idle.h */
 	SDL_Renderer *r;
 } app;
@@ -1060,6 +1062,24 @@ static int auto_off_load(void)
 static void auto_off_save(int seconds)
 {
 	db_set_int(db_dev(), "autooff", seconds);
+}
+
+/* Auto Off: the real, resume-into-game power-down, mirroring AUTO_OFF[]'s
+ * shape rather than sharing it - mutually exclusive with Auto Sleep above,
+ * matching NextUI, so the two get independent ladders and db keys even
+ * though today they hold the same values. */
+static const int AUTO_POWEROFF[] = { 0, 30, 60, 120, 300, 600 };
+#define AUTO_POWEROFF_COUNT ((int)(sizeof AUTO_POWEROFF / sizeof AUTO_POWEROFF[0]))
+
+static int auto_poweroff_load(void)
+{
+	int v = db_get_int(db_dev(), "autopoweroff", -1);
+	return v >= 0 ? v : 0;                    /* the default: never */
+}
+
+static void auto_poweroff_save(int seconds)
+{
+	db_set_int(db_dev(), "autopoweroff", seconds);
 }
 
 
@@ -4247,6 +4267,7 @@ static int menu_build(app *a, screen_id screen, int sys,
 		u.cards     = CARD_SETS[g_cards].name;
 		u.cards_dir = CARD_DIRS[g_dir].name;
 		u.auto_off  = a->auto_off;
+		u.auto_poweroff = a->auto_poweroff;
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
 
@@ -6448,7 +6469,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 
-	/* Auto Off, on the left/right idiom Display mode uses. */
+	/* Auto Sleep, on the left/right idiom Display mode uses. */
 	if (d && sel == PM_SLEEP) {
 		int k, at = 0;
 
@@ -6459,8 +6480,33 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		if (at >= AUTO_OFF_COUNT) at = AUTO_OFF_COUNT - 1;
 		a->auto_off = AUTO_OFF[at];
 		auto_off_save(a->auto_off);
+		/* Mutually exclusive with Auto Off, matching NextUI: no two-tier
+		 * escalation ladder, so at most one of the pair is ever armed. */
+		if (a->auto_off && a->auto_poweroff) {
+			a->auto_poweroff = 0;
+			auto_poweroff_save(0);
+		}
 		/* From now, not from whenever the last countdown began: choosing 30s
 		 * should not inherit two minutes of an old one already spent. */
+		a->idle.since_ms = plat_now_ms();
+		return MENU_STAY;
+	}
+	/* Auto Off, same idiom as Auto Sleep above and mutually exclusive with
+	 * it - see that block's comment. */
+	if (d && sel == PM_AUTO_OFF) {
+		int k, at = 0;
+
+		for (k = 0; k < AUTO_POWEROFF_COUNT; k++)
+			if (AUTO_POWEROFF[k] == a->auto_poweroff) { at = k; break; }
+		at += d;
+		if (at < 0) at = 0;
+		if (at >= AUTO_POWEROFF_COUNT) at = AUTO_POWEROFF_COUNT - 1;
+		a->auto_poweroff = AUTO_POWEROFF[at];
+		auto_poweroff_save(a->auto_poweroff);
+		if (a->auto_poweroff && a->auto_off) {
+			a->auto_off = 0;
+			auto_off_save(0);
+		}
 		a->idle.since_ms = plat_now_ms();
 		return MENU_STAY;
 	}
@@ -10611,6 +10657,7 @@ int main(int argc, char *argv[])
 		/* Without this every HTTPS request fails verification, because the
 		 * device has no trust store of its own - res/ssl/README.md. */
 		a.auto_off = auto_off_load();
+		a.auto_poweroff = auto_poweroff_load();
 		g_aout_policy = aout_load();
 
 		snprintf(cp, sizeof cp, "%s/cacert.pem", P_ROOT);
