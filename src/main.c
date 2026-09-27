@@ -8533,6 +8533,33 @@ static menu_result gm_power(app *a, void *ctx)
 	return MENU_DONE;
 }
 
+/* Auto Off's real, unattended counterpart to GM_SLEEP above
+ * (TortOS-1v7.1.2.6). Called from task C's idle_due() wiring rather than a
+ * menu row, so unlike GM_SLEEP there is no guarantee a game is even
+ * resident - a device idled out on the shelf has nothing to checkpoint,
+ * only plat_sleep() to reach. When a game IS resident, mirrors GM_SLEEP's
+ * save sequence exactly: same SLOT_AUTO paths, same unacknowledged SAVE
+ * (see GM_SLEEP's comment for why that residual risk is accepted there
+ * too - unchanged here). Never enters light sleep - Auto Off and Auto
+ * Sleep are mutually exclusive (task A), so this path is real suspend
+ * only. */
+static void auto_poweroff_fire(app *a)
+{
+	if (plat_resident_ready()) {
+		sysview *sv = &a->view[a->sys_cursor];
+		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
+		char sp[LIB_PATH * 2], pp[LIB_PATH * 2];
+
+		slot_state_path(a, o, &sv->list.items[sv->cursor], SLOT_AUTO,
+		                sp, sizeof sp);
+		plat_resident_line("SAVE\tpath=%s", sp);
+		slot_preview_path(a, o, &sv->list.items[sv->cursor], SLOT_AUTO,
+		                  pp, sizeof pp);
+		copy_file(plat_resident_last_preview(), pp);
+	}
+	plat_sleep();
+}
+
 static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 {
 	gm_ctx *c = ctx;
