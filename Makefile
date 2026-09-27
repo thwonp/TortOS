@@ -45,6 +45,19 @@ check:
 # One version number: the zip name and the About page both read it from here.
 VERSION ?= 1.0
 
+# It reaches the code on the compile line, where make cannot see it change, so
+# v1.0.1 first built as a 1.0 elf. A different VERSION from the last build's
+# deletes the elf here, while the makefile is read and before any target is
+# looked at, and has the container rebuild with -B. Both halves were measured:
+# a stamp file the elf depends on is not enough, because make compares whole
+# seconds and one written in the second the last build finished is not newer;
+# and the deletion alone is not enough, because the container can still see
+# the deleted elf (the same stale view described under build/tortos.elf).
+ifneq ($(VERSION),$(shell cat build/version 2>/dev/null))
+$(shell mkdir -p build && rm -f build/tortos.elf && echo '$(VERSION)' > build/version)
+VERSION_CHANGED := -B
+endif
+
 # The ScreenScraper developer pair, from .screenscraper.env in this directory
 # (gitignored, never committed). A value already in the environment wins, and
 # no file is still a supported build: the defines come out empty and art falls
@@ -72,7 +85,7 @@ build/tortos.elf: $(wildcard src/*.c) $(wildcard src/*.h) tools/setbright.c mk/c
 	@# -e VAR with no value passes the HOST's value through, so the pair
 	@# reaches the container without appearing in this command line.
 	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work -w /work $(IMAGE) \
-		make -f mk/cross.mk SYSROOT=/work/sysroot VERSION=$(VERSION) creds build/tortos.elf build/setbright build/muse build/musectl build/btplayer
+		make $(VERSION_CHANGED) -f mk/cross.mk SYSROOT=/work/sysroot VERSION=$(VERSION) creds build/tortos.elf build/setbright build/muse build/musectl build/btplayer
 	@# Refuse to be quiet about an output older than its own source.
 	@#
 	@# Docker on macOS can show the container a stale mtime for a file the host

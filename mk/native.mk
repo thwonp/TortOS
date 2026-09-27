@@ -9,6 +9,10 @@ SRC := $(wildcard src/*.c)
 
 PKGS := sdl2 SDL2_image SDL2_ttf
 VERSION ?= 0.0
+# A different VERSION from the last build's deletes the binary. See Makefile.
+ifneq ($(VERSION),$(shell cat $(BUILD)/version 2>/dev/null))
+$(shell mkdir -p $(BUILD) && rm -f $(BUILD)/tortos && echo '$(VERSION)' > $(BUILD)/version)
+endif
 CFLAGS := -DTORTOS_VERSION='"$(VERSION)"' -O1 -g -Wall -Wextra -Wno-unused-parameter -std=gnu11 -D_GNU_SOURCE \
           $(shell pkg-config --cflags $(PKGS))
 LDLIBS := $(shell pkg-config --libs $(PKGS)) -lm
