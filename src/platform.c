@@ -2086,6 +2086,18 @@ void plat_sleep(void)
 	 * there is no callback, no event, nothing to poll for in between. */
 	write_str("/sys/power/state", "mem");
 
+	/* POWER is the ordinary way to wake the device, and that very press is
+	 * still sitting on fd_power once we resume - without this, the next
+	 * poll reads it as a fresh press and treats it as a request to power
+	 * off, which looks like "resumed fine, then shut itself down a moment
+	 * later." Same drain idiom as the escape hatch above. */
+	{
+		struct input_event ev;
+		while (fd_power >= 0 &&
+		       read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+			; /* drain the wake press */
+	}
+
 	apply_brightness(saved);
 #endif
 }
