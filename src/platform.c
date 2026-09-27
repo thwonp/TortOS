@@ -2237,6 +2237,54 @@ void plat_sleep(void)
 #endif
 }
 
+#ifdef __linux__
+/* Blocks up to ms waiting for a power-button event on the raw evdev fd -
+ * press or release, either is evidence someone is at the device. Used only
+ * to detect wake, never tap/hold intent (plat_power_tap_or_hold already
+ * owns that), so any KEY_POWER event is enough. */
+static bool power_event_within(int ms)
+{
+	struct pollfd pfd;
+	struct input_event ev;
+
+	if (fd_power < 0) return false;
+	pfd.fd = fd_power;
+	pfd.events = POLLIN;
+	if (poll(&pfd, 1, ms) <= 0) return false;
+	while (read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+		if (ev.type == EV_KEY && ev.code == KEY_POWER) return true;
+	return false;
+}
+#endif
+
+/* Task B (TortOS-1v7.1.2.3): the intermediate power state entered when Auto
+ * Sleep (not Auto Off) is the active setting and idle fires - mirrors
+ * NextUI's PWR_enterSleep/PWR_waitForWake/PWR_exitSleep shape (screen off,
+ * audio muted, wait for the power button, restore both) but waits
+ * indefinitely, with none of PWR_waitForWake's own further suspend-timeout
+ * escalation into deep sleep/poweroff: Auto Sleep and Auto Off are
+ * mutually exclusive (task A), so there is nothing for this state to
+ * escalate into - Auto Off's real suspend (task D) only ever fires from
+ * its own independent idle branch, never out of this loop. The CPU stays
+ * awake throughout and plat_sleep() is never called here - this is
+ * NextUI's "hybrid sleep," a screen-off idle state, not a kernel suspend. */
+void plat_light_sleep(void)
+{
+#ifdef __linux__
+	int saved_bright = cur_bright;
+	int saved_vol = cur_vol;
+
+	apply_brightness(0);
+	plat_volume_set_pct(0);
+
+	while (!power_event_within(200))
+		;
+
+	apply_brightness(saved_bright);
+	if (mixer_fd >= 0 && saved_vol >= 0) apply_volume(saved_vol);
+#endif
+}
+
 #define POWER_HOLD_MS 400u
 
 /* The one press either caller could currently be watching - a->in.down every
