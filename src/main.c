@@ -8283,12 +8283,23 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			if (in_repeat(&a->in, IN_LEFT))  d = -1;
 			if (in_repeat(&a->in, IN_RIGHT)) d = 1;
 			if (d) {
-				int nb = (btn_for_row[sel] + d + HK_BTN_COUNT) % HK_BTN_COUNT;
+				/* Skip candidates another row already holds, rather than
+				 * landing on one and clearing that row out from under it -
+				 * cycling past a taken button while looking for a further
+				 * one used to steal it with no way to tell "passing
+				 * through" from "selecting". A row is freed the same way
+				 * it is claimed: cycle it to None first. */
+				int nb = btn_for_row[sel];
 				char spec[128];
+				int tries;
 
-				if (nb != 0)
+				for (tries = 0; tries < HK_BTN_COUNT; tries++) {
+					nb = (nb + d + HK_BTN_COUNT) % HK_BTN_COUNT;
+					if (nb == 0) break;
 					for (i = 0; i < HK_ROW_COUNT; i++)
-						if (i != sel && btn_for_row[i] == nb) btn_for_row[i] = 0;
+						if (i != sel && btn_for_row[i] == nb) break;
+					if (i == HK_ROW_COUNT) break;   /* nb is free */
+				}
 				btn_for_row[sel] = nb;
 
 				hk_serialize(btn_for_row, spec, sizeof spec);
