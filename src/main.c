@@ -6847,6 +6847,7 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 	u.dmode  = DMODES[a->view[a->sys_cursor].dmode].label;
 	u.earned = chv_earned();
 	u.total  = chv_count();
+	u.sleep_supported = plat_sleep_supported();
 	return gm_rows(&u, out, b);
 }
 
@@ -8360,6 +8361,37 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	case GM_CHEEVOS:
 		cheevos_screen(a, c->bg, false);
 		break;
+	case GM_SLEEP: {
+		/* Same protective habit as autosave-before-poweroff (power_off()):
+		 * sleep preserves whatever is in RAM, but a device that loses power
+		 * WHILE asleep - a dead battery - loses everything sleep itself
+		 * didn't write out. Silent, and to the Auto slot rather than the
+		 * interactive carousel: this is a safety net, not a save the player
+		 * asked to manage. */
+		sysview *sv = &a->view[a->sys_cursor];
+		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
+		char sp[LIB_PATH * 2], pp[LIB_PATH * 2];
+
+		slot_state_path(a, o, &sv->list.items[sv->cursor], SLOT_AUTO,
+		                sp, sizeof sp);
+		plat_resident_line("SAVE\tpath=%s", sp);
+		slot_preview_path(a, o, &sv->list.items[sv->cursor], SLOT_AUTO,
+		                  pp, sizeof pp);
+		copy_file(plat_resident_last_preview(), pp);
+
+		/* Not waited on: SAVE has no acknowledgment on this protocol today
+		 * (neither does the manual Save row above), so a battery that dies
+		 * in the narrow window between this line and Diatom actually
+		 * finishing the write can still lose it - the same residual risk
+		 * manual Save already carries, just reachable by a shorter path.
+		 * Closing it needs a SAVE ack Diatom does not have; out of scope
+		 * here. Blocks here for the whole suspend - see platform.c. Diatom
+		 * is frozen by the kernel along with this process either way and
+		 * needs nothing sent to it first; on return the game is exactly as
+		 * it was and this menu redraws over it unchanged. */
+		plat_sleep();
+		break;
+	}
 	case GM_RESET:
 		plat_resident_line("RESET");
 		c->resume = true;

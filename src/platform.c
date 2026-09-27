@@ -1930,6 +1930,76 @@ void plat_brightness_set(int level)
 	levels_save();
 }
 
+/* ---- sleep -----------------------------------------------------------
+ *
+ * Real suspend-to-RAM, not the pseudo-sleep this device already has under
+ * a different name: Auto Off (sys_menu.c) is a full power-off, and stats.h
+ * says outright that the device "has no suspend and is not getting one" -
+ * true when that comment was written, and now the thing this adds.
+ *
+ * UNVERIFIED ON HARDWARE. Whether this kernel's /sys/power/state lists
+ * "mem" at all was this feature's open question from the day it was
+ * proposed, and nothing in this environment can answer it - no device was
+ * available to ask. So this is written to discover the answer safely
+ * rather than to assume it: plat_sleep_supported() probes without
+ * triggering anything, and plat_sleep() re-checks that "mem" is actually
+ * among the listed states (not just that the file is writable) before
+ * ever writing to it. A kernel that lacks it, or only offers "freeze" /
+ * "standby", makes this a safe no-op rather than a wrong write.
+ *
+ * NO PROTOCOL MESSAGE TO DIATOM. NextUI's PWR_enterSleep pauses audio and
+ * SIGSTOPs helper daemons before its own equivalent write, because on its
+ * platforms sleep is assembled from several independently-paused pieces.
+ * TortOS has no helper daemons, and this write is a REAL kernel-wide
+ * suspend: it blocks until woken, and every process on the device -
+ * including Diatom, mid-frame or not - is frozen by the kernel along with
+ * it and resumes exactly where it was. There is nothing for the launcher
+ * to tell Diatom in advance that the kernel is not already doing for
+ * every process uniformly, audio codec included. */
+bool plat_sleep_supported(void)
+{
+#ifdef __linux__
+	static int cached = -1;
+
+	if (cached < 0) cached = access("/sys/power/state", W_OK) == 0 ? 1 : 0;
+	return cached == 1;
+#else
+	return false;
+#endif
+}
+
+void plat_sleep(void)
+{
+#ifdef __linux__
+	char states[128] = { 0 };
+	int fd, saved;
+	ssize_t n;
+
+	if (!plat_sleep_supported()) return;
+
+	fd = open("/sys/power/state", O_RDONLY);
+	if (fd < 0) return;
+	n = read(fd, states, sizeof states - 1);
+	close(fd);
+	if (n <= 0) return;
+	states[n] = '\0';
+	if (!strstr(states, "mem")) return;   /* listed states don't include it */
+
+	/* apply_brightness(), not plat_brightness_set(): this dims the panel and
+	 * puts it back, and must not persist a sleep-only value as the player's
+	 * chosen brightness - see levels_save() in plat_brightness_set above. */
+	saved = cur_bright;
+	apply_brightness(0);
+
+	/* Blocks for the entire duration of the suspend. The process, and the
+	 * whole device with it, resumes on this line when something wakes it -
+	 * there is no callback, no event, nothing to poll for in between. */
+	write_str("/sys/power/state", "mem");
+
+	apply_brightness(saved);
+#endif
+}
+
 /* ---- battery ---- */
 
 bool plat_battery(int *pct, bool *charging)
