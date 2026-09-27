@@ -42,7 +42,7 @@ static int      g_ntoken;
 static int      g_tries;
 static unsigned g_locked_until;
 static int      g_uploads;
-static bool     g_roms_changed;   /* something the shelf would show has moved */
+static bool     g_shelf_changed;  /* something the shelf would show has moved */
 static char     g_last[128];
 static unsigned long g_in, g_out;
 
@@ -220,11 +220,12 @@ static void note(const char *fmt, ...)
 
 /* Did that write land somewhere the shelf reads?
  *
- * Only the ROM root counts. A save state, a BIOS image or a renamed folder
- * under Saves changes nothing the launcher displays, and making those trigger
- * a rescan would mean pulling a hundred games off the card to react to a file
- * nobody is looking at. Prefix match on the resolved absolute path, so it is
- * asking about where the bytes actually went rather than what the URL said.
+ * Only the ROM and Music roots count; Muse is a shelf too. A save state, a
+ * BIOS image or a renamed folder under Saves changes nothing the launcher
+ * displays, and making those trigger a rescan would mean pulling a hundred
+ * games off the card to react to a file nobody is looking at. Prefix match on
+ * the resolved absolute path, so it is asking about where the bytes actually
+ * went rather than what the URL said.
  */
 static void note_write(const char *abs)
 {
@@ -234,15 +235,15 @@ static void note_write(const char *abs)
 		const xfer_root *rt = xfer_root_at(i);
 		size_t n;
 
-		if (strcmp(rt->name, "roms") != 0) continue;
+		if (strcmp(rt->name, "roms") != 0 && strcmp(rt->name, "music") != 0)
+			continue;
 		n = strlen(rt->path);
 		if (!strncmp(abs, rt->path, n) && (abs[n] == '/' || abs[n] == '\0'))
-			g_roms_changed = true;
-		return;
+			g_shelf_changed = true;
 	}
 }
 
-bool hare_roms_changed(void) { return g_roms_changed; }
+bool hare_shelf_changed(void) { return g_shelf_changed; }
 
 /* The name a listing shows for a path, or "" for a root. */
 static const char *base_of(const char *p)
@@ -732,12 +733,18 @@ bool hare_start(const char *roms_dir, const char *card_dir,
 	g_tries = 0;
 	g_locked_until = 0;
 	g_uploads = 0;
-	g_roms_changed = false;
+	g_shelf_changed = false;
 	g_in = g_out = 0;
 	g_last[0] = '\0';
 
-	for (i = 0; i < xfer_root_count(); i++)
+	/* A root that is missing is one nobody can make: the page does not edit
+	 * the roots themselves, and the card's top level is not a root. v1.0
+	 * shipped no Music/, and updating only TortOS/ does not bring one. EEXIST
+	 * is the usual answer and is ignored with the rest. */
+	for (i = 0; i < xfer_root_count(); i++) {
+		mkdir(xfer_root_at(i)->path, 0777);
 		sweep_parts(xfer_root_at(i)->path, 0);
+	}
 
 	if (!httpd_start(ports, (int)(sizeof ports / sizeof ports[0]))) return false;
 	note("waiting for a browser");

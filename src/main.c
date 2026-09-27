@@ -5124,7 +5124,7 @@ static void xfer_screen(app *a)
 	/* Asked before hare_stop, which is what the screen owning the server
 	 * means: after it, there is nobody left to ask. */
 	{
-		bool changed = hare_roms_changed();
+		bool changed = hare_shelf_changed();
 
 		hare_stop();
 		/* The point of the whole feature is getting ROMs onto the card, and
