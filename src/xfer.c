@@ -5,7 +5,7 @@
 
 #include "xfer.h"
 
-static xfer_root g_roots[4];
+static xfer_root g_roots[5];
 static int       g_nroots;
 
 static void add_root(const char *name, const char *label, const char *fmt,
@@ -27,7 +27,7 @@ void xfer_init(const char *roms_dir, const char *card_dir,
                const char *shared_dir)
 {
 	g_nroots = 0;
-	/* Three, and cores/ is deliberately not among them. A .so uploaded there
+	/* cores/ is deliberately not among these. A .so uploaded there
 	 * is dlopen'd into the launcher's own address space on the next launch,
 	 * which makes an upload form a way to run code as root and a way to break
 	 * the device past the point where the launcher can fix it. The configs
@@ -35,6 +35,10 @@ void xfer_init(const char *roms_dir, const char *card_dir,
 	 * a launcher that does not start, and the way to recover it is the card
 	 * reader this feature exists to avoid needing. */
 	add_root("roms",  "ROMs",  "%s", roms_dir, false);
+	/* Muse reads nothing but this folder, and the card's top level is not a
+	 * root, so without it music was the one thing on the card that still
+	 * needed the card pulled. */
+	add_root("music", "Music", "%s/Music", card_dir, false);
 	add_root("bios",  "BIOS",  "%s/Bios",  card_dir, false);
 	/* Two different things, both called saves in conversation.
 	 *

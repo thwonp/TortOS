@@ -74,22 +74,26 @@ int main(void)
 	printf("xfer: what the browser can reach\n");
 
 	printf("  the roots:\n");
-	CHECK(xfer_root_count() == 4, "expected 4 roots, got %d", xfer_root_count());
+	CHECK(xfer_root_count() == 5, "expected 5 roots, got %d", xfer_root_count());
 	CHECK(xfer_root_at(0) && !strcmp(xfer_root_at(0)->path, "/mnt/SDCARD/Roms"),
 	      "roms root wrong: %s", xfer_root_at(0) ? xfer_root_at(0)->path : "(none)");
-	CHECK(xfer_root_at(1) && !strcmp(xfer_root_at(1)->path, "/mnt/SDCARD/Bios"),
-	      "bios root wrong: %s", xfer_root_at(1) ? xfer_root_at(1)->path : "(none)");
-	CHECK(xfer_root_at(2) && !strcmp(xfer_root_at(2)->path, "/mnt/SDCARD/Saves"),
-	      "saves root wrong: %s", xfer_root_at(2) ? xfer_root_at(2)->path : "(none)");
-	CHECK(xfer_root_at(3) &&
-	      !strcmp(xfer_root_at(3)->path, "/mnt/SDCARD/.userdata/shared/.tortos"),
-	      "states root wrong: %s", xfer_root_at(3) ? xfer_root_at(3)->path : "(none)");
-	CHECK(xfer_root_at(4) == NULL, "a fifth root appeared");
+	CHECK(xfer_root_at(1) && !strcmp(xfer_root_at(1)->path, "/mnt/SDCARD/Music"),
+	      "music root wrong: %s", xfer_root_at(1) ? xfer_root_at(1)->path : "(none)");
+	CHECK(xfer_root_at(2) && !strcmp(xfer_root_at(2)->path, "/mnt/SDCARD/Bios"),
+	      "bios root wrong: %s", xfer_root_at(2) ? xfer_root_at(2)->path : "(none)");
+	CHECK(xfer_root_at(3) && !strcmp(xfer_root_at(3)->path, "/mnt/SDCARD/Saves"),
+	      "saves root wrong: %s", xfer_root_at(3) ? xfer_root_at(3)->path : "(none)");
+	CHECK(xfer_root_at(4) &&
+	      !strcmp(xfer_root_at(4)->path, "/mnt/SDCARD/.userdata/shared/.tortos"),
+	      "states root wrong: %s", xfer_root_at(4) ? xfer_root_at(4)->path : "(none)");
+	CHECK(xfer_root_at(5) == NULL, "a sixth root appeared");
 
 	printf("  ordinary paths land where they should:\n");
 	allow("roms", "/mnt/SDCARD/Roms");
 	allow("roms/NES", "/mnt/SDCARD/Roms/NES");
 	allow("roms/NES/Contra%20(USA).zip", "/mnt/SDCARD/Roms/NES/Contra (USA).zip");
+	allow("music/Radiohead/The%20Bends/01%20Planet%20Telex.mp3",
+	      "/mnt/SDCARD/Music/Radiohead/The Bends/01 Planet Telex.mp3");
 	allow("bios", "/mnt/SDCARD/Bios");
 	allow("saves/NES/Contra.srm", "/mnt/SDCARD/Saves/NES/Contra.srm");
 	/* Box art lives in a dot directory, so dot-leading names are ordinary
@@ -111,6 +115,7 @@ int main(void)
 	printf("  climbing out, in every shape:\n");
 	deny("roms/../TortOS/tortos.elf", "the launcher, overwritable from a phone");
 	deny("roms/..", "one level is all it takes");
+	deny("music/../TortOS", "up out of the Music root");
 	deny("..", "no root at all, just up");
 	deny("../TortOS", "up, before any root");
 	deny("roms/NES/../../TortOS", "past the root from inside a subfolder");
