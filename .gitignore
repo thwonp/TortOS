@@ -64,3 +64,9 @@ sysroot/
 # stray `git add -A` cannot change that.
 /system_images_original/
 /cards_backup_photos/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/

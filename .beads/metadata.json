@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "TortOS",
+  "project_id": "00fa30be-0942-463e-82e9-b1ecb94cad78"
+}
