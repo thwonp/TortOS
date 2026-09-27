@@ -208,6 +208,79 @@ const char *plat_turbo_map(const char *tag)
 		if (!strcmp(turbos[i].tag, tag)) return turbos[i].map;
 	return NULL;
 }
+
+/* ---- hotkeys, same shape as turbo above but player-editable at runtime --
+ * One canonical binding string per system tag - "l2:ff,r2:rewind,x:savestate,
+ * y:loadstate" - handed to Diatom as SETHOTKEYS after RUN, the same way
+ * turbo's map already rides SETMAP. See diatom's ADR-0035.
+ *
+ * Unlike turbo, there is no shipped default: this is new and opt-in, and
+ * seeding a binding the player never asked for is not what "opt-in" means.
+ * A tag with no hotkey.<tag> row plays exactly as it always has. */
+#define HOTKEY_MAX 16
+static struct { char tag[8]; char map[64]; } hotkeys[HOTKEY_MAX];
+static int nhotkeys = -1;                     /* -1 = not read yet */
+
+static bool hotkey_row(const char *key, const char *value, void *ctx)
+{
+	const char *tag = key + strlen("hotkey.");
+
+	(void)ctx;
+	if (nhotkeys >= HOTKEY_MAX) return false;
+	if (strlen(tag) >= sizeof hotkeys[0].tag ||
+	    strlen(value) >= sizeof hotkeys[0].map) {
+		fprintf(stderr, "hotkey: entry too long, ignoring: %.32s\n", tag);
+		return true;
+	}
+	snprintf(hotkeys[nhotkeys].tag, sizeof hotkeys[0].tag, "%s", tag);
+	snprintf(hotkeys[nhotkeys].map, sizeof hotkeys[0].map, "%s", value);
+	nhotkeys++;
+	return true;
+}
+
+static void hotkeys_load(void)
+{
+	nhotkeys = 0;
+	db_each_prefix(db_lib(), "hotkey.", hotkey_row, NULL);
+}
+
+/* The binding string for this system, or "" for one with none set - never
+ * NULL, so a caller building a SETHOTKEYS line needs no extra branch (an
+ * empty spec is itself valid: Diatom's hotkeys_set("") means "no bindings",
+ * which is exactly what "none set" should send). */
+const char *plat_hotkey_map(const char *tag)
+{
+	int i;
+
+	if (nhotkeys < 0) hotkeys_load();
+	if (!tag) return "";
+	for (i = 0; i < nhotkeys; i++)
+		if (!strcmp(hotkeys[i].tag, tag)) return hotkeys[i].map;
+	return "";
+}
+
+/* Persists AND updates the cache in the same call - unlike turbo's map,
+ * this is written from a live settings screen, not only ever read, so a
+ * second lookup on the same tag before the next full reload must see what
+ * was just set rather than a stale row. */
+void plat_hotkey_set(const char *tag, const char *spec)
+{
+	char key[16];
+	int i;
+
+	if (nhotkeys < 0) hotkeys_load();
+	if (!tag) return;
+	snprintf(key, sizeof key, "hotkey.%s", tag);
+	db_set_str(db_lib(), key, spec ? spec : "");
+
+	for (i = 0; i < nhotkeys; i++)
+		if (!strcmp(hotkeys[i].tag, tag)) break;
+	if (i == nhotkeys && nhotkeys < HOTKEY_MAX) nhotkeys++;
+	if (i < HOTKEY_MAX) {
+		snprintf(hotkeys[i].tag, sizeof hotkeys[0].tag, "%s", tag);
+		snprintf(hotkeys[i].map, sizeof hotkeys[0].map, "%s", spec ? spec : "");
+	}
+}
 const char *P_FONT = "/mnt/SDCARD/TortOS/menu.ttf";
 
 void paths_init(void)
@@ -896,6 +969,23 @@ bool plat_resident_send(const char *tag, const char *core, const char *rom,
 			fprintf(stderr, "turbo: %s %s\n", tag ? tag : "?",
 			        tm && *tm ? tm : "(none)");
 			if (tm && *tm) dsend("SETMAP\tmap=%s", tm);
+		}
+
+		/* Same reasoning as turbo's SETMAP above: AFTER RUN, which resets
+		 * Diatom's bindings to none (its ADR-0035), so a table sent first
+		 * would be discarded by the very launch it was meant for. Sent even
+		 * when empty - unlike turbo, which skips an empty map - so a game
+		 * that HAD bindings last session and had them cleared this one
+		 * actually loses them rather than keeping whatever the previous
+		 * RUN left behind (Diatom resets to none on every RUN regardless,
+		 * so this is belt and suspenders, not load-bearing; sent anyway for
+		 * the same "a state that does nothing looks identical to a bug"
+		 * reasoning the comment above already gives). */
+		{
+			const char *hk = plat_hotkey_map(tag);
+			fprintf(stderr, "hotkey: %s %s\n", tag ? tag : "?",
+			        hk && *hk ? hk : "(none)");
+			dsend("SETHOTKEYS\thotkeys=%s", hk ? hk : "");
 		}
 
 		/* The launcher owns levels while it draws (Diatom's ADR-0020), and

@@ -19,7 +19,8 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
         adb adb-elf adb-res adb-vendor adb-restart adb-run adb-log \
         check check-cheevos check-hare check-httpd check-idle check-rahash \
         check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
-        check-db check-stats check-sort check-bt check-backlog check-ss hooks storeprobe deploy restart logs
+        check-db check-stats check-sort check-bt check-backlog check-ss check-hkbind \
+        hooks storeprobe deploy restart logs
 
 all: build/tortos.elf
 
@@ -30,7 +31,7 @@ all: build/tortos.elf
 CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
          check-db check-stats check-sort check-bt check-backlog check-ss \
-         check-muselib check-musequeue check-museart check-controls
+         check-muselib check-musequeue check-museart check-controls check-hkbind
 
 check:
 	@fail=0; for c in $(CHECKS); do \
@@ -366,6 +367,16 @@ build-native/db-check: tools/db-check.c src/db.c src/db.h src/atomic.c FORCE
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
 	      -o $@ tools/db-check.c src/db.c src/atomic.c
+
+# The in-game Hotkeys screen's binding parser (sibling Diatom feature,
+# ADR-0035 there). Links src/hkbind.c and NOT SDL, same split as db-check.
+check-hkbind: build-native/hkbind-check
+	@./build-native/hkbind-check
+
+build-native/hkbind-check: tools/hkbind-check.c src/hkbind.c src/hkbind.h FORCE
+	@mkdir -p build-native
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
+	      -o $@ tools/hkbind-check.c src/hkbind.c
 
 # Play time. The assertion that earns this its place is that a LAUNCH writes
 # nothing: that is a claim about a path nobody watches, and it stops being true
