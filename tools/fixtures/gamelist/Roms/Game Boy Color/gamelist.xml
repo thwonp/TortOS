@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<gameList>
+	<game id="1" source="ScreenScraper.fr">
+		<path>./Alpha &amp; Omega.gbc</path>
+		<name>Alpha &amp; Omega (ignored)</name>
+		<desc>Line one, caf&#233; &#x2019;quoted&#x2019;.
+Line two &lt;b&gt;.</desc>
+		<rating>0.85</rating>
+		<releasedate>19991231T000000</releasedate>
+		<developer>Dev	Tabbed</developer>
+		<publisher> Rock &amp; Roll Inc. </publisher>
+		<genre>Action, Puzzle</genre>
+		<players>1-2</players>
+	</game>
+	<game>
+		<path>./sub/Beta.gbc</path>
+		<desc><![CDATA[Raw <b>bold</b> & stuff]]></desc>
+		<rating>0</rating>
+		<releasedate>unknown</releasedate>
+		<genre/>
+	</game>
+	<game/>
+	<game>
+		<name>No path, skipped</name>
+	</game>
+	<game>
+		<path>./Gamma.gbc</path>
+		<desc/>
+	</game>
+</gameList>

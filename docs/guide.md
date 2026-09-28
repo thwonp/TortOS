@@ -149,9 +149,8 @@ than any one console:
 | **Mute Switch** | what the side switch does: `mute`, or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
 | **UI Theme** | `Plain Jane` or `Fancy Pants` - which art the shelves wear |
 | **UI Direction** | `Horizontal`, `Vertical` or `Cubic` - see below |
-| **Box Art** | fetch what the whole library is missing |
+| **Scraping** | **Box Art**: fetch what the whole library is missing. **ScreenScraper**: the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build`. **Import gamelist.xml metadata**: see below |
 | **Cheevos** | the RetroAchievements account, or `sign in` |
-| **ScreenScraper** | the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build` |
 | **Controls** | every button and what it does, a page per place |
 | **About TortOS** | version, address, battery, uptime |
 
@@ -163,6 +162,13 @@ Over The Hare and Box Art need a network, and go quiet without one rather than
 disappearing - a row that vanishes teaches nobody why. Cheevos stays reachable
 either way, because signing in is the thing you go there to do, and Bluetooth
 and Play Time need no network at all.
+
+**Import gamelist.xml metadata** reads the `gamelist.xml` (or
+`miyoogamelist.xml`) an EmulationStation-style scraper left in each
+`Roms/<system>` folder, and gives those games their year, genre and synopsis -
+no network, no account. **Fill in missing** leaves a game that already has
+metadata alone; **Replace all** writes over it. Titles still come from the file
+name, not the gamelist's `<name>`.
 
 On the Play Time screen, **left and right** change the window - all time, this
 year, this month, this week, today - and **Y** switches between one row per

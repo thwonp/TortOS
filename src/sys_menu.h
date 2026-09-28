@@ -34,9 +34,14 @@
 typedef enum {
 	PM_STATS,
 	PM_WIFI, PM_BT, PM_AUDIO, PM_XFER,
-	PM_AUTO_OFF, PM_SLEEP, PM_SUSPEND, PM_MUTESW, PM_THEME, PM_DIR, PM_SCRAPE, PM_ACHIEVEMENTS, PM_SS,
+	PM_AUTO_OFF, PM_SLEEP, PM_SUSPEND, PM_MUTESW, PM_THEME, PM_DIR, PM_SCRAPING, PM_ACHIEVEMENTS,
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
 } pm_row;
+
+/* Settings > Scraping (TortOS-mh0): everything that puts art and text on a
+ * card, in one place - the Box Art job, the ScreenScraper account it signs in
+ * with, and importing gamelist.xml metadata already on the card. */
+typedef enum { SC_BOXART, SC_SS, SC_IMPORT, SC_ROWS } sc_row;
 
 /* The system menu. Games and Core carry real values rather than invented ones,
  * because a placeholder that lies about the machine it is describing is worse
@@ -89,6 +94,7 @@ typedef enum {
  * cap back to 12 and watching the build succeed. */
 _Static_assert(MENU_MAX_ROWS >= PM_ROWS, "MENU_MAX_ROWS < PM_ROWS");
 _Static_assert(MENU_MAX_ROWS >= SM_ROWS, "MENU_MAX_ROWS < SM_ROWS");
+_Static_assert(MENU_MAX_ROWS >= SC_ROWS, "MENU_MAX_ROWS < SC_ROWS");
 
 /* Where the built rows' text lives. A row holds pointers, not copies, so the
  * strings a build formats have to outlive the build; the caller owns this and
@@ -159,5 +165,8 @@ void sys_menu_auto_off_label(int seconds, char *out, size_t n);
  * loop never needs to know which of the two it is driving. */
 int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
                    const char **heading);
+
+/* Settings > Scraping's rows, from the same sys_ui. Returns SC_ROWS. */
+int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading);
 
 #endif
