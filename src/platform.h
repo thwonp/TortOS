@@ -187,8 +187,15 @@ bool plat_sleep(void);
  * button is released - or, left for the Suspend Timeout, real suspend via
  * plat_sleep(). The one way into sleep, whatever asked for it. Blocks for the
  * whole of it. Returns false only when escalation found no suspend to go to,
- * which NextUI answers by powering off; the caller does that. */
-bool plat_light_sleep(void);
+ * which NextUI answers by powering off; the caller does that. waited_ms is
+ * time the screen has already been dark (main.c's music_dark, after the
+ * music stopped), counted toward the Suspend Timeout; 0 otherwise. */
+bool plat_light_sleep(unsigned waited_ms);
+
+/* The backlight alone, off or back at the player's level - no mute, no input
+ * flush, no escalation. For main.c's music_dark, the screen-off that lets an
+ * album play on where light sleep would pause it (TortOS-a5k). */
+void plat_screen(bool on);
 
 /* A computer has enumerated the device - not merely a charger, which never
  * does. With charging, what keeps TortOS awake: it holds the idle clock and
@@ -253,6 +260,12 @@ void plat_audio_jack_poll(void);
  * so only the speaker switch may be touched and never the gain. */
 bool plat_mute_poll(bool own_volume);
 bool plat_muted(void);
+/* Main settings' Mute Switch row (TortOS-ib9). With lock on, the switch never
+ * mutes, and plat_hold_switch answers whether it is down - read live, it is a
+ * real switch - so music_dark can ignore buttons in a pocket. Loaded from db
+ * "muteswitch" at plat_settings_init; the setter is for the menu. */
+void plat_mute_switch_lock(bool lock);
+bool plat_hold_switch(void);
 
 /* Is a cable in the headphone jack? SW_HEADPHONE_INSERT on the codec's input
  * node, the same switch the volume ladder above already follows.

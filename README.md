@@ -167,7 +167,7 @@ The volume buttons and F1/F2 (brightness) work everywhere.
 <details>
 <summary>What's in each menu</summary>
 
-**The TortOS menu,** MENU on the consoles row: Play Time, Wi-Fi, Bluetooth, Audio Output, Over The Hare, Auto Off, Auto Sleep, Suspend Timeout, UI Theme, UI Direction, Box Art, Cheevos, ScreenScraper, Controls, About TortOS.
+**The TortOS menu,** MENU on the consoles row: Play Time, Wi-Fi, Bluetooth, Audio Output, Over The Hare, Auto Off, Auto Sleep, Suspend Timeout, Mute Switch, UI Theme, UI Direction, Box Art, Cheevos, ScreenScraper, Controls, About TortOS.
 
 **A console's menu,** MENU inside it: Sort By, Display Mode, Box Art for that console alone, and Rescan Folder for games copied since the Brick was turned on.
 

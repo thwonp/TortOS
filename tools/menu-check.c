@@ -199,6 +199,7 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(val(&rows[PM_SLEEP]), "2m"), "120s reads as 2m");
 	ck(!strcmp(val(&rows[PM_SUSPEND]), "90s"), "90s stays in seconds, as NextUI spells it");
 	ck(rows[PM_SUSPEND].live, "Suspend Timeout is reachable offline");
+	ck(!strcmp(val(&rows[PM_MUTESW]), "mute"), "Mute Switch defaults to mute");
 	ck(!strcmp(val(&rows[PM_THEME]), "Plain Jane"), "the card set names itself");
 	ck(!strcmp(val(&rows[PM_DIR]), "Horizontal"), "and so does the direction");
 	ck(rows[PM_DIR].live, "UI Direction is reachable offline too");
@@ -277,6 +278,9 @@ static void tortos_menu_online(void)
 	ck(!strcmp(val(&rows[PM_ACHIEVEMENTS]), "eric"), "Cheevos shows the account");
 	ck(!strcmp(val(&rows[PM_SLEEP]), "never"), "0s reads as never");
 	ck(!strcmp(val(&rows[PM_AUTO_OFF]), "never"), "Auto Off unset reads as never");
+	u.mute_lock = true;
+	sys_menu_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[PM_MUTESW]), "muse button lock"), "Mute Switch reads muse button lock");
 
 	/* THE SCREENSCRAPER ROW HAS THREE STATES, one more than the Cheevos row
 	 * beside it: the developer key comes from the environment at build time,
@@ -420,7 +424,7 @@ static void system_menu(void)
 		m.wifi = WIFI_CONNECTED;     /* the case above left the radio down */
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
 		printf("Muse's shelf menu:\n");
-		ck(mn == SM_MUSE_ROWS, "four rows, not six");
+		ck(mn == SM_MUSE_ROWS, "five rows, not six");
 		ck(!strcmp(mrows[0].label, "Albums") && !strcmp(val(&mrows[0]), "7"),
 		   "how many albums");
 		ck(!strcmp(mrows[1].label, "Sort By") && mrows[1].live &&
@@ -430,6 +434,8 @@ static void system_menu(void)
 		   "covers to fetch, on a network");
 		ck(!strcmp(mrows[3].label, "Rescan Folder") && mrows[3].live,
 		   "and a rescan that works");
+		ck(!strcmp(mrows[4].label, "Muse Settings") && mrows[4].live,
+		   "and Muse's own settings");
 		m.sort = "Album";
 		m.wifi = WIFI_OFF;
 		sys_menu_build(&m, mrows, &mb, &mhead);

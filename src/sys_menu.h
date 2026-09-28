@@ -34,7 +34,7 @@
 typedef enum {
 	PM_STATS,
 	PM_WIFI, PM_BT, PM_AUDIO, PM_XFER,
-	PM_AUTO_OFF, PM_SLEEP, PM_SUSPEND, PM_THEME, PM_DIR, PM_SCRAPE, PM_ACHIEVEMENTS, PM_SS,
+	PM_AUTO_OFF, PM_SLEEP, PM_SUSPEND, PM_MUTESW, PM_THEME, PM_DIR, PM_SCRAPE, PM_ACHIEVEMENTS, PM_SS,
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
 } pm_row;
 
@@ -65,11 +65,12 @@ typedef enum {
 /* What Muse's shelf menu is: how many albums, Sort By - by artist or by album,
  * its own two orders, where a console's shelf has four - Album Art to fetch
  * covers for the albums that have none or only a small one, and Rescan Folder
- * for music copied onto the card while the Brick was on. Muse has no core, no
- * ROM folder and no display mode. Album order was Eric's, 2026-09-19. */
-#define SM_MUSE_ROWS 4
+ * for music copied onto the card while the Brick was on - and Muse Settings,
+ * Muse's own options (TortOS-28l). Muse has no core, no ROM folder and no
+ * display mode. Album order was Eric's, 2026-09-19. */
+#define SM_MUSE_ROWS 5
 
-#define MENU_MAX_ROWS 16
+#define MENU_MAX_ROWS 17
 
 /* The array every caller declares must hold every row a build can produce, and
  * on 2026-09-16 it stopped: PM_ROWS went to 13 against a cap of 12 when the
@@ -124,6 +125,7 @@ typedef struct {
 	                             * exclusive with auto_off, see PM_AUTO_OFF */
 	int         suspend_timeout; /* seconds light sleep waits before real
 	                              * suspend, never 0 - see PM_SUSPEND */
+	bool        mute_lock;   /* the mute switch is a button lock instead */
 	/* Where sound goes: the policy the player set, and where it actually ends
 	 * up under that policy. Both, because the row has to name a place - "Auto"
 	 * on its own is a rule, not somewhere you can hear. */

@@ -1700,6 +1700,10 @@ static int mute_fd = -1;
  * full volume with the switch down. Exactly the fault jack_forget exists to
  * prevent, and found by reading its comment. */
 static int muted = -1;
+/* Button Lock mode (TortOS-ib9): the switch stops muting and becomes an
+ * iPod-style hold switch instead - see plat_hold_switch. Cached, not read from
+ * the db, because plat_mute_poll runs every frame. */
+static bool switch_locks;
 
 static bool mute_switch_down(void)
 {
@@ -1750,7 +1754,7 @@ bool plat_headphones_present(void) { return jack_present() != 0; }
  * emulator's. See BACKLOG 28. */
 bool plat_mute_poll(bool own_volume)
 {
-	int now = mute_switch_down() ? 1 : 0;
+	int now = mute_switch_down() && !switch_locks ? 1 : 0;
 
 	if (now == muted) return false;
 	muted = now;
@@ -1794,6 +1798,17 @@ bool plat_muted(void) { return muted == 1; }
 /* Whatever this side remembers about the switch was formed while it was
  * driving; a game just was. Called where jack_forget is, and for its reason. */
 static void mute_forget(void) { muted = -1; }
+
+/* Forgetting the position is what makes the change land: the next poll finds
+ * a difference and re-applies, so switching modes with the switch down mutes
+ * or unmutes at once - Diatom included, through the same SETMUTE. */
+void plat_mute_switch_lock(bool lock)
+{
+	switch_locks = lock;
+	mute_forget();
+}
+
+bool plat_hold_switch(void) { return switch_locks && mute_switch_down(); }
 
 void plat_audio_jack_poll(void)
 {
@@ -1846,6 +1861,7 @@ void plat_settings_init(void)
 	 * of the player. */
 	v = db_get_int(db_dev(), "volume", -1);
 	b = db_get_int(db_dev(), "brightness", -1);
+	switch_locks = db_get_int(db_dev(), "muteswitch", 0) == 1;
 
 	/* Both are stored in the units this code uses - a rung each - so there is
 	 * no conversion here and no way for one key to mean two things. */
@@ -1891,6 +1907,9 @@ bool plat_muted(void) { return false; }
 bool plat_headphones_present(void) { return false; }
 static void jack_forget(void) { }
 static void mute_forget(void) { }
+void plat_mute_switch_lock(bool lock) { (void)lock; }
+bool plat_hold_switch(void) { return false; }
+static void backlight_off(void) { }
 
 /* No settings database on the host, so the config defaults are all there is.
  * Taken anyway rather than ignored: a shelf rendered by --shot should show the
@@ -1902,6 +1921,12 @@ void plat_settings_init(void)
 }
 
 #endif  /* __linux__ */
+
+void plat_screen(bool on)
+{
+	if (on) apply_brightness(cur_bright);
+	else    backlight_off();
+}
 
 
 /* The settings indicator: a thin line across the very top on any volume or
@@ -2278,7 +2303,7 @@ static unsigned resume_at;
  * (the music player) is paused by the caller, main.c's sleep_cycle; the
  * haptic pulse is gated on a setting NextUI ships off and TortOS lacks
  * (TortOS-1v7.1.2.11). */
-bool plat_light_sleep(void)
+bool plat_light_sleep(unsigned waited_ms)
 {
 	bool awake = true;
 #ifdef __linux__
@@ -2291,7 +2316,7 @@ bool plat_light_sleep(void)
 	if (mixer_fd >= 0) apply_volume(0);
 	sync();
 
-	since = plat_now_ms();
+	since = plat_now_ms() - waited_ms;    /* already dark that long */
 	for (;;) {
 		bool charging = false;
 
@@ -2312,6 +2337,8 @@ bool plat_light_sleep(void)
 	sync();
 	plat_input_flush();                   /* PAD_reset, and whatever was
 	                                       * pressed in the dark */
+#else
+	(void)waited_ms;
 #endif
 	pwr_since = 0;
 	resume_at = plat_now_ms();
