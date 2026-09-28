@@ -329,6 +329,18 @@ LOG=$LOGS_PATH/tortos.log
 # added. The fallback for a resident that dies mid-session is the same
 # binary run standalone by the launcher - one emulator, held two ways.
 export TORTOS_DIATOM_SOCKET=/tmp/diatom.sock
+# Lost once, in 1258dd7's move of the radio functions to radio.sh, with both
+# calls left behind: sh fails a missing function quietly, so every boot ran its
+# first game the old way, where a POWER tap powers off (TortOS-5bu).
+start_resident() {
+	pgrep -f "TortOS/diatom --socket" > /dev/null && return
+	rm -f "$TORTOS_DIATOM_SOCKET"
+	LD_LIBRARY_PATH=/usr/trimui/lib \
+		"$TORTOS_DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" \
+		--cores "$CORES_PATH" \
+		--save "$SDCARD/Saves" --system "$SDCARD/Bios" >> "$LOG" 2>&1 &
+	echo $! > /tmp/diatom.pid
+}
 # BEFORE start_resident, and that order is the whole point: alsa-lib caches its
 # config at the first PCM open, so a definition written afterwards is invisible
 # to this process for as long as it lives.
