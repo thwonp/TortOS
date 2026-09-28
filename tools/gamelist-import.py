@@ -3,15 +3,24 @@
 TortOS's library.db, for a card that already has this metadata from elsewhere
 and should not need a ScreenScraper account or a live lookup on-device.
 
-    tools/gamelist-import.py [--roms DIR] [--system NAME] --out FILE [--dry-run]
+    tools/gamelist-import.py --roms DIR [--system NAME] --out FILE [--dry-run]
 
-This writes the tab-separated format `tortos --meta` already reads
-(src/main.c ~line 10165: "the scrape runs on a computer for now... so the
-rows travel as a file"). Emitting that file is this script's whole job -
-getting it onto the card and applying it is the same unchanged second step a
-ScreenScraper dump already uses:
+This writes the tab-separated format `tortos.elf --meta` already reads
+(src/main.c: "the scrape runs on a computer for now... so the rows travel as
+a file"). Emitting that file is this script's whole job. DIR is laid out like
+the card's Roms/ - one folder per system, named as on the card, each holding
+its gamelist.xml - so the simplest source is the card itself:
 
-    adb push out.meta /tmp/x.meta && adb shell tortos --meta /tmp/x.meta
+    mkdir -p "roms/Game Boy Color"
+    adb pull "/mnt/SDCARD/Roms/Game Boy Color/gamelist.xml" "roms/Game Boy Color/"
+    tools/gamelist-import.py --roms roms --out out.meta
+    adb push out.meta /tmp/x.meta
+    adb shell 'cd /mnt/SDCARD/TortOS && \
+      LD_LIBRARY_PATH=/mnt/SDCARD/TortOS/lib:/usr/trimui/lib \
+      ./tortos.elf --meta /tmp/x.meta'
+
+A game that already has metadata on the card is skipped; add --overwrite
+after the file to replace it instead.
 
 FIELD MAPPING (ES gamelist -> TortOS game_meta, src/db.h):
 
@@ -151,9 +160,9 @@ def write_meta(path, records):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--roms", default=os.path.join(ROOT, "TortOS-Test-Set", "Roms"),
-                    help="ROM tree to read gamelist.xml/miyoogamelist.xml from "
-                         "(default: the working library)")
+    ap.add_argument("--roms", required=True,
+                    help="ROM tree to read gamelist.xml/miyoogamelist.xml from, "
+                         "one folder per system as on the card")
     ap.add_argument("--system", help="only this system folder")
     ap.add_argument("--out", help="write the --meta file here (required unless --dry-run)")
     ap.add_argument("--dry-run", action="store_true",

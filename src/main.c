@@ -10664,11 +10664,16 @@ int main(int argc, char *argv[])
 	 * - then that many bytes of synopsis and a newline. COUNTED RATHER THAN
 	 * ESCAPED, because the synopsis is the one field with newlines in it and 42
 	 * of the 78 replies this card's games got have them; an escape is a second
-	 * thing to get right at both ends. */
+	 * thing to get right at both ends.
+	 *
+	 * A game that already has a row is left alone unless --overwrite follows
+	 * the file: a gamelist.xml import should fill gaps, not replace what a
+	 * ScreenScraper hit already wrote (TortOS-1v7.4.1). */
 	if (argc > 2 && !strcmp(argv[1], "--meta")) {
 		char dev[CFG_STR * 2], lib[CFG_STR * 2], head[1024];
 		FILE *f = fopen(argv[2], "rb");
-		int wrote = 0, bad = 0;
+		bool overwrite = argc > 3 && !strcmp(argv[3], "--overwrite");
+		int wrote = 0, skipped = 0, bad = 0;
 
 		if (!f) {
 			fprintf(stderr, "cannot read %s\n", argv[2]);
@@ -10720,6 +10725,16 @@ int main(int argc, char *argv[])
 			for (want -= take; want > 0; want--)
 				if (fgetc(f) == EOF) break;
 			fgetc(f);                            /* the record's newline */
+			/* Checked only now, with the whole record read, so the next
+			 * header is still where the file says it is. */
+			if (!overwrite) {
+				game_meta had;
+
+				if (db_game_get(db_lib(), fld[0], fld[1], &had)) {
+					skipped++;
+					continue;
+				}
+			}
 			snprintf(m.year,      sizeof m.year,      "%s", fld[2]);
 			snprintf(m.publisher, sizeof m.publisher, "%s", fld[3]);
 			snprintf(m.developer, sizeof m.developer, "%s", fld[4]);
@@ -10731,7 +10746,7 @@ int main(int argc, char *argv[])
 			else bad++;
 		}
 		fclose(f);
-		printf("%d written, %d rejected\n", wrote, bad);
+		printf("%d written, %d skipped, %d rejected\n", wrote, skipped, bad);
 		db_shutdown();
 		return bad && !wrote ? 1 : 0;
 	}
