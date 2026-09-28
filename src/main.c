@@ -154,6 +154,8 @@ typedef struct {
 	int  auto_poweroff;         /* Auto Off, seconds without input, 0 off -
 	                             * mutually exclusive with auto_off */
 	idle_clock idle;            /* Auto Off's clock - src/idle.h */
+	bool game_on;               /* a game is loaded in Diatom: launch()'s wait
+	                             * loop, the game menu and its screens */
 	SDL_Renderer *r;
 } app;
 
@@ -8568,31 +8570,40 @@ static menu_result gm_power(app *a, void *ctx)
 	return MENU_DONE;
 }
 
-/* Auto Off's real, unattended counterpart to GM_SLEEP above
- * (TortOS-1v7.1.2.6). Called from task C's idle_due() wiring rather than a
- * menu row, so unlike GM_SLEEP there is no guarantee a game is even
- * resident - a device idled out on the shelf has nothing to checkpoint,
- * only plat_sleep() to reach. When a game IS resident, mirrors GM_SLEEP's
- * save sequence exactly: same SLOT_AUTO paths, same unacknowledged SAVE
- * (see GM_SLEEP's comment for why that residual risk is accepted there
- * too - unchanged here). Never enters light sleep - Auto Off and Auto
- * Sleep are mutually exclusive (task A), so this path is real suspend
- * only. */
+/* NextUI's Menu_beforeSleep: before the device sleeps or powers off with a
+ * game loaded, write it out - a battery that dies asleep loses whatever
+ * sleep did not save. SLOT_AUTO, silently: a safety net, not a save the
+ * player manages. Waits for Diatom's SAVED (its main.c answers every SAVE),
+ * as State_autosave finishes before PWR_sleep begins; a save that never
+ * answers costs three seconds, not the sleep. Nothing on the shelf: no game
+ * is loaded there, and the cursor's game is not the one that was running.
+ * The resume-into-game marker, NextUI's AUTO_RESUME_PATH, is .playing, which
+ * already stands for the whole of a game session. */
+static void checkpoint_game(app *a)
+{
+	sysview *sv = &a->view[a->sys_cursor];
+	int o;
+	char sp[LIB_PATH * 2], pp[LIB_PATH * 2];
+
+	if (!a->game_on || !plat_resident_ready()) return;
+	o = shelf_owner(a, a->sys_cursor, sv->cursor);
+	slot_state_path(a, o, &sv->list.items[sv->cursor], SLOT_AUTO,
+	                sp, sizeof sp);
+	plat_resident_line("SAVE\tpath=%s", sp);
+	slot_preview_path(a, o, &sv->list.items[sv->cursor], SLOT_AUTO,
+	                  pp, sizeof pp);
+	copy_file(plat_resident_last_preview(), pp);
+	plat_resident_saved(sp, 3000);
+}
+
+/* Auto Off (TortOS's own - NextUI has no idle power-off): idle ends in a
+ * full shutdown, never sleep. Checkpointed first when a game is loaded,
+ * since a shutdown keeps nothing in RAM; power_off() is the same shutdown
+ * a held power button does. */
 static void auto_poweroff_fire(app *a)
 {
-	if (plat_resident_ready()) {
-		sysview *sv = &a->view[a->sys_cursor];
-		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
-		char sp[LIB_PATH * 2], pp[LIB_PATH * 2];
-
-		slot_state_path(a, o, &sv->list.items[sv->cursor], SLOT_AUTO,
-		                sp, sizeof sp);
-		plat_resident_line("SAVE\tpath=%s", sp);
-		slot_preview_path(a, o, &sv->list.items[sv->cursor], SLOT_AUTO,
-		                  pp, sizeof pp);
-		copy_file(plat_resident_last_preview(), pp);
-	}
-	plat_sleep();
+	checkpoint_game(a);
+	power_off(a);
 }
 
 static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
@@ -9051,11 +9062,13 @@ static void launch(app *a)
 			 * engine when one side is fbdev. A warm launch is ~15ms, so there is
 			 * nothing to animate over anyway; the shelf simply holds until
 			 * the game's first frame replaces it. */
+			a->game_on = true;
 			for (;;) {
 				r = plat_resident_wait();
 				if (r == RES_PAUSED) { game_menu(a); continue; }
 				break;
 			}
+			a->game_on = false;
 			resident = (r == RES_EXIT);
 
 			/* The Auto card's picture, written ONLY here - at the same moment

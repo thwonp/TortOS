@@ -1163,6 +1163,27 @@ bool plat_resident_sync_rect(int timeout_ms)
 	return false;
 }
 
+bool plat_resident_saved(const char *path, int timeout_ms)
+{
+	unsigned t0 = SDL_GetTicks();
+	char *l;
+
+	if (dsock < 0) return false;
+	while ((int)(SDL_GetTicks() - t0) < timeout_ms) {
+		l = dline(timeout_ms - (int)(SDL_GetTicks() - t0));
+		if (!l) break;
+		/* The path, not just the word: a manual Save a moment earlier left
+		 * its own SAVED unread on this socket. */
+		if (strncmp(l, "SAVED\tpath=", 11) == 0 && !strcmp(l + 11, path))
+			return true;
+		if (strncmp(l, "ERROR\t", 6) == 0) return false;
+		if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
+		else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
+		else if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
+	}
+	return false;
+}
+
 static void d_apply_levels(void)
 {
 	/* Through the public setters (defined below, past this point in the
