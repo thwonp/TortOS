@@ -38,6 +38,10 @@ What this fork does differently from upstream TortOS. Details are in
   Suspend Timeout, with the playback buttons still live, before it suspends,
   or powers off when Auto Off is armed. There is no
   separate setting for Auto Off's grace; set Suspend Timeout to change it.
+- **Settings → Mute Switch: `mute` / `button lock`.** In `button lock` mode the
+  switch stops muting and works like an iPod's hold switch: while it is down
+  and music plays with the screen dark, all buttons and the volume keys are
+  ignored. POWER and headset buttons still work.
 
 <div align="center">
   

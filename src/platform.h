@@ -267,6 +267,12 @@ void plat_audio_jack_poll(void);
  * so only the speaker switch may be touched and never the gain. */
 bool plat_mute_poll(bool own_volume);
 bool plat_muted(void);
+/* Main settings' Mute Switch row (TortOS-ib9). With lock on, the switch never
+ * mutes, and plat_hold_switch answers whether it is down - read live, it is a
+ * real switch - so music_dark can ignore buttons in a pocket. Loaded from db
+ * "muteswitch" at plat_settings_init; the setter is for the menu. */
+void plat_mute_switch_lock(bool lock);
+bool plat_hold_switch(void);
 
 /* Is a cable in the headphone jack? SW_HEADPHONE_INSERT on the codec's input
  * node, the same switch the volume ladder above already follows.

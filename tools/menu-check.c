@@ -200,6 +200,7 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(val(&rows[PM_SUSPEND]), "90s"), "90s stays in seconds, as NextUI spells it");
 	ck(rows[PM_SUSPEND].live, "Suspend Timeout is reachable offline");
 	ck(!strcmp(val(&rows[PM_KEEPAWAKE]), "off"), "Keep Awake Over USB defaults off");
+	ck(!strcmp(val(&rows[PM_MUTESW]), "mute"), "Mute Switch defaults to mute");
 	ck(!strcmp(val(&rows[PM_THEME]), "Plain Jane"), "the card set names itself");
 	ck(!strcmp(val(&rows[PM_DIR]), "Horizontal"), "and so does the direction");
 	ck(rows[PM_DIR].live, "UI Direction is reachable offline too");
@@ -281,6 +282,9 @@ static void tortos_menu_online(void)
 	u.keep_awake_usb = true;
 	sys_menu_build(&u, rows, &b, &heading);
 	ck(!strcmp(val(&rows[PM_KEEPAWAKE]), "on"), "Keep Awake Over USB reads on");
+	u.mute_lock = true;
+	sys_menu_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[PM_MUTESW]), "button lock"), "Mute Switch reads button lock");
 
 	/* THE SCREENSCRAPER ROW HAS THREE STATES, one more than the Cheevos row
 	 * beside it: the developer key comes from the environment at build time,

@@ -4280,6 +4280,7 @@ static int menu_build(app *a, screen_id screen, int sys,
 		u.auto_poweroff = a->auto_poweroff;
 		u.suspend_timeout = plat_suspend_timeout_secs();
 		u.keep_awake_usb = db_get_int(db_dev(), "keepawakeusb", 0);
+		u.mute_lock = db_get_int(db_dev(), "muteswitch", 0) == 1;
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
 
@@ -6588,6 +6589,14 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		a->idle.since_ms = plat_now_ms();
 		return MENU_STAY;
 	}
+	/* Mute Switch, the same toggle (TortOS-ib9). */
+	if (sel == PM_MUTESW && (d || key == IN_ACCEPT)) {
+		bool lock = db_get_int(db_dev(), "muteswitch", 0) != 1;
+
+		db_set_int(db_dev(), "muteswitch", lock);
+		plat_mute_switch_lock(lock);
+		return MENU_STAY;
+	}
 	/* Text size, same idiom. Changing it reopens every font, so the whole UI
 	 * is rebuilt: the panel's cached width is measured from font metrics, and
 	 * any card generated for a game with no box art has its title baked in at
@@ -8677,6 +8686,11 @@ static dark_end music_dark(app *a, unsigned *waited)
 			end = pa == PWR_POWEROFF ? DARK_POWEROFF : DARK_WOKE;
 			break;
 		}
+		/* The switch as an iPod's hold (TortOS-ib9): read every tick, so
+		 * flipping it here takes effect at once. Presses made while it is
+		 * down are dropped, not saved for later. POWER, above, and headset
+		 * keys, in musec_poll, stay live. */
+		if (plat_hold_switch()) { SDL_Delay(50); continue; }
 		if (in_repeat(&a->in, IN_VOLUP)) plat_volume_nudge(+1);
 		if (in_repeat(&a->in, IN_VOLDN)) plat_volume_nudge(-1);
 		for (b = 0; b < IN_COUNT; b++)

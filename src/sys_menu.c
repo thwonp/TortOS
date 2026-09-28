@@ -127,6 +127,10 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	 * not merely charging - neither timer above runs down. */
 	out[PM_KEEPAWAKE]    = (menu_row){ "Keep Awake Over USB",
 	                                   u->keep_awake_usb ? "on" : "off", true };
+	/* TortOS-ib9: what the side switch does. Button Lock is an iPod's hold
+	 * switch, and only while music plays with the screen off - music_dark. */
+	out[PM_MUTESW]       = (menu_row){ "Mute Switch",
+	                                   u->mute_lock ? "button lock" : "mute", true };
 	out[PM_AUTO_OFF]     = (menu_row){ "Auto Off",  b->a,      true  };
 	sys_menu_auto_off_label(u->auto_poweroff, b->a, sizeof b->a);
 	/* Both change how the shelf looks and nothing about what is on it. They

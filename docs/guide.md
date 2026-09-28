@@ -373,6 +373,12 @@ dark can be undone in the dark. Then the device suspends, or with Auto Off it
 powers down: the Suspend Timeout is also Auto Off's grace once the music
 stops. NextUI pauses the music to sleep; this is TortOS's own.
 
+For a pocket, set **Mute Switch** (Settings) to `button lock`. The switch then
+no longer mutes; it works like an iPod's hold switch. While it is down and the
+music plays with the screen dark, every button and the volume keys are
+ignored. POWER and a headset's buttons still work. With the screen on, the
+switch does nothing.
+
 Covers come from the music. The first time an album is shown, Muse takes the
 picture its files carry and keeps it beside the album, in
 `Music/<artist>/.media/`, the way box art sits in `Roms/<system>/.media`. An
