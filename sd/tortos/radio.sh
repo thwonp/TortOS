@@ -40,6 +40,18 @@ radio_off() {
 	echo "wifi: supplicant still up after ${i}s, giving up" >> "$LOGS_PATH/tortos.log"
 }
 
+# Power the Wi-Fi radio down or up around a suspend, on firmware whose own
+# Wi-Fi script does: the Brick Pro ships /etc/wifi/wifi_init.sh, whose `stop`
+# is `rfkill block wifi` and `start` unblocks - the firmware's own off state,
+# and what NextUI's suspend does there through that script. Not what fixed
+# the Pro's sleep hangs (that was parking trimui_inputd, see plat_sleep());
+# just the radio powered down while asleep, the way the firmware leaves it.
+# The Brick's firmware has no such script and never blocks Wi-Fi (see
+# launch.sh's radio silence), so there this does nothing.
+wifi_rfkill() {
+	[ -f /etc/wifi/wifi_init.sh ] && rfkill "$1" wifi 2> /dev/null
+}
+
 # Bring the radio up and take a lease. Associating is not connecting: the
 # supplicant joins a saved network on its own, but nothing on this device runs
 # a DHCP client at boot, so without this the interface comes up with no
@@ -49,6 +61,7 @@ radio_off() {
 # its own retry window never blocks wake.
 wifi_on() {
 	i=0
+	wifi_rfkill unblock
 	/etc/init.d/wpa_supplicant start > /dev/null 2>&1
 	while [ $i -lt 25 ]; do
 		if wpa_cli -p /etc/wifi/sockets -i wlan0 status 2> /dev/null \
@@ -70,6 +83,7 @@ wifi_stop_once() {
 	/etc/init.d/wpa_supplicant stop > /dev/null 2>&1
 	killall -q udhcpc 2> /dev/null
 	ifconfig wlan0 down 2> /dev/null
+	wifi_rfkill block
 }
 
 # ---- Bluetooth ----

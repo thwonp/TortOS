@@ -2328,6 +2328,8 @@ static bool power_key_within(int ms, int value)
 }
 #endif
 
+#define INPUTD_SUSPEND_FLAG "/tmp/system_suspend"
+
 bool plat_sleep(void)
 {
 #ifdef __linux__
@@ -2351,6 +2353,20 @@ bool plat_sleep(void)
 	/* Not plat_brightness_set(): a sleep-only level must never be persisted
 	 * as the player's chosen brightness - see levels_save() above. */
 	backlight_off();
+
+	/* Park the stock input daemon for the whole transition. On the Brick Pro
+	 * it polls the sticks over i2c3 about a thousand times a second, and
+	 * those transfers running into suspend entry or resume hang the device
+	 * until the watchdog reboots it (TortOS-pky.11). Its own handshake: while
+	 * this file exists it parks its polling threads (measured: twi3 1017/s,
+	 * 0/s with the file). Stock creates it when the screen blanks; nothing
+	 * here did. The Brick's inputd reads it too and has no stick bus, so
+	 * there it only pauses input nobody is using. The power key is read
+	 * straight from fd_power, not through inputd, so waking is unaffected. */
+	{
+		int ff = open(INPUTD_SUSPEND_FLAG, O_WRONLY | O_CREAT, 0644);
+		if (ff >= 0) close(ff);
+	}
 
 	/* before(): only touch a radio that was actually running - a player who
 	 * turned Bluetooth or Wi-Fi off in settings must not find it back on
@@ -2407,6 +2423,8 @@ bool plat_sleep(void)
 		if (woke - went > 5) { slept = true; break; }  /* false-negative override */
 		if (power_key_within(3000, 1)) { slept = true; break; }  /* sleep(3) */
 	}
+
+	unlink(INPUTD_SUSPEND_FLAG);
 
 	/* POWER is the ordinary way to wake the device, and that very press is
 	 * still sitting on fd_power once we resume - without this, the next
