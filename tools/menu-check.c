@@ -192,8 +192,14 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(val(&rows[PM_WIFI]), "off"), "Wi-Fi reads off");
 	ck(!strcmp(val(&rows[PM_XFER]), "needs Wi-Fi"), "OTH says why it is dead");
 	ck(!rows[PM_XFER].live, "OTH is not selectable offline");
-	ck(!strcmp(val(&rows[PM_SCRAPE]), "needs Wi-Fi"), "Box Art says why");
-	ck(!rows[PM_SCRAPE].live, "Box Art is not selectable offline");
+	ck(rows[PM_SCRAPING].live && !rows[PM_SCRAPING].value,
+	   "Scraping opens offline: gamelist import needs no network");
+	n = sys_menu_scraping_build(&u, rows, &heading);
+	ck(n == SC_ROWS && !strcmp(heading, "Scraping"), "Scraping submenu");
+	ck(!strcmp(val(&rows[SC_BOXART]), "needs Wi-Fi"), "Box Art says why");
+	ck(!rows[SC_BOXART].live, "Box Art is not selectable offline");
+	ck(rows[SC_IMPORT].live, "Import is selectable offline");
+	n = sys_menu_build(&u, rows, &b, &heading);
 	ck(!strcmp(val(&rows[PM_ACHIEVEMENTS]), "sign in"), "Cheevos invites a sign in");
 	ck(rows[PM_ACHIEVEMENTS].live, "Cheevos is reachable signed out");
 	ck(!strcmp(val(&rows[PM_SLEEP]), "2m"), "120s reads as 2m");
@@ -274,7 +280,9 @@ static void tortos_menu_online(void)
 	printf("TortOS menu, connected:\n");
 	ck(!strcmp(val(&rows[PM_WIFI]), "kitchen"), "Wi-Fi shows the network name");
 	ck(rows[PM_XFER].live && !rows[PM_XFER].value, "OTH is live and unqualified");
-	ck(rows[PM_SCRAPE].live, "Box Art is live");
+	sys_menu_scraping_build(&u, rows, &heading);
+	ck(rows[SC_BOXART].live, "Box Art is live");
+	n = sys_menu_build(&u, rows, &b, &heading);
 	ck(!strcmp(val(&rows[PM_ACHIEVEMENTS]), "eric"), "Cheevos shows the account");
 	ck(!strcmp(val(&rows[PM_SLEEP]), "never"), "0s reads as never");
 	ck(!strcmp(val(&rows[PM_AUTO_OFF]), "never"), "Auto Off unset reads as never");
@@ -289,20 +297,22 @@ static void tortos_menu_online(void)
 	 * whatever is typed would look like a rejected password. */
 	printf("the ScreenScraper account row:\n");
 	ck(!u.ss_have, "the fixture above has no key");
-	ck(!strcmp(val(&rows[PM_SS]), "not in this build"), "and the row says so");
-	ck(!rows[PM_SS].live, "and does not open");
+	sys_menu_scraping_build(&u, rows, &heading);
+	ck(!strcmp(val(&rows[SC_SS]), "not in this build"), "and the row says so");
+	ck(!rows[SC_SS].live, "and does not open");
 
 	u.ss_have = true;
-	n = sys_menu_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[PM_SS]), "sign in"), "a key with no account invites one");
-	ck(rows[PM_SS].live, "and opens");
+	sys_menu_scraping_build(&u, rows, &heading);
+	ck(!strcmp(val(&rows[SC_SS]), "sign in"), "a key with no account invites one");
+	ck(rows[SC_SS].live, "and opens");
 
 	u.ss_in = true;
 	u.ss_name = "someone";
+	n = sys_menu_scraping_build(&u, rows, &heading);
+	ck(!strcmp(val(&rows[SC_SS]), "someone"), "an account shows its name");
+	ck(rows[SC_SS].live, "and stays open, to change it");
+	ck(n == SC_ROWS, "and none of that changes the row count");
 	n = sys_menu_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[PM_SS]), "someone"), "an account shows its name");
-	ck(rows[PM_SS].live, "and stays open, to change it");
-	ck(n == PM_ROWS, "and none of that changes the row count");
 
 	/* Controls needs nothing of the device - no network, no account, no
 	 * card - so it is live in every state this menu can be in, and it sits
@@ -537,7 +547,7 @@ static void cursor_reaches(void)
 	 * unlike the three rows above, which do need one. */
 	ck(holds(got, k, PM_BT), "Bluetooth is reachable with no network");
 	ck(!holds(got, k, PM_XFER), "OTH is skipped with no network");
-	ck(!holds(got, k, PM_SCRAPE), "Box Art is skipped with no network");
+	ck(holds(got, k, PM_SCRAPING), "Scraping is reachable with no network");
 	ck(holds(got, k, PM_WIFI), "Wi-Fi is reachable, which is how you fix that");
 	ck(holds(got, k, PM_ABOUT), "About is reachable");
 	/* Play Time reads what is already stored and asks nothing of the network,
