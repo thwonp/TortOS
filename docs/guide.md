@@ -356,15 +356,22 @@ at the foot. A on a track plays the album from there and opens Now Playing; on
 the track already playing it just opens Now Playing. The shoulders and the
 d-pad's sides do what they do on Now Playing.
 
-Sleep leaves music playing. A tap of POWER, Auto Sleep or Auto Off while an
-album plays turns only the screen off, and the album plays on. In the dark the
-volume keys change the volume and a headset's buttons work, both without
-lighting the screen. Now Playing's buttons (A, Y, the shoulders, the d-pad's
+Sleep leaves music playing. A tap of POWER while an album plays turns only the
+screen off, and the album plays on. So does leaving it alone: while music
+plays, how soon the screen goes off is **Screen Off** in Muse Settings (5s to
+1m, 10s to start with, or Never), not Auto Sleep's or Auto Off's time.
+
+In the dark the volume keys change the volume and a headset's buttons work,
+both without lighting the screen. Now Playing's buttons (A, Y, the shoulders, the d-pad's
 sides) do what they do there and wake the screen, like an iPod's. Any other
-button, or a tap of POWER, just wakes it. When the music stops, because the
-album ended or a headset paused it, the device carries on to what was asked:
-it sleeps, and suspends after the Suspend Timeout, or with Auto Off it powers
-down. NextUI pauses the music to sleep; this is TortOS's own.
+button, or a tap of POWER, just wakes it. Set **Wake Screen On Press** to `No`
+(MENU in Muse, then Muse Settings) and the screen stays dark: Now Playing's
+buttons still work, every other button is ignored, and only POWER wakes it.
+When the music stops, paused or at the album's end, the screen stays dark and
+the same buttons keep working for the **Suspend Timeout**, so a pause in the
+dark can be undone in the dark. Then the device suspends, or with Auto Off it
+powers down: the Suspend Timeout is also Auto Off's grace once the music
+stops. NextUI pauses the music to sleep; this is TortOS's own.
 
 Covers come from the music. The first time an album is shown, Muse takes the
 picture its files carry and keeps it beside the album, in

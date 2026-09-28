@@ -194,8 +194,10 @@ bool plat_sleep(void);
  * button is released - or, left for the Suspend Timeout, real suspend via
  * plat_sleep(). The one way into sleep, whatever asked for it. Blocks for the
  * whole of it. Returns false only when escalation found no suspend to go to,
- * which NextUI answers by powering off; the caller does that. */
-bool plat_light_sleep(void);
+ * which NextUI answers by powering off; the caller does that. waited_ms is
+ * time the screen has already been dark (main.c's music_dark, after the
+ * music stopped), counted toward the Suspend Timeout; 0 otherwise. */
+bool plat_light_sleep(unsigned waited_ms);
 
 /* The backlight alone, off or back at the player's level - no mute, no input
  * flush, no escalation. For main.c's music_dark, the screen-off that lets an

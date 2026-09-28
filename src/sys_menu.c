@@ -41,6 +41,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 			                     u->sort ? u->sort : "Artist",     true  };
 			out[2] = (menu_row){ "Album Art",     NEEDS_WIFI(net), net   };
 			out[3] = (menu_row){ "Rescan Folder", NULL,            true  };
+			out[4] = (menu_row){ "Muse Settings", NULL,            true  };
 			return SM_MUSE_ROWS;
 		}
 		out[SM_GAMES]   = (menu_row){ "Games",         b->a,        false };

@@ -424,7 +424,7 @@ static void system_menu(void)
 		m.wifi = WIFI_CONNECTED;     /* the case above left the radio down */
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
 		printf("Muse's shelf menu:\n");
-		ck(mn == SM_MUSE_ROWS, "four rows, not six");
+		ck(mn == SM_MUSE_ROWS, "five rows, not six");
 		ck(!strcmp(mrows[0].label, "Albums") && !strcmp(val(&mrows[0]), "7"),
 		   "how many albums");
 		ck(!strcmp(mrows[1].label, "Sort By") && mrows[1].live &&
@@ -434,6 +434,8 @@ static void system_menu(void)
 		   "covers to fetch, on a network");
 		ck(!strcmp(mrows[3].label, "Rescan Folder") && mrows[3].live,
 		   "and a rescan that works");
+		ck(!strcmp(mrows[4].label, "Muse Settings") && mrows[4].live,
+		   "and Muse's own settings");
 		m.sort = "Album";
 		m.wifi = WIFI_OFF;
 		sys_menu_build(&m, mrows, &mb, &mhead);

@@ -2373,7 +2373,7 @@ static unsigned resume_at;
  * (the music player) is paused by the caller, main.c's sleep_cycle; the
  * haptic pulse is gated on a setting NextUI ships off and TortOS lacks
  * (TortOS-1v7.1.2.11). */
-bool plat_light_sleep(void)
+bool plat_light_sleep(unsigned waited_ms)
 {
 	bool awake = true;
 #ifdef __linux__
@@ -2386,7 +2386,7 @@ bool plat_light_sleep(void)
 	if (mixer_fd >= 0) apply_volume(0);
 	sync();
 
-	since = plat_now_ms();
+	since = plat_now_ms() - waited_ms;    /* already dark that long */
 	for (;;) {
 		bool charging = false;
 
@@ -2407,6 +2407,8 @@ bool plat_light_sleep(void)
 	sync();
 	plat_input_flush();                   /* PAD_reset, and whatever was
 	                                       * pressed in the dark */
+#else
+	(void)waited_ms;
 #endif
 	pwr_since = 0;
 	resume_at = plat_now_ms();

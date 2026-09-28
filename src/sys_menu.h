@@ -65,9 +65,10 @@ typedef enum {
 /* What Muse's shelf menu is: how many albums, Sort By - by artist or by album,
  * its own two orders, where a console's shelf has four - Album Art to fetch
  * covers for the albums that have none or only a small one, and Rescan Folder
- * for music copied onto the card while the Brick was on. Muse has no core, no
- * ROM folder and no display mode. Album order was Eric's, 2026-09-19. */
-#define SM_MUSE_ROWS 4
+ * for music copied onto the card while the Brick was on - and Muse Settings,
+ * Muse's own options (TortOS-28l). Muse has no core, no ROM folder and no
+ * display mode. Album order was Eric's, 2026-09-19. */
+#define SM_MUSE_ROWS 5
 
 #define MENU_MAX_ROWS 16
 

@@ -16,6 +16,29 @@
   <a href="#faq">FAQ</a>
 </p>
 
+## This fork
+
+What this fork does differently from upstream TortOS. Details are in
+[the guide](docs/guide.md).
+
+- **Music keeps playing through sleep.** A tap of POWER, or the idle timer,
+  while Muse plays turns only the screen off, and the album plays on.
+  Now Playing's buttons work in the dark, iPod-style, and the volume keys work
+  without lighting the screen. Upstream (and NextUI) pause the music to sleep.
+- **Muse Settings → Wake Screen On Press.** `Yes`: a playback button in the
+  dark acts and wakes the screen. `No`: it acts and the screen stays dark,
+  other buttons are ignored, and only POWER wakes.
+- **Muse Settings → Screen Off.** How long music plays untouched before the
+  screen goes off: `5s / 10s / 15s / 30s / 1m / Never`, default `10s`, like
+  an iPod's backlight timer. It replaces Auto Sleep's or Auto Off's timer only
+  while music plays, whose shortest (30s) is too long for this. `Never` keeps
+  the screen on for as long as music plays.
+- **Suspend Timeout is also Auto Off's grace period.** When the music stops
+  in the dark, whether paused or at the album's end, the device waits the
+  Suspend Timeout, with the playback buttons still live, before it suspends,
+  or powers off when Auto Off is armed. There is no
+  separate setting for Auto Off's grace; set Suspend Timeout to change it.
+
 <div align="center">
   
 https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf

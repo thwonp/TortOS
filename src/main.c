@@ -2360,12 +2360,25 @@ static bool keep_awake(void)
 static bool sleep_cycle(app *a);
 static pwr_action power_check(app *a);
 
+/* Muse Settings' Screen Off, in seconds; 0 is Never. See idle_due. */
+static const int MUSE_SCREEN_OFF[] = { 5, 10, 15, 30, 60, 0 };
+#define MUSE_SCREEN_OFF_COUNT \
+	((int)(sizeof MUSE_SCREEN_OFF / sizeof *MUSE_SCREEN_OFF))
+
 static bool idle_due(app *a)
 {
-	int b;
+	int b, secs;
 
-	/* Whichever of the two is armed - never both (PM_SLEEP/PM_AUTO_OFF). */
-	a->idle.seconds = a->auto_off ? a->auto_off : a->auto_poweroff;
+	/* Whichever of the two is armed - never both (PM_SLEEP/PM_AUTO_OFF) -
+	 * except while music plays, when Muse Settings' Screen Off says how
+	 * long (TortOS-28l): an iPod's backlight timer, short where Auto Sleep's
+	 * shortest is long. Never is the screen on for as long as music plays. A
+	 * new timer is a new countdown: an album that ended after five minutes
+	 * untouched must not fire Auto Sleep the moment it stops. */
+	secs = musec_playing() ? db_get_int(db_dev(), "muse.screenoff", 10)
+	                       : a->auto_off ? a->auto_off : a->auto_poweroff;
+	if (secs != a->idle.seconds) a->idle.since_ms = plat_now_ms();
+	a->idle.seconds = secs;
 	for (b = 0; b < IN_COUNT; b++)
 		if (a->in.pressed[b] || a->in.down[b]) break;
 
@@ -6338,6 +6351,65 @@ typedef struct {
 	int       screen;
 } sysmenu_ctx;
 
+/* Muse Settings, the fifth row of Muse's menu (TortOS-28l): whether a button
+ * pressed while music plays in the dark wakes the screen - see music_dark,
+ * which reads it - and how long music plays untouched before the screen goes
+ * off - see idle_due. */
+static const char *const MUSE_SCREEN_OFF_LABEL[] =
+	{ "5s", "10s", "15s", "30s", "1m", "Never" };
+
+static int muse_screen_off_at(void)
+{
+	int k, v = db_get_int(db_dev(), "muse.screenoff", 10);
+
+	for (k = 0; k < MUSE_SCREEN_OFF_COUNT; k++)
+		if (MUSE_SCREEN_OFF[k] == v) return k;
+	return 1;                             /* 10s, should it be off-ladder */
+}
+
+static int muse_set_build(void *ctx, menu_row *rows, int max,
+                          const char **heading)
+{
+	(void)ctx;
+	(void)max;
+	*heading = "Muse Settings";
+	rows[0] = (menu_row){ "Wake Screen On Press",
+	                      db_get_int(db_dev(), "muse.wake", 1) ? "Yes" : "No",
+	                      true };
+	rows[1] = (menu_row){ "Screen Off",
+	                      MUSE_SCREEN_OFF_LABEL[muse_screen_off_at()], true };
+	return 2;
+}
+
+/* Wake is a toggle, so A flips it as well as left/right - as Keep Awake Over
+ * USB. Screen Off is a ladder: left/right step along it, A steps forward and
+ * wraps, as Display Mode's A does. */
+static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
+{
+	int at;
+
+	(void)a;
+	(void)ctx;
+	if (sel == 0 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT))
+		db_set_int(db_dev(), "muse.wake",
+		           !db_get_int(db_dev(), "muse.wake", 1));
+	if (sel == 1 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		at = muse_screen_off_at();
+		if (key == IN_ACCEPT)     at = (at + 1) % MUSE_SCREEN_OFF_COUNT;
+		else if (key == IN_LEFT)  at = at > 0 ? at - 1 : 0;
+		else if (at < MUSE_SCREEN_OFF_COUNT - 1) at++;
+		db_set_int(db_dev(), "muse.screenoff", MUSE_SCREEN_OFF[at]);
+	}
+	return MENU_STAY;
+}
+
+static void muse_settings_screen(app *a)
+{
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+	                           .fixed_w = menu_std_width(a) },
+	         muse_set_build, muse_set_key, NULL);
+}
+
 static int sysmenu_build(void *ctx, menu_row *rows, int max,
                          const char **heading)
 {
@@ -6360,14 +6432,16 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		/* Muse's menu is its own four rows - see SM_MUSE_ROWS - so the
 		 * enum's row numbers below mean nothing on it: row 1 is Sort By,
 		 * which goes on to the Sort By below like any shelf's, row 2 Album
-		 * Art and row 3 Rescan Folder. Album Art is a dead row off the
-		 * network, and the runner does not land on dead rows. */
+		 * Art, row 3 Rescan Folder and row 4 Muse Settings. Album Art is a
+		 * dead row off the network, and the runner does not land on dead
+		 * rows. */
 		if (is_muse(&a->sys.systems[a->sys_cursor])) {
 			if (sel == 1) {
 				sel = SM_SORT;
 			} else {
 				if (key != IN_ACCEPT) return MENU_STAY;
 				if (sel == 2) { album_art_screen(a); return MENU_STAY; }
+				if (sel == 4) { muse_settings_screen(a); return MENU_STAY; }
 				if (sel != 3) return MENU_STAY;
 				wait_panel(a, "Muse", "Scanning...");
 				rescan_all(a);
@@ -8559,28 +8633,44 @@ static void checkpoint_game(app *a)
  * Playing AND wake the screen; any other button only wakes; the volume keys
  * act without waking. A POWER tap wakes, a hold powers off. Whichever wakes
  * it, the press is used up - A in the dark toggles the music and does not
- * also open the game under the cursor.
+ * also open the game under the cursor. Muse Settings' Wake Screen On Press
+ * set to No (TortOS-28l) keeps it dark instead: Muse's buttons act, every
+ * other button is ignored, and only POWER wakes.
  *
- * Once the music stops - the album ends, or a headset pauses it - whatever
- * asked for sleep carries on, still dark: light sleep, whose Suspend Timeout
- * counts from then, or Auto Off's power-off. Never suspend while playing:
- * suspend is where the sound would stop. */
+ * Once the music stops - paused here, by a headset, or the album's end - it
+ * stays dark with the same buttons live for the Suspend Timeout, so a pause
+ * in the dark can be undone in the dark (TortOS-28l); music again cancels
+ * the countdown. Only when it runs out does whatever asked for sleep carry
+ * on: suspend, at once - *waited is the time already spent, which light
+ * sleep counts toward the same timeout - or Auto Off's power-off. So the
+ * Suspend Timeout is ALSO Auto Off's grace after the music stops: one
+ * setting rather than a new one, the user's call 2026-09-28, and in the
+ * README. Never suspend while playing: suspend is where the sound would
+ * stop. */
 typedef enum { DARK_WOKE, DARK_STOPPED, DARK_POWEROFF } dark_end;
 
-static dark_end music_dark(app *a)
+static dark_end music_dark(app *a, unsigned *waited)
 {
 	static const char *const said[] = { "woke", "music stopped", "power off" };
 	dark_end end = DARK_STOPPED;
 	unsigned t0 = plat_now_ms();
+	unsigned grace = (unsigned)plat_suspend_timeout_secs() * 1000u;
+	unsigned stopped = 0;                 /* when it stopped; 0 while playing */
+	bool wake = db_get_int(db_dev(), "muse.wake", 1);
 	int b;
 
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 	plat_screen(false);
-	while (musec_playing()) {
+	for (;;) {
 		pwr_action pa;
+		unsigned now;
 
 		musec_poll();
+		now = plat_now_ms();
+		if (musec_playing())               stopped = 0;
+		else if (!stopped)                 stopped = now ? now : 1;
+		else if (now - stopped >= grace)   break;
 		plat_input_poll(&a->in);
 		pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
 		if (pa != PWR_NONE) {
@@ -8600,15 +8690,16 @@ static dark_end music_dark(app *a)
 			else if (b == IN_R1)    musec_next();
 			else if (b == IN_LEFT)  musec_seek_by(-10);
 			else if (b == IN_RIGHT) musec_seek_by(+10);
-			end = DARK_WOKE;
-			break;
+			if (wake) { end = DARK_WOKE; break; }
 		}
 		SDL_Delay(50);
 	}
-	/* Stopped stays dark: light sleep or the power-off comes next. */
+	/* Stopped stays dark: suspend or the power-off comes next. */
 	if (end != DARK_STOPPED) plat_screen(true);
-	fprintf(stderr, "sleep: music dark %us, %s\n",
-	        (plat_now_ms() - t0) / 1000, said[end]);
+	if (waited) *waited = end == DARK_STOPPED ? plat_now_ms() - stopped : 0;
+	fprintf(stderr, "sleep: music dark %us, %s%s\n",
+	        (plat_now_ms() - t0) / 1000, said[end],
+	        a->game_on ? " (in game)" : "");
 	stats_asleep(plat_now_ms() - t0);
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
@@ -8627,17 +8718,17 @@ static dark_end music_dark(app *a)
  * powers off, as PWR_waitForWake does. */
 static bool sleep_cycle(app *a)
 {
-	unsigned t0;
+	unsigned t0, waited = 0;
 	bool awake;
 
 	checkpoint_game(a);
 	if (musec_playing()) {
-		dark_end end = music_dark(a);
+		dark_end end = music_dark(a, &waited);
 
 		if (end != DARK_STOPPED) return end == DARK_WOKE;
 	}
 	t0 = plat_now_ms();
-	awake = plat_light_sleep();
+	awake = plat_light_sleep(waited);
 	fprintf(stderr, "sleep: %s after %us%s\n",
 	        awake ? "awake" : "no suspend, powering off",
 	        (plat_now_ms() - t0) / 1000, a->game_on ? " (in game)" : "");
@@ -8663,10 +8754,10 @@ static pwr_action power_check(app *a)
 		fprintf(stderr, "power: idle -> %s\n",
 		        pa == PWR_SLEEP ? "sleep" : "power off");
 		/* Auto Off during music: the screen now, the power-off once the
-		 * music stops (music_dark). A hold is not idle, and still does
-		 * what it says at once. */
+		 * music has been stopped for the Suspend Timeout (music_dark). A
+		 * hold is not idle, and still does what it says at once. */
 		if (pa == PWR_POWEROFF && musec_playing() &&
-		    music_dark(a) == DARK_WOKE)
+		    music_dark(a, NULL) == DARK_WOKE)
 			pa = PWR_NONE;
 	}
 	if (pa == PWR_SLEEP) pa = sleep_cycle(a) ? PWR_NONE : PWR_POWEROFF;
