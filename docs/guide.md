@@ -145,8 +145,7 @@ than any one console:
 | **Over The Hare** | the file server; needs Wi-Fi and says so when there is none |
 | **Auto Off** | how long without a button before the device powers itself down instead of sleeping. Setting it turns Auto Sleep to `never`, and the other way round |
 | **Auto Sleep** | how long without a button before the device sleeps, the same as a tap of POWER. Not during play - only on the shelf and in the menus, the in-game menu included |
-| **Suspend Timeout** | how long a sleeping device waits for POWER before it suspends. On the charger it stays awake |
-| **Keep Awake Over USB** | plugged into a computer (not just a charger), nothing sleeps or turns off |
+| **Suspend Timeout** | how long a sleeping device waits for POWER before it suspends |
 | **Mute Switch** | what the side switch does: `mute`, or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
 | **UI Theme** | `Plain Jane` or `Fancy Pants` - which art the shelves wear |
 | **UI Direction** | `Horizontal`, `Vertical` or `Cubic` - see below |
@@ -155,6 +154,10 @@ than any one console:
 | **ScreenScraper** | the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build` |
 | **Controls** | every button and what it does, a page per place |
 | **About TortOS** | version, address, battery, uptime |
+
+Charging, or plugged into a computer, the device never sleeps, suspends or
+turns itself off: Auto Off, Auto Sleep and Suspend Timeout all wait until it is
+unplugged. As in NextUI - suspending on external power hangs the Brick.
 
 Over The Hare and Box Art need a network, and go quiet without one rather than
 disappearing - a row that vanishes teaches nobody why. Cheevos stays reachable

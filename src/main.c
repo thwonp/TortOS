@@ -2310,8 +2310,7 @@ static bool battery_low(void)
 	return low;
 }
 
-/* On the charger - or on a computer with Keep Awake Over USB set - cached.
- * Both halves of Auto Off ask this - the shelf every
+/* Charging, or attached to a computer (plat_usb_host) - cached. Both halves of Auto Off ask this - the shelf every
  * frame, the in-game tick ten times a second - and every call is two sysfs
  * files opened, read and closed. Two seconds is well inside the shortest
  * timeout anyone can set, so the lag is not observable. Same trick and the
@@ -2322,7 +2321,7 @@ static bool battery_low(void)
 static bool keep_awake(void)
 {
 	static unsigned last;
-	static bool     charging, primed;
+	static bool     awake, primed;
 	unsigned now = plat_now_ms();
 
 	/* Elapsed, not a deadline compare: unsigned subtraction is right across
@@ -2330,13 +2329,13 @@ static bool keep_awake(void)
 	if (!primed || now - last >= 2000) {
 		primed = true;
 		last = now;
-		charging = false;
-		plat_battery(NULL, &charging);
-		/* NextUI's PWR_preventAutosleep: charging, or attached to a
-		 * computer with Keep Awake Over USB on - one reason, not two. */
-		if (!charging) charging = plat_usb_keep_awake();
+		awake = false;
+		plat_battery(NULL, &awake);
+		/* NextUI's PWR_preventAutosleep, less its Keep Awake Over USB
+		 * setting - a computer always counts (TortOS-2pv). */
+		if (!awake) awake = plat_usb_host();
 	}
-	return charging;
+	return awake;
 }
 
 /* Has the player been away long enough for the armed idle action - Auto
@@ -4279,7 +4278,6 @@ static int menu_build(app *a, screen_id screen, int sys,
 		u.auto_off  = a->auto_off;
 		u.auto_poweroff = a->auto_poweroff;
 		u.suspend_timeout = plat_suspend_timeout_secs();
-		u.keep_awake_usb = db_get_int(db_dev(), "keepawakeusb", 0);
 		u.mute_lock = db_get_int(db_dev(), "muteswitch", 0) == 1;
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
@@ -6382,8 +6380,8 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 	return 2;
 }
 
-/* Wake is a toggle, so A flips it as well as left/right - as Keep Awake Over
- * USB. Screen Off is a ladder: left/right step along it, A steps forward and
+/* Wake is a toggle, so A flips it as well as left/right - as Mute Switch.
+ * Screen Off is a ladder: left/right step along it, A steps forward and
  * wraps, as Display Mode's A does. */
 static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
 {
@@ -6582,14 +6580,8 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		db_set_int(db_dev(), "suspendtimeout", SUSPEND_TIMEOUT[at]);
 		return MENU_STAY;
 	}
-	/* Keep Awake Over USB: a toggle, so A flips it as well as left/right. */
-	if (sel == PM_KEEPAWAKE && (d || key == IN_ACCEPT)) {
-		db_set_int(db_dev(), "keepawakeusb",
-		           !db_get_int(db_dev(), "keepawakeusb", 0));
-		a->idle.since_ms = plat_now_ms();
-		return MENU_STAY;
-	}
-	/* Mute Switch, the same toggle (TortOS-ib9). */
+	/* Mute Switch: a toggle, so A flips it as well as left/right
+	 * (TortOS-ib9). */
 	if (sel == PM_MUTESW && (d || key == IN_ACCEPT)) {
 		bool lock = db_get_int(db_dev(), "muteswitch", 0) != 1;
 

@@ -125,10 +125,6 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	sys_menu_auto_off_label(u->auto_off, b->c, sizeof b->c);
 	out[PM_SUSPEND]      = (menu_row){ "Suspend Timeout", b->e, true };
 	sys_menu_auto_off_label(u->suspend_timeout, b->e, sizeof b->e);
-	/* NextUI's "Keep awake over USB": attached to a computer - enumerated,
-	 * not merely charging - neither timer above runs down. */
-	out[PM_KEEPAWAKE]    = (menu_row){ "Keep Awake Over USB",
-	                                   u->keep_awake_usb ? "on" : "off", true };
 	/* TortOS-ib9: what the side switch does. Button Lock is an iPod's hold
 	 * switch, and only while music plays with the screen off - music_dark.
 	 * "muse" in the value says so (TortOS-mhw). */

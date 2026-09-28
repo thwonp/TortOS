@@ -2377,8 +2377,10 @@ static unsigned resume_at;
  * crash asleep must not boot dark and silent).
  *
  * Left unwoken for the Suspend Timeout it escalates into real suspend,
- * plat_sleep(), and returns once that resumes. Charging, or a computer with
- * Keep Awake Over USB on, puts the escalation off a minute at a time instead.
+ * plat_sleep(), and returns once that resumes. Charging, or a computer
+ * attached, puts the escalation off a minute at a time instead - suspending
+ * on external power hangs this kernel (TortOS-2pv), which is why NextUI
+ * never does.
  * Returns false only when escalation found no suspend to go to - unsupported,
  * or every attempt failed - which NextUI answers with PWR_powerOff; the
  * caller does, since powering off is the launcher's (main.c's power_off).
@@ -2412,7 +2414,7 @@ bool plat_light_sleep(unsigned waited_ms)
 		/* Signed: "a minute from now" makes since run ahead of now. */
 		if ((int)(plat_now_ms() - since) < timeout_ms) continue;
 		plat_battery(NULL, &charging);
-		if (charging || plat_usb_keep_awake()) {
+		if (charging || plat_usb_host()) {
 			since += 60000;               /* check again in a minute */
 			continue;
 		}
@@ -2434,13 +2436,13 @@ bool plat_light_sleep(unsigned waited_ms)
 	return awake;
 }
 
-bool plat_usb_keep_awake(void)
+bool plat_usb_host(void)
 {
+	static int was = -1;
 	glob_t g;
 	size_t i;
 	bool host = false;
 
-	if (!db_get_int(db_dev(), "keepawakeusb", 0)) return false;
 	/* NextUI's PLAT_isUSBConnected (tg5040): the UDC says "configured" once
 	 * a host has enumerated the device, which a wall charger never does. */
 	if (glob("/sys/class/udc/*/state", 0, NULL, &g) != 0) return false;
@@ -2452,6 +2454,10 @@ bool plat_usb_keep_awake(void)
 		fclose(f);
 	}
 	globfree(&g);
+	if (host != was) {
+		fprintf(stderr, "power: usb host %s\n", host ? "attached" : "detached");
+		was = host;
+	}
 	return host;
 }
 

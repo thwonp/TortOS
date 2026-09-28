@@ -34,7 +34,7 @@
 typedef enum {
 	PM_STATS,
 	PM_WIFI, PM_BT, PM_AUDIO, PM_XFER,
-	PM_AUTO_OFF, PM_SLEEP, PM_SUSPEND, PM_KEEPAWAKE, PM_MUTESW, PM_THEME, PM_DIR, PM_SCRAPE, PM_ACHIEVEMENTS, PM_SS,
+	PM_AUTO_OFF, PM_SLEEP, PM_SUSPEND, PM_MUTESW, PM_THEME, PM_DIR, PM_SCRAPE, PM_ACHIEVEMENTS, PM_SS,
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
 } pm_row;
 
@@ -125,7 +125,6 @@ typedef struct {
 	                             * exclusive with auto_off, see PM_AUTO_OFF */
 	int         suspend_timeout; /* seconds light sleep waits before real
 	                              * suspend, never 0 - see PM_SUSPEND */
-	bool        keep_awake_usb; /* hold sleep while a computer is attached */
 	bool        mute_lock;   /* the mute switch is a button lock instead */
 	/* Where sound goes: the policy the player set, and where it actually ends
 	 * up under that policy. Both, because the row has to name a place - "Auto"

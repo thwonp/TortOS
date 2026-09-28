@@ -204,12 +204,12 @@ bool plat_light_sleep(unsigned waited_ms);
  * album play on where light sleep would pause it (TortOS-a5k). */
 void plat_screen(bool on);
 
-/* Keep Awake Over USB (main.c's PM_KEEPAWAKE) is on AND a computer has
- * enumerated the device - not merely a charger. NextUI's
- * CFG_getKeepAwakeWhenUSB() && is_usb_connected: holds the idle clock and
- * postpones light sleep's escalation, exactly as charging does. Reads sysfs;
- * callers throttle. */
-bool plat_usb_keep_awake(void);
+/* A computer has enumerated the device - not merely a charger, which never
+ * does. With charging, what keeps TortOS awake: it holds the idle clock and
+ * postpones light sleep's escalation. NextUI's is_usb_connected, minus the
+ * Keep Awake Over USB setting it is gated on there - a computer always counts
+ * (TortOS-2pv). Logs each change. Reads sysfs; callers throttle. */
+bool plat_usb_host(void);
 
 /* The Suspend Timeout setting (main.c's PM_SUSPEND), in seconds: how long
  * light sleep waits unwoken before real suspend. Never 0. */

@@ -65,7 +65,6 @@ static void opens_and_seeds(void)
 	 * time. */
 	ck(db_get_int(d, "autooff", -1) == 60, "auto sleep seeded to a minute");
 	ck(db_get_int(d, "suspendtimeout", -1) == 30, "suspend timeout seeded to 30s");
-	ck(db_get_int(d, "keepawakeusb", -1) == 0, "keep awake over USB seeded off");
 	db_close(d);
 }
 
