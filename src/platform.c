@@ -7,6 +7,8 @@
 #include "ui.h"   /* the settings line shares the rail's weight and palette */
 
 #include <dlfcn.h>
+#include <glob.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #ifdef __linux__
@@ -23,6 +25,7 @@
 #include <sys/types.h>
 #include <sys/un.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 /* The front function keys report on the gamepad node as BTN_THUMBL/BTN_THUMBR
@@ -207,6 +210,79 @@ const char *plat_turbo_map(const char *tag)
 	for (i = 0; i < nturbos; i++)
 		if (!strcmp(turbos[i].tag, tag)) return turbos[i].map;
 	return NULL;
+}
+
+/* ---- hotkeys, same shape as turbo above but player-editable at runtime --
+ * One canonical binding string per system tag - "l2:ff,r2:rewind,x:savestate,
+ * y:loadstate" - handed to Diatom as SETHOTKEYS after RUN, the same way
+ * turbo's map already rides SETMAP. See diatom's ADR-0035.
+ *
+ * Unlike turbo, there is no shipped default: this is new and opt-in, and
+ * seeding a binding the player never asked for is not what "opt-in" means.
+ * A tag with no hotkey.<tag> row plays exactly as it always has. */
+#define HOTKEY_MAX 16
+static struct { char tag[8]; char map[64]; } hotkeys[HOTKEY_MAX];
+static int nhotkeys = -1;                     /* -1 = not read yet */
+
+static bool hotkey_row(const char *key, const char *value, void *ctx)
+{
+	const char *tag = key + strlen("hotkey.");
+
+	(void)ctx;
+	if (nhotkeys >= HOTKEY_MAX) return false;
+	if (strlen(tag) >= sizeof hotkeys[0].tag ||
+	    strlen(value) >= sizeof hotkeys[0].map) {
+		fprintf(stderr, "hotkey: entry too long, ignoring: %.32s\n", tag);
+		return true;
+	}
+	snprintf(hotkeys[nhotkeys].tag, sizeof hotkeys[0].tag, "%s", tag);
+	snprintf(hotkeys[nhotkeys].map, sizeof hotkeys[0].map, "%s", value);
+	nhotkeys++;
+	return true;
+}
+
+static void hotkeys_load(void)
+{
+	nhotkeys = 0;
+	db_each_prefix(db_lib(), "hotkey.", hotkey_row, NULL);
+}
+
+/* The binding string for this system, or "" for one with none set - never
+ * NULL, so a caller building a SETHOTKEYS line needs no extra branch (an
+ * empty spec is itself valid: Diatom's hotkeys_set("") means "no bindings",
+ * which is exactly what "none set" should send). */
+const char *plat_hotkey_map(const char *tag)
+{
+	int i;
+
+	if (nhotkeys < 0) hotkeys_load();
+	if (!tag) return "";
+	for (i = 0; i < nhotkeys; i++)
+		if (!strcmp(hotkeys[i].tag, tag)) return hotkeys[i].map;
+	return "";
+}
+
+/* Persists AND updates the cache in the same call - unlike turbo's map,
+ * this is written from a live settings screen, not only ever read, so a
+ * second lookup on the same tag before the next full reload must see what
+ * was just set rather than a stale row. */
+void plat_hotkey_set(const char *tag, const char *spec)
+{
+	char key[16];
+	int i;
+
+	if (nhotkeys < 0) hotkeys_load();
+	if (!tag) return;
+	snprintf(key, sizeof key, "hotkey.%s", tag);
+	db_set_str(db_lib(), key, spec ? spec : "");
+
+	for (i = 0; i < nhotkeys; i++)
+		if (!strcmp(hotkeys[i].tag, tag)) break;
+	if (i == nhotkeys && nhotkeys < HOTKEY_MAX) nhotkeys++;
+	if (i < HOTKEY_MAX) {
+		snprintf(hotkeys[i].tag, sizeof hotkeys[0].tag, "%s", tag);
+		snprintf(hotkeys[i].map, sizeof hotkeys[0].map, "%s", spec ? spec : "");
+	}
 }
 const char *P_FONT = "/mnt/SDCARD/TortOS/menu.ttf";
 
@@ -898,6 +974,23 @@ bool plat_resident_send(const char *tag, const char *core, const char *rom,
 			if (tm && *tm) dsend("SETMAP\tmap=%s", tm);
 		}
 
+		/* Same reasoning as turbo's SETMAP above: AFTER RUN, which resets
+		 * Diatom's bindings to none (its ADR-0035), so a table sent first
+		 * would be discarded by the very launch it was meant for. Sent even
+		 * when empty - unlike turbo, which skips an empty map - so a game
+		 * that HAD bindings last session and had them cleared this one
+		 * actually loses them rather than keeping whatever the previous
+		 * RUN left behind (Diatom resets to none on every RUN regardless,
+		 * so this is belt and suspenders, not load-bearing; sent anyway for
+		 * the same "a state that does nothing looks identical to a bug"
+		 * reasoning the comment above already gives). */
+		{
+			const char *hk = plat_hotkey_map(tag);
+			fprintf(stderr, "hotkey: %s %s\n", tag ? tag : "?",
+			        hk && *hk ? hk : "(none)");
+			dsend("SETHOTKEYS\thotkeys=%s", hk ? hk : "");
+		}
+
 		/* The launcher owns levels while it draws (Diatom's ADR-0020), and
 		 * it is done drawing the moment the game is up - so the last thing
 		 * it does is hand over WHERE THE LEVELS ARE. Without this, a game
@@ -1071,6 +1164,27 @@ bool plat_resident_sync_rect(int timeout_ms)
 	return false;
 }
 
+bool plat_resident_saved(const char *path, int timeout_ms)
+{
+	unsigned t0 = SDL_GetTicks();
+	char *l;
+
+	if (dsock < 0) return false;
+	while ((int)(SDL_GetTicks() - t0) < timeout_ms) {
+		l = dline(timeout_ms - (int)(SDL_GetTicks() - t0));
+		if (!l) break;
+		/* The path, not just the word: a manual Save a moment earlier left
+		 * its own SAVED unread on this socket. */
+		if (strncmp(l, "SAVED\tpath=", 11) == 0 && !strcmp(l + 11, path))
+			return true;
+		if (strncmp(l, "ERROR\t", 6) == 0) return false;
+		if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
+		else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
+		else if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
+	}
+	return false;
+}
+
 static void d_apply_levels(void)
 {
 	/* Through the public setters (defined below, past this point in the
@@ -1092,11 +1206,23 @@ static void d_apply_levels(void)
 	d_pend_vol = d_pend_bri = -1;
 }
 
+/* A mid-game tap asked Diatom to PAUSE so the device can sleep; the PAUSED
+ * it answers with is that, not the menu. */
+static bool d_sleep_asked;
+
+bool plat_resident_sleep_asked(void)
+{
+	bool was = d_sleep_asked;
+	d_sleep_asked = false;
+	return was;
+}
+
 static int diatom_wait(void)
 {
 	int sent_stop = 0;
 	unsigned stop_at = 0, start = plat_now_ms();
 	int autostop_s = getenv("TORTOS_AUTOSTOP_S") ? atoi(getenv("TORTOS_AUTOSTOP_S")) : 0;
+	bool pwr_down = false;   /* the button's level, not just its edges - see below */
 
 #ifdef __linux__
 	{
@@ -1127,23 +1253,18 @@ static int diatom_wait(void)
 		plat_mute_poll(false);
 		while ((l = dline(100))) {
 			if      (strncmp(l, "RUNNING", 7) == 0) d_got_running = 1;
-			else if (strncmp(l, "PAUSED", 6) == 0)  return RES_PAUSED;
+			else if (strncmp(l, "PAUSED", 6) == 0) {
+				/* A sleep's PAUSE overtaken by a hold's STOP: the game is
+				 * ending, and its EXIT is what to wait for. */
+				if (d_sleep_asked && sent_stop) { d_sleep_asked = false; continue; }
+				return RES_PAUSED;
+			}
 			else if (strncmp(l, "PREVIEW\tpath=", 13) == 0)
 				snprintf(d_preview, sizeof d_preview, "%s", l + 13);
 			else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
 			else if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
 			else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
 			else if (strncmp(l, "CHEEVO\t", 7) == 0) d_note_cheevo(l);
-			/* Nobody has pressed anything for as long as the player asked.
-			 * Handled exactly as a power press: STOP the game, and the
-			 * launcher's existing after-the-game check powers the device
-			 * down. No new path, and the autosave happens either way. */
-			else if (strncmp(l, "IDLE", 4) == 0 && !sent_stop) {
-				run_power_pressed = true;
-				sent_stop = 1;
-				stop_at = plat_now_ms();
-				dsend("STOP");
-			}
 			else if (strncmp(l, "EXIT", 4) == 0) {
 				/* A crash and a quit arrive on the SAME line, and only the
 				 * reason tells them apart. This threw the line away and
@@ -1196,9 +1317,23 @@ static int diatom_wait(void)
 		{
 			struct input_event ev;
 			while (fd_power >= 0 &&
-			       read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) {
-				if (ev.type == EV_KEY && ev.code == KEY_POWER && ev.value == 1 &&
-				    !sent_stop) {
+			       read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+				if (ev.type == EV_KEY && ev.code == KEY_POWER)
+					pwr_down = ev.value != 0;
+
+			/* plat_input_poll isn't running - the game owns input - so this
+			 * is the only place watching the level at all; checked every
+			 * pass regardless of whether a new event just arrived, the same
+			 * as the shelf/menu path checks a->in.down every frame. */
+			if (!sent_stop) {
+				pwr_action pa = plat_power_tap_or_hold(pwr_down);
+				/* Asleep in-process, as minarch is: the game stops first.
+				 * PAUSE, and the PAUSED that answers it comes back to
+				 * launch() as a sleep rather than the menu - see
+				 * plat_resident_sleep_asked. */
+				if (pa == PWR_SLEEP) {
+					if (!d_sleep_asked) { d_sleep_asked = true; dsend("PAUSE"); }
+				} else if (pa == PWR_POWEROFF) {
 					run_power_pressed = true;
 					sent_stop = 1;
 					stop_at = plat_now_ms();
@@ -1655,6 +1790,10 @@ static int mute_fd = -1;
  * full volume with the switch down. Exactly the fault jack_forget exists to
  * prevent, and found by reading its comment. */
 static int muted = -1;
+/* Button Lock mode (TortOS-ib9): the switch stops muting and becomes an
+ * iPod-style hold switch instead - see plat_hold_switch. Cached, not read from
+ * the db, because plat_mute_poll runs every frame. */
+static bool switch_locks;
 
 static bool mute_switch_down(void)
 {
@@ -1705,7 +1844,7 @@ bool plat_headphones_present(void) { return jack_present() != 0; }
  * emulator's. See BACKLOG 28. */
 bool plat_mute_poll(bool own_volume)
 {
-	int now = mute_switch_down() ? 1 : 0;
+	int now = mute_switch_down() && !switch_locks ? 1 : 0;
 
 	if (now == muted) return false;
 	muted = now;
@@ -1750,6 +1889,17 @@ bool plat_muted(void) { return muted == 1; }
  * driving; a game just was. Called where jack_forget is, and for its reason. */
 static void mute_forget(void) { muted = -1; }
 
+/* Forgetting the position is what makes the change land: the next poll finds
+ * a difference and re-applies, so switching modes with the switch down mutes
+ * or unmutes at once - Diatom included, through the same SETMUTE. */
+void plat_mute_switch_lock(bool lock)
+{
+	switch_locks = lock;
+	mute_forget();
+}
+
+bool plat_hold_switch(void) { return switch_locks && mute_switch_down(); }
+
 void plat_audio_jack_poll(void)
 {
 	if (!aout_should_reapply(jack_was, jack_present() != 0, cur_vol >= 0))
@@ -1771,6 +1921,17 @@ static void apply_brightness(int b)
 	ioctl(disp_fd, DISP_LCD_SET_BRIGHTNESS, a);
 }
 
+/* The backlight OFF, for sleep - NextUI's SetRawBrightness(0). Not
+ * apply_brightness(0): rung 0 is 2/255, still lit, which is a dim screen
+ * rather than a dark one (found on hardware, 2026-09-28). cur_bright is left
+ * alone, so apply_brightness(cur_bright) puts the player's level back. */
+static void backlight_off(void)
+{
+	unsigned long a[4] = { 0, 0, 0, 0 };
+
+	if (disp_fd >= 0) ioctl(disp_fd, DISP_LCD_SET_BRIGHTNESS, a);
+}
+
 void plat_settings_init(void)
 {
 	int v = -1, b = -1;
@@ -1790,6 +1951,7 @@ void plat_settings_init(void)
 	 * of the player. */
 	v = db_get_int(db_dev(), "volume", -1);
 	b = db_get_int(db_dev(), "brightness", -1);
+	switch_locks = db_get_int(db_dev(), "muteswitch", 0) == 1;
 
 	/* Both are stored in the units this code uses - a rung each - so there is
 	 * no conversion here and no way for one key to mean two things. */
@@ -1835,6 +1997,9 @@ bool plat_muted(void) { return false; }
 bool plat_headphones_present(void) { return false; }
 static void jack_forget(void) { }
 static void mute_forget(void) { }
+void plat_mute_switch_lock(bool lock) { (void)lock; }
+bool plat_hold_switch(void) { return false; }
+static void backlight_off(void) { }
 
 /* No settings database on the host, so the config defaults are all there is.
  * Taken anyway rather than ignored: a shelf rendered by --shot should show the
@@ -1846,6 +2011,12 @@ void plat_settings_init(void)
 }
 
 #endif  /* __linux__ */
+
+void plat_screen(bool on)
+{
+	if (on) apply_brightness(cur_bright);
+	else    backlight_off();
+}
 
 
 /* The settings indicator: a thin line across the very top on any volume or
@@ -1928,6 +2099,410 @@ void plat_brightness_set(int level)
 	if (disp_fd < 0) return;
 	apply_brightness(clampi(level, 0, BRIGHT_MAX));
 	levels_save();
+}
+
+/* ---- sleep -----------------------------------------------------------
+ *
+ * Real suspend-to-RAM, not the pseudo-sleep this device already has under
+ * a different name: Auto Off (sys_menu.c) is a full power-off, and stats.h
+ * says outright that the device "has no suspend and is not getting one" -
+ * true when that comment was written, and now the thing this adds.
+ *
+ * UNVERIFIED ON HARDWARE. Whether this kernel's /sys/power/state lists
+ * "mem" at all was this feature's open question from the day it was
+ * proposed, and nothing in this environment can answer it - no device was
+ * available to ask. So this is written to discover the answer safely
+ * rather than to assume it: plat_sleep_supported() probes without
+ * triggering anything, and plat_sleep() re-checks that "mem" is actually
+ * among the listed states (not just that the file is writable) before
+ * ever writing to it. A kernel that lacks it, or only offers "freeze" /
+ * "standby", makes this a safe no-op rather than a wrong write.
+ *
+ * NO PROTOCOL MESSAGE TO DIATOM. NextUI's PWR_enterSleep pauses audio and
+ * SIGSTOPs helper daemons before its own equivalent write, because on its
+ * platforms sleep is assembled from several independently-paused pieces.
+ * TortOS has no helper daemons, and this write is a REAL kernel-wide
+ * suspend: it blocks until woken, and every process on the device -
+ * including Diatom, mid-frame or not - is frozen by the kernel along with
+ * it and resumes exactly where it was. There is nothing for the launcher
+ * to tell Diatom in advance that the kernel is not already doing for
+ * every process uniformly, audio codec included.
+ *
+ * RETROFITTED to match NextUI's real suspend script (skeleton/SYSTEM/tg5040/
+ * bin/suspend) exactly, per this epic's 1:1 standing rule (see bd show
+ * TortOS-1v7.1.2): ALSA mixer state is saved before sleep and deliberately
+ * never restored (NextUI's own restore call is commented out in its shipped
+ * script - replicated as-is, not fixed); Bluetooth/Wi-Fi are stopped before
+ * sleep only if they were actually running, and restarted after waking in
+ * the background via plat_spawn_detached() (mirrors NextUI's `after &`, so a
+ * slow bt_on() never blocks wake); the write itself is wrapped in NextUI's
+ * 5-attempt retry loop with its time-based false-negative workaround. Not
+ * ported: NextUI's pre-sleep.d/post-resume.d hook-plugin system - verified a
+ * no-op on every stock install including NextUI's own (run_hooks.sh exits
+ * immediately when its hook directory doesn't exist, and it doesn't exist
+ * anywhere in NextUI's tree), and TortOS has no PAK ecosystem to serve it. */
+bool plat_sleep_supported(void)
+{
+#ifdef __linux__
+	static int cached = -1;
+
+	if (cached < 0) cached = access("/sys/power/state", W_OK) == 0 ? 1 : 0;
+	return cached == 1;
+#else
+	return false;
+#endif
+}
+
+#ifdef __linux__
+/* Fork+exec argv, block for exit, report whether it exited zero. Stdin closed
+ * since nothing here reads from a terminal; nothing between fork and exec
+ * that is not async-signal-safe - the launcher has threads (see
+ * child_environ() above for why that matters). */
+static bool run_argv(char *const argv[])
+{
+	pid_t pid = fork();
+	int st;
+
+	if (pid < 0) return false;
+	if (pid == 0) {
+		int null = open("/dev/null", O_RDONLY);
+		if (null >= 0) { dup2(null, 0); close(null); }
+		execv(argv[0], argv);
+		_exit(127);
+	}
+	if (waitpid(pid, &st, 0) != pid) return false;
+	return WIFEXITED(st) && WEXITSTATUS(st) == 0;
+}
+
+static bool sh_c(const char *cmd)
+{
+	char *argv[4];
+	argv[0] = (char *)"/bin/sh";
+	argv[1] = (char *)"-c";
+	argv[2] = (char *)cmd;
+	argv[3] = NULL;
+	return run_argv(argv);
+}
+
+/* No -x: measured on-device (2026-09-27) that this busybox pgrep's -x fails
+ * to match "bluetoothd" against its own /proc/pid/comm, even though plain
+ * substring pgrep finds it fine - silently skipping the whole bt stop/
+ * restart path. Matches radio.sh's and NextUI's own suspend script's pgrep
+ * calls, neither of which uses -x either. */
+static bool proc_running(const char *name)
+{
+	char cmd[64];
+	if (snprintf(cmd, sizeof cmd, "pgrep %s > /dev/null", name)
+	    >= (int)sizeof cmd)
+		return false;
+	return sh_c(cmd);
+}
+
+/* Runs one of sd/tortos/radio.sh's functions the same way bt_asoundrc()
+ * (src/bt.c) runs bt_write_asoundrc: sourced from its own path, passed as
+ * argv so it is never read as shell. `fn` is always a literal from a call
+ * site below, never external data - see bt_asoundrc()'s own comment on why
+ * that distinction is what makes this safe. `background` runs it detached
+ * (plat_spawn_detached) rather than blocking, for the post-wake restart. */
+static bool radio_sh_call(const char *fn, bool background)
+{
+	char script[512], cmd[64];
+	char *argv[5];
+
+	if (snprintf(script, sizeof script, "%s/radio.sh", P_ROOT)
+	    >= (int)sizeof script)
+		return false;
+	if (snprintf(cmd, sizeof cmd, ". \"$0\" && %s", fn) >= (int)sizeof cmd)
+		return false;
+	argv[0] = (char *)"/bin/sh";
+	argv[1] = (char *)"-c";
+	argv[2] = cmd;
+	argv[3] = script;
+	argv[4] = NULL;
+	return background ? plat_spawn_detached(argv, NULL, NULL) : run_argv(argv);
+}
+#endif
+
+#ifdef __linux__
+/* Blocks up to ms for a POWER event with this value - 1 a press, 0 a
+ * release - reading whatever else is queued on the way.
+ *
+ * Light sleep waits for the RELEASE, as NextUI's PLAT_shouldWake wakes on
+ * SDL_KEYUP of POWER: waking on the press would leave its release for the
+ * tap dispatcher to read as a fresh tap, and put the device straight back to
+ * sleep. plat_sleep's retries look for the PRESS, and its release is drained
+ * with the rest when it returns. */
+static bool power_key_within(int ms, int value)
+{
+	struct pollfd pfd;
+	struct input_event ev;
+	bool hit = false;
+
+	if (fd_power < 0) { usleep(ms * 1000); return false; }
+	pfd.fd = fd_power;
+	pfd.events = POLLIN;
+	if (poll(&pfd, 1, ms) <= 0) return false;
+	while (read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+		if (ev.type == EV_KEY && ev.code == KEY_POWER && ev.value == value)
+			hit = true;
+	return hit;
+}
+#endif
+
+bool plat_sleep(void)
+{
+#ifdef __linux__
+	bool slept = false;
+	char states[128] = { 0 };
+	int fd;
+	ssize_t n;
+	bool bt_was_up, wifi_was_up;
+	int fd2, tries;
+
+	if (!plat_sleep_supported()) return false;
+
+	fd = open("/sys/power/state", O_RDONLY);
+	if (fd < 0) return false;
+	n = read(fd, states, sizeof states - 1);
+	close(fd);
+	if (n <= 0) return false;
+	states[n] = '\0';
+	if (!strstr(states, "mem")) return false;   /* listed states don't include it */
+
+	/* Not plat_brightness_set(): a sleep-only level must never be persisted
+	 * as the player's chosen brightness - see levels_save() above. */
+	backlight_off();
+
+	/* before(): only touch a radio that was actually running - a player who
+	 * turned Bluetooth or Wi-Fi off in settings must not find it back on
+	 * after a sleep cycle. Mirrors NextUI's own pgrep-gated before(). */
+	bt_was_up = proc_running("bluetoothd");
+	wifi_was_up = proc_running("wpa_supplicant");
+	sh_c("mkdir -p /tmp/asound-suspend && "
+	     "alsactl --file /tmp/asound-suspend/asound.state.pre store");
+	if (bt_was_up) radio_sh_call("bt_off", false);
+	if (wifi_was_up) radio_sh_call("wifi_stop_once", false);
+
+	/* The write itself, wrapped in NextUI's exact 5-attempt retry loop:
+	 * wall-clock time (not plat_now_ms()/SDL_GetTicks(), which is monotonic
+	 * and not guaranteed to advance across a real suspend) measures how long
+	 * the write call itself was blocked, to catch a kernel that suspended
+	 * fine but still returned nonzero - see the time_asleep check below,
+	 * ported verbatim from the shipped script's own comment on it. */
+	/*
+	 * One divergence from the script, which cannot see the button: a POWER
+	 * press is a wake, never a failure. Suspending takes 2-3s after the
+	 * screen goes dark, and a press in that window makes the kernel abort
+	 * with EBUSY at suspend_noirq (measured 2026-09-28: 6 of 7 failures,
+	 * wakeup IRQ = the axp2202 PMIC). The script retries 3s later and
+	 * suspends again, swallowing the press that asked to wake. So: a press
+	 * before a write, or during the wait after a failed one, ends it awake.
+	 * Other failures (a charger plugged in, same IRQ) still retry.
+	 *
+	 * Not covered, and cannot be from here: a press in the ~1.1s after the
+	 * kernel freezes this process and before suspend_noirq. axp2101-pek is
+	 * no wakeup source, so nothing aborts; the press waits unread and the
+	 * NEXT press wakes. NextUI on this device has the same window. Closing
+	 * it takes the wakeup_count handshake plus EPOLLWAKEUP on fd_power,
+	 * whose read blocks while USB holds usb_connecting - weighed and
+	 * declined 2026-09-28 (TortOS-1v7.1.2.7).
+	 */
+	for (tries = 0; tries < 5; tries++) {
+		time_t went, woke;
+		ssize_t wrote;
+		int err;
+
+		if (power_key_within(0, 1)) { slept = true; break; }
+		went = time(NULL);
+		fd2 = open("/sys/power/state", O_WRONLY);
+		wrote = fd2 < 0 ? -1 : write(fd2, "mem", 3);
+		err = errno;
+		if (fd2 >= 0) close(fd2);
+		woke = time(NULL);
+		/* The script's own trace, one line an attempt: the kernel's answer
+		 * is the one thing a log can't reconstruct afterwards. */
+		fprintf(stderr, "sleep: attempt %d of 5: %s%s, %lds\n", tries + 1,
+		        wrote == 3 ? "ok" : "failed: ",
+		        wrote == 3 ? "" : strerror(err), (long)(woke - went));
+		if (wrote == 3) { slept = true; break; }
+		if (woke - went > 5) { slept = true; break; }  /* false-negative override */
+		if (power_key_within(3000, 1)) { slept = true; break; }  /* sleep(3) */
+	}
+
+	/* POWER is the ordinary way to wake the device, and that very press is
+	 * still sitting on fd_power once we resume - without this, the next
+	 * poll reads it as a fresh press and treats it as a request to power
+	 * off, which looks like "resumed fine, then shut itself down a moment
+	 * later." Same drain idiom as the escape hatch above. */
+	{
+		struct input_event ev;
+		while (fd_power >= 0 &&
+		       read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+			; /* drain the wake press */
+	}
+
+	/* after(): backgrounded, same as NextUI's `after &`, so a slow bt_on()
+	 * (rfkill rail-cycle, hciattach retries) never blocks the first frame
+	 * after wake. */
+	if (wifi_was_up) radio_sh_call("wifi_on", true);
+	if (bt_was_up) radio_sh_call("bt_on", true);
+
+	apply_brightness(cur_bright);
+	/* The script's exit status: PWR_deepSleep's ret, which PWR_waitForWake
+	 * answers with a power-off when it is not 0. A wake press counts as
+	 * success - the player is asking for exactly what a resume gives. */
+	return slept;
+#else
+	return false;
+#endif
+}
+
+/* The one press either caller could currently be watching - a->in.down every
+ * frame from the shelf/menu path, or a level tracked locally from raw evdev
+ * once a tick during a game. Only one of those runs at a time, so one timer
+ * is enough. 0 means no press is open right now. */
+static unsigned pwr_since;
+
+/* When the last light sleep ended - NextUI's pwr.resume_tick. A power press
+ * that STARTS within a second of it is the tail of the wake, not a request,
+ * and plat_power_tap_or_hold drops it whole (api.c's "ignoring spurious
+ * power button press (just resumed)"). 0 until the first sleep. */
+static unsigned resume_at;
+
+
+/* NextUI's PWR_sleep, whole: PWR_enterSleep, PWR_waitForWake, PWR_exitSleep
+ * (api.c:4262-4380), for every way into sleep - a tap, Auto Sleep's idle,
+ * the game menu's Sleep row. The CPU stays awake; the screen is off and the
+ * sound muted, neither persisted (NextUI's SetRawVolume, not SetVolume - a
+ * crash asleep must not boot dark and silent).
+ *
+ * Left unwoken for the Suspend Timeout it escalates into real suspend,
+ * plat_sleep(), and returns once that resumes. Charging, or a computer
+ * attached, puts the escalation off a minute at a time instead - suspending
+ * on external power hangs this kernel (TortOS-2pv), which is why NextUI
+ * never does.
+ * Returns false only when escalation found no suspend to go to - unsupported,
+ * or every attempt failed - which NextUI answers with PWR_powerOff; the
+ * caller does, since powering off is the launcher's (main.c's power_off).
+ *
+ * What NextUI's enter/exit also do and why none of it is here: the LED
+ * sleep profile is the player's LED setup set to breathe, and TortOS keeps
+ * every LED off, so it stays off; keymon/batmon/audiomon are NextUI daemons
+ * TortOS has no counterpart of; the status-poll frequency drop is automatic,
+ * the launcher's loop being blocked right here; audio the launcher owns
+ * (the music player) is paused by the caller, main.c's sleep_cycle; the
+ * haptic pulse is gated on a setting NextUI ships off and TortOS lacks
+ * (TortOS-1v7.1.2.11). */
+bool plat_light_sleep(unsigned waited_ms)
+{
+	bool awake = true;
+#ifdef __linux__
+	int saved_vol = cur_vol;
+	int timeout_ms = plat_suspend_timeout_secs() * 1000;
+	unsigned since;
+
+	plat_input_flush();                   /* PAD_reset */
+	backlight_off();
+	if (mixer_fd >= 0) apply_volume(0);
+	sync();
+
+	since = plat_now_ms() - waited_ms;    /* already dark that long */
+	for (;;) {
+		bool charging = false;
+
+		if (power_key_within(200, 0)) break;
+		/* Signed: "a minute from now" makes since run ahead of now. */
+		if ((int)(plat_now_ms() - since) < timeout_ms) continue;
+		plat_battery(NULL, &charging);
+		if (charging || plat_usb_host()) {
+			since += 60000;               /* check again in a minute */
+			continue;
+		}
+		awake = plat_sleep();
+		break;
+	}
+
+	apply_brightness(cur_bright);
+	if (mixer_fd >= 0 && saved_vol >= 0) apply_volume(saved_vol);
+	sync();
+	plat_input_flush();                   /* PAD_reset, and whatever was
+	                                       * pressed in the dark */
+#else
+	(void)waited_ms;
+#endif
+	pwr_since = 0;
+	resume_at = plat_now_ms();
+	if (!resume_at) resume_at = 1;
+	return awake;
+}
+
+bool plat_usb_host(void)
+{
+	static int was = -1;
+	glob_t g;
+	size_t i;
+	bool host = false;
+
+	/* NextUI's PLAT_isUSBConnected (tg5040): the UDC says "configured" once
+	 * a host has enumerated the device, which a wall charger never does. */
+	if (glob("/sys/class/udc/*/state", 0, NULL, &g) != 0) return false;
+	for (i = 0; i < g.gl_pathc && !host; i++) {
+		char st[32] = "";
+		FILE *f = fopen(g.gl_pathv[i], "r");
+		if (!f) continue;
+		if (fgets(st, sizeof st, f)) host = !strncmp(st, "configured", 10);
+		fclose(f);
+	}
+	globfree(&g);
+	if (host != was) {
+		fprintf(stderr, "power: usb host %s\n", host ? "attached" : "detached");
+		was = host;
+	}
+	return host;
+}
+
+int plat_suspend_timeout_secs(void)
+{
+	int v = db_get_int(db_dev(), "suspendtimeout", 30);
+	return v > 0 ? v : 30;          /* NextUI's default; 0 is not a choice */
+}
+
+#define POWER_HOLD_MS 400u
+
+pwr_action plat_power_tap_or_hold(bool down)
+{
+	static bool spurious;             /* this press began just after a wake */
+	unsigned now = plat_now_ms();
+
+	/* NextUI's resume_tick check: a press that starts inside a second of
+	 * waking is dropped whole - neither its hold nor its release counts. */
+	if (down && !pwr_since && !spurious && resume_at &&
+	    now - resume_at < 1000) {
+		spurious = true;
+		fprintf(stderr, "power: press ignored, %ums after a wake\n",
+		        now - resume_at);
+	}
+	if (spurious) {
+		if (!down) spurious = false;
+		return PWR_NONE;
+	}
+	if (down) {
+		if (!pwr_since) pwr_since = now ? now : 1;
+		if (now - pwr_since >= POWER_HOLD_MS) {
+			pwr_since = 0;          /* fire once per press */
+			fprintf(stderr, "power: hold -> power off\n");
+			return PWR_POWEROFF;
+		}
+		return PWR_NONE;
+	}
+	if (!pwr_since) return PWR_NONE;   /* not pressed, nothing just ended */
+	/* One line per decision, so an unexpected power-off leaves the press
+	 * that caused it in the log (TortOS-1v7.1.2.7: one did, and didn't). */
+	fprintf(stderr, "power: tap (%ums)\n", now - pwr_since);
+	pwr_since = 0;
+	/* Not gated on plat_sleep_supported(): NextUI's tap always enters light
+	 * sleep, and suspend support only matters at its escalation. */
+	return db_get_int(db_dev(), "power.tap", 1) ? PWR_SLEEP : PWR_POWEROFF;
 }
 
 /* ---- battery ---- */

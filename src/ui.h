@@ -221,11 +221,13 @@ SDL_Texture *ui_make_cover(SDL_Renderer *r, const char *title, unsigned rgb,
 
 /* The play modes' marks, in the shapes everybody already reads: two arrows
  * chasing round a loop for repeat, the same with a 1 in it for repeat one, and
- * two crossing arrows for shuffle. Drawn here from a few lines of geometry
+ * two crossing arrows for shuffle - and a padlock, for the Mute Switch's hold
+ * (TortOS-7cv). Drawn here from a few lines of geometry
  * rather than taken from a font or an icon set. Centered on (cx, cy), `size`
  * pixels square, in `col`; each shape and size is rendered once and kept. */
 typedef enum {
-	UI_GLYPH_REPEAT, UI_GLYPH_REPEAT_ONE, UI_GLYPH_SHUFFLE, UI_GLYPH_COUNT
+	UI_GLYPH_REPEAT, UI_GLYPH_REPEAT_ONE, UI_GLYPH_SHUFFLE, UI_GLYPH_LOCK,
+	UI_GLYPH_COUNT
 } ui_glyph;
 void ui_glyph_draw(SDL_Renderer *r, ui_glyph g, int cx, int cy, int size,
                    SDL_Color col);

@@ -115,10 +115,10 @@ matters to you - a card is the one part of this that gets reformatted.
 | **MENU** (on the systems row) | the TortOS menu - settings that are about the firmware |
 | **MENU** (inside a system) | that system's menu, below |
 | **MENU** (in `Cubic`) | always the TortOS menu; B is the system's |
-| **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Cheevos, Reset, Quit |
+| **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Cheevos, Sleep, Hotkeys, Reset, Quit |
 | **MENU** (inside any menu) | closes the whole menu, however deep in it you are. B goes back one screen |
 | **SELECT** | Muse, the music player, from anywhere but a running game - the in-game menu included. Again to close it |
-| **POWER** | powers off. In a game, the game is saved first |
+| **POWER** | a tap sleeps: the screen goes dark at once, and the device suspends after the **Suspend Timeout**; a tap wakes it. A hold powers off. In a game, the game is saved first either way |
 
 MENU means three different menus depending on where you are, and each one is
 about the thing you are looking at: the firmware on the systems row, one
@@ -143,7 +143,10 @@ than any one console:
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed - see **Audio** below |
 | **Over The Hare** | the file server; needs Wi-Fi and says so when there is none |
-| **Auto Off** | how long without a button before the device powers itself down |
+| **Auto Off** | how long without a button before the device powers itself down instead of sleeping. Setting it turns Auto Sleep to `never`, and the other way round |
+| **Auto Sleep** | how long without a button before the device sleeps, the same as a tap of POWER. Not during play - only on the shelf and in the menus, the in-game menu included |
+| **Suspend Timeout** | how long a sleeping device waits for POWER before it suspends |
+| **Mute Switch** | what the side switch does: `mute`, or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
 | **UI Theme** | `Plain Jane` or `Fancy Pants` - which art the shelves wear |
 | **UI Direction** | `Horizontal`, `Vertical` or `Cubic` - see below |
 | **Box Art** | fetch what the whole library is missing |
@@ -151,6 +154,10 @@ than any one console:
 | **ScreenScraper** | the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build` |
 | **Controls** | every button and what it does, a page per place |
 | **About TortOS** | version, address, battery, uptime |
+
+Charging, or plugged into a computer, the device never sleeps, suspends or
+turns itself off: Auto Off, Auto Sleep and Suspend Timeout all wait until it is
+unplugged. As in NextUI - suspending on external power hangs the Brick.
 
 Over The Hare and Box Art need a network, and go quiet without one rather than
 disappearing - a row that vanishes teaches nobody why. Cheevos stays reachable
@@ -351,8 +358,31 @@ a second. SELECT in the in-game menu is how to switch between them mid-game.
 An album's tracks are a list over its shelf, with what is playing under a rule
 at the foot. A on a track plays the album from there and opens Now Playing; on
 the track already playing it just opens Now Playing. The shoulders and the
-d-pad's sides do what they do on Now Playing. Auto Off waits while music plays,
-the way it does on the charger.
+d-pad's sides do what they do on Now Playing.
+
+Sleep leaves music playing. A tap of POWER while an album plays turns only the
+screen off, and the album plays on. So does leaving it alone: while music
+plays, how soon the screen goes off is **Screen Off** in Muse Settings (5s to
+1m, 10s to start with, or Never), not Auto Sleep's or Auto Off's time.
+
+In the dark the volume keys change the volume and a headset's buttons work,
+both without lighting the screen. Now Playing's buttons (A, Y, the shoulders, the d-pad's
+sides) do what they do there and wake the screen, like an iPod's. Any other
+button, or a tap of POWER, just wakes it. Set **Wake Screen On Press** to `No`
+(MENU in Muse, then Muse Settings) and the screen stays dark: Now Playing's
+buttons still work, every other button is ignored, and only POWER wakes it.
+When the music stops, paused or at the album's end, the screen stays dark and
+the same buttons keep working for the **Suspend Timeout**, so a pause in the
+dark can be undone in the dark. Then the device suspends, or with Auto Off it
+powers down: the Suspend Timeout is also Auto Off's grace once the music
+stops. NextUI pauses the music to sleep; this is TortOS's own.
+
+For a pocket, set **Mute Switch** (Settings) to `muse button lock`. The switch
+then no longer mutes; it works like an iPod's hold switch. While it is down
+and the music plays with the screen dark, every button and the volume keys are
+ignored. POWER and a headset's buttons still work. With the screen on, the
+switch locks nothing; Now Playing shows a padlock beside the mode while it is
+down, so you can see it is set before the screen goes dark.
 
 Covers come from the music. The first time an album is shown, Muse takes the
 picture its files carry and keeps it beside the album, in

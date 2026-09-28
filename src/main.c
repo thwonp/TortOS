@@ -46,6 +46,7 @@
 #include "controls.h"
 #include "cards.h"
 #include "game_menu.h"
+#include "hkbind.h"
 #include "ui.h"
 #include "wifi_menu.h"
 
@@ -149,8 +150,12 @@ typedef struct {
 	 * opens with the menu up. Cleared as it is used, so quitting to the
 	 * shelf and launching the same game again behaves normally. */
 	bool resume_menu;
-	int  auto_off;              /* seconds without input, 0 off */
+	int  auto_off;              /* Auto Sleep, seconds without input, 0 off */
+	int  auto_poweroff;         /* Auto Off, seconds without input, 0 off -
+	                             * mutually exclusive with auto_off */
 	idle_clock idle;            /* Auto Off's clock - src/idle.h */
+	bool game_on;               /* a game is loaded in Diatom: launch()'s wait
+	                             * loop, the game menu and its screens */
 	SDL_Renderer *r;
 } app;
 
@@ -1040,26 +1045,50 @@ static void chv_active_path(char *out, size_t n)
 	snprintf(out, n, "%s/cheevos-active.set", P_USERDATA);
 }
 
-/* Auto Off: how long without input before the device powers itself down.
- *
- * Seconds, 0 for off. Eric's ladder, and it is deliberately aggressive at the
- * short end - 30s will fire while you read a dialogue box. That is a sound
- * trade only because resume-into-game exists: powering off costs about two
- * seconds and puts you back in the same game with the menu up. Without that
- * it would be hostile. */
-static const int AUTO_OFF[] = { 0, 30, 60, 120, 300, 600 };
+/* Auto Sleep: how long without input before light sleep (screen off, CPU
+ * awake - platform.c's plat_light_sleep). NextUI's "Screen timeout" exactly:
+ * its ladder and its default (settings.cpp's screen_timeout_secs,
+ * CFG_DEFAULT_SCREENTIMEOUTSECS). Seconds, 0 for never. The array and db key
+ * keep their old auto_off/autooff names from when this row meant power-off. */
+static const int AUTO_OFF[] = { 0, 5, 10, 15, 30, 45, 60, 90, 120, 240, 360, 600 };
 #define AUTO_OFF_COUNT ((int)(sizeof AUTO_OFF / sizeof AUTO_OFF[0]))
 
 static int auto_off_load(void)
 {
 	int v = db_get_int(db_dev(), "autooff", -1);
-	return v >= 0 ? v : 120;                  /* the default: two minutes */
+	return v >= 0 ? v : 60;                   /* NextUI's default: a minute */
 }
 
 static void auto_off_save(int seconds)
 {
 	db_set_int(db_dev(), "autooff", seconds);
 }
+
+/* Auto Off: the real, resume-into-game power-down, mirroring AUTO_OFF[]'s
+ * shape rather than sharing it - mutually exclusive with Auto Sleep above,
+ * matching NextUI, so the two get independent ladders and db keys even
+ * though today they hold the same values. */
+static const int AUTO_POWEROFF[] = { 0, 30, 60, 120, 300, 600 };
+#define AUTO_POWEROFF_COUNT ((int)(sizeof AUTO_POWEROFF / sizeof AUTO_POWEROFF[0]))
+
+static int auto_poweroff_load(void)
+{
+	int v = db_get_int(db_dev(), "autopoweroff", -1);
+	return v >= 0 ? v : 0;                    /* the default: never */
+}
+
+static void auto_poweroff_save(int seconds)
+{
+	db_set_int(db_dev(), "autopoweroff", seconds);
+}
+
+/* Suspend Timeout: how long light sleep waits for the power button before
+ * escalating into real suspend. NextUI's "Suspend timeout" exactly - its
+ * sleep_timeout_secs ladder and CFG_DEFAULT_SUSPENDTIMEOUTSECS. No 0 on
+ * purpose, as in NextUI: once the screen is off some escalation always
+ * applies. Independent of both rows above. platform.c reads the same key. */
+static const int SUSPEND_TIMEOUT[] = { 5, 10, 15, 30, 45, 60, 90, 120, 240, 360, 600 };
+#define SUSPEND_TIMEOUT_COUNT ((int)(sizeof SUSPEND_TIMEOUT / sizeof SUSPEND_TIMEOUT[0]))
 
 
 /* Defined with the Wi-Fi screen it began in, and used here because signing in
@@ -1870,13 +1899,6 @@ static void aout_retry_in_game(void)
 	        g_aout_sent, g_aout_retries);
 }
 
-/* Auto Off while a game runs. Diatom holds the clock, because it owns the pad
- * and this process is blocked in plat_resident_wait; the launcher's part is
- * telling it the number and keeping that number true as the charger comes and
- * goes. See on_charger, which lives beside battery_low. */
-static bool on_charger(void);
-static int  g_idle_secs;         /* the Auto Off setting, 0 off */
-static bool g_idle_charging;     /* what was true when SETIDLE was last sent */
 
 static void on_game_tick(void)
 {
@@ -1899,14 +1921,6 @@ static void on_game_tick(void)
 	 * 16.4 ms at the tail, which is a dropped frame. */
 	stats_tick(plat_now_ms());
 
-	/* The charger, followed rather than sampled once at launch. Plugging in
-	 * mid-game has to stop the countdown and unplugging has to start a fresh
-	 * one, and SETIDLE does both: Diatom restarts its clock on every one it
-	 * receives.
-	 *
-	 * Which is also why this only sends on a CHANGE. Sending it every tick
-	 * would restart that clock ten times a second and Auto Off would never
-	 * fire at all. */
 	/* A cable plugged in mid-game, or a headset that connected or walked out
 	 * of range, moves the sound without leaving the game. That is the whole
 	 * point of ADR-0029 making this a state rather than a launch argument. */
@@ -1915,15 +1929,6 @@ static void on_game_tick(void)
 	g_game_ticking = false;
 	aout_retry_in_game();
 
-	if (g_idle_secs > 0) {
-		bool ch = on_charger();
-
-		if (ch != g_idle_charging) {
-			g_idle_charging = ch;
-			plat_resident_line("SETIDLE\tms=%d",
-			                   ch ? 0 : g_idle_secs * 1000);
-		}
-	}
 
 	/* The account's answer, as soon as it lands - see sync_poll.
 	 *
@@ -2305,7 +2310,7 @@ static bool battery_low(void)
 	return low;
 }
 
-/* On the charger, cached. Both halves of Auto Off ask this - the shelf every
+/* Charging, or attached to a computer (plat_usb_host) - cached. Both halves of Auto Off ask this - the shelf every
  * frame, the in-game tick ten times a second - and every call is two sysfs
  * files opened, read and closed. Two seconds is well inside the shortest
  * timeout anyone can set, so the lag is not observable. Same trick and the
@@ -2313,10 +2318,10 @@ static bool battery_low(void)
  *
  * plat_battery leaves its out-parameter alone when it fails, so the answer is
  * written before the call rather than after it. */
-static bool on_charger(void)
+static bool keep_awake(void)
 {
 	static unsigned last;
-	static bool     charging, primed;
+	static bool     awake, primed;
 	unsigned now = plat_now_ms();
 
 	/* Elapsed, not a deadline compare: unsigned subtraction is right across
@@ -2324,13 +2329,17 @@ static bool on_charger(void)
 	if (!primed || now - last >= 2000) {
 		primed = true;
 		last = now;
-		charging = false;
-		plat_battery(NULL, &charging);
+		awake = false;
+		plat_battery(NULL, &awake);
+		/* NextUI's PWR_preventAutosleep, less its Keep Awake Over USB
+		 * setting - a computer always counts (TortOS-2pv). */
+		if (!awake) awake = plat_usb_host();
 	}
-	return charging;
+	return awake;
 }
 
-/* Has the player been away long enough to power the device off?
+/* Has the player been away long enough for the armed idle action - Auto
+ * Sleep's light sleep or Auto Off's shutdown, never both?
  *
  * The gathering half; the policy is idle_check, in src/idle.c, where a check
  * can reach it. This part is the three things only the launcher knows: the
@@ -2343,28 +2352,48 @@ static bool on_charger(void)
  * evidence somebody WAS; pausing because something else came up is the most
  * ordinary way there is to walk away from a device still switched on.
  *
- * Called beside each loop's existing power-button check, because that is what
- * the answer means. A device left alone does what the power button does -
- * already the rule for Diatom's IDLE during a game. `grep -n idle_due` is the
- * list of screens that honor it, and it should have no gaps. */
+ * Asked only from power_check, which every screen calls beside its input
+ * poll - `grep -n power_check` is the list, and it should have no gaps. Never
+ * during live play: NextUI's autosleep is off while a game runs (see the
+ * SETIDLE in launch()), and on again in the in-game menu, which is here. */
+static bool sleep_cycle(app *a);
+static pwr_action power_check(app *a);
+
+/* Muse Settings' Screen Off, in seconds; 0 is Never. See idle_due. */
+static const int MUSE_SCREEN_OFF[] = { 5, 10, 15, 30, 60, 0 };
+#define MUSE_SCREEN_OFF_COUNT \
+	((int)(sizeof MUSE_SCREEN_OFF / sizeof *MUSE_SCREEN_OFF))
+
 static bool idle_due(app *a)
 {
-	int b;
+	int b, secs;
 
-	a->idle.seconds = a->auto_off;
+	/* Whichever of the two is armed - never both (PM_SLEEP/PM_AUTO_OFF) -
+	 * except while music plays, when Muse Settings' Screen Off says how
+	 * long (TortOS-28l): an iPod's backlight timer, short where Auto Sleep's
+	 * shortest is long. Never is the screen on for as long as music plays. A
+	 * new timer is a new countdown: an album that ended after five minutes
+	 * untouched must not fire Auto Sleep the moment it stops. */
+	secs = musec_playing() ? db_get_int(db_dev(), "muse.screenoff", 10)
+	                       : a->auto_off ? a->auto_off : a->auto_poweroff;
+	if (secs != a->idle.seconds) a->idle.since_ms = plat_now_ms();
+	a->idle.seconds = secs;
 	for (b = 0; b < IN_COUNT; b++)
 		if (a->in.pressed[b] || a->in.down[b]) break;
 
-	/* Music playing HOLDS the clock the way the charger does, rather than
-	 * counting as input: an album is somebody using the device with nobody
-	 * touching it, and when it stops the countdown starts fresh. */
-	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT,
-	                  on_charger() || musec_playing());
+	/* Music does NOT hold the clock (it did until TortOS-a5k): an album is
+	 * somebody using the device with nobody touching it, so running out
+	 * during one turns only the screen off - music_dark - and whatever the
+	 * clock was armed for waits until the music stops. */
+	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT, keep_awake());
 }
 
 /* The keyboard takes callbacks rather than an app - it is deliberately
  * general, and knows nothing about shelves or power policy. */
-static bool idle_due_ctx(void *ctx) { return idle_due((app *)ctx); }
+static bool power_due_ctx(void *ctx)
+{
+	return power_check((app *)ctx) == PWR_POWEROFF;
+}
 
 /* The one piece of chrome: a small accent disc, top right, when the battery is
  * low. Drawn with horizontal spans -- SDL has no circle. */
@@ -3279,6 +3308,7 @@ static void anim_poweroff(app *a)
 
 static void power_off(app *a)
 {
+	fprintf(stderr, "power: off\n");
 	/* Here rather than only on the return path: launch.sh runs its leds_off at
 	 * the TOP of its restart loop, and a power-off breaks that loop instead of
 	 * going round it, so this is the last chance to darken them. */
@@ -4246,6 +4276,9 @@ static int menu_build(app *a, screen_id screen, int sys,
 		u.cards     = CARD_SETS[g_cards].name;
 		u.cards_dir = CARD_DIRS[g_dir].name;
 		u.auto_off  = a->auto_off;
+		u.auto_poweroff = a->auto_poweroff;
+		u.suspend_timeout = plat_suspend_timeout_secs();
+		u.mute_lock = db_get_int(db_dev(), "muteswitch", 0) == 1;
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
 
@@ -4354,7 +4387,10 @@ static bool confirm_panel(app *a, const char *heading, const char *msg,
 	for (;;) {
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; return false; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { power_off(a); return false; }
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) { power_off(a); return false; }
+		}
 		if (menu_leaving(a)) return false;
 
 		/* Only the two answerable rows are reachable; row 0 is the question. */
@@ -4489,9 +4525,12 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		musec_poll();
 		aout_apply(false);
 		if (a->in.quit_requested) { a->running = false; return MENU_LEFT_GONE; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) {
-			if (!st->on_power) { power_off(a); return MENU_LEFT_GONE; }
-			if (st->on_power(a, ctx) == MENU_DONE) return MENU_LEFT_GONE;
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) {
+				if (!st->on_power) { power_off(a); return MENU_LEFT_GONE; }
+				if (st->on_power(a, ctx) == MENU_DONE) return MENU_LEFT_GONE;
+			}
 		}
 		if (menu_leaving(a))
 			return MENU_LEFT_BACK;
@@ -4679,7 +4718,7 @@ static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 		if (w->nets[k].secured && !w->nets[k].known) {
 			kb_result kr = kb_prompt(a->r, &a->in, w->nets[k].ssid,
 			                         psk, (int)sizeof psk, MENU_ACCENT,
-			                         wifi_backdrop, idle_due_ctx, a);
+			                         wifi_backdrop, power_due_ctx, a);
 			if (kr == KB_POWER) { power_off(a); return MENU_DONE; }
 			if (kr != KB_ACCEPT) return MENU_STAY;
 		}
@@ -4765,12 +4804,12 @@ static void ra_signin_screen(app *a)
 	}
 
 	kr = kb_prompt(a->r, &a->in, "RetroAchievements User", user,
-	               (int)sizeof user, MENU_ACCENT, wifi_backdrop, idle_due_ctx, a);
+	               (int)sizeof user, MENU_ACCENT, wifi_backdrop, power_due_ctx, a);
 	if (kr == KB_POWER) { power_off(a); return; }
 	if (kr != KB_ACCEPT || !user[0]) return;
 
 	kr = kb_prompt(a->r, &a->in, "Password", pass,
-	               (int)sizeof pass, MENU_ACCENT, wifi_backdrop, idle_due_ctx, a);
+	               (int)sizeof pass, MENU_ACCENT, wifi_backdrop, power_due_ctx, a);
 	if (kr == KB_POWER) { memset(pass, 0, sizeof pass); power_off(a); return; }
 	if (kr != KB_ACCEPT || !pass[0]) { memset(pass, 0, sizeof pass); return; }
 
@@ -4833,12 +4872,12 @@ static void ss_signin_screen(app *a)
 	}
 
 	kr = kb_prompt(a->r, &a->in, "ScreenScraper User", user,
-	               (int)sizeof user, MENU_ACCENT, wifi_backdrop, idle_due_ctx, a);
+	               (int)sizeof user, MENU_ACCENT, wifi_backdrop, power_due_ctx, a);
 	if (kr == KB_POWER) { power_off(a); return; }
 	if (kr != KB_ACCEPT || !user[0]) return;
 
 	kr = kb_prompt(a->r, &a->in, "Password", pass,
-	               (int)sizeof pass, MENU_ACCENT, wifi_backdrop, idle_due_ctx, a);
+	               (int)sizeof pass, MENU_ACCENT, wifi_backdrop, power_due_ctx, a);
 	if (kr == KB_POWER) { memset(pass, 0, sizeof pass); power_off(a); return; }
 	if (kr != KB_ACCEPT || !pass[0]) { memset(pass, 0, sizeof pass); return; }
 
@@ -5018,10 +5057,13 @@ static void xfer_screen(app *a)
 		 * and the countdown resumes. */
 		if (busy || st.clients > 0) a->idle.since_ms = now;
 
-		if (a->in.pressed[IN_POWER] || idle_due(a)) {
-			hare_stop();
-			power_off(a);
-			return;
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) {
+				hare_stop();
+				power_off(a);
+				return;
+			}
 		}
 		if (menu_leaving(a)) done = true;
 
@@ -5242,10 +5284,13 @@ static void art_screen(app *a, const char *only, const char *one,
 
 				plat_input_poll(&a->in);
 				if (a->in.quit_requested) { ss_run_cancel(); a->running = false; return; }
-				if (a->in.pressed[IN_POWER] || idle_due(a)) {
-					ss_run_cancel();
-					power_off(a);
-					return;
+				{
+					pwr_action pa = power_check(a);
+					if (pa == PWR_POWEROFF) {
+						ss_run_cancel();
+						power_off(a);
+						return;
+					}
 				}
 				if (menu_leaving(a)) {
 					ss_run_cancel();
@@ -5363,10 +5408,13 @@ static void art_screen(app *a, const char *only, const char *one,
 		 * there, a person was at the other end. Here the device is talking to
 		 * itself, and a library left scraping unattended on battery is
 		 * exactly what Auto Off is for. */
-		if (a->in.pressed[IN_POWER] || idle_due(a)) {
-			art_cancel();
-			power_off(a);
-			return;
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) {
+				art_cancel();
+				power_off(a);
+				return;
+			}
 		}
 		if (menu_leaving(a)) {
 			art_cancel();
@@ -5445,6 +5493,7 @@ static void synopsis_screen(app *a, const char *title, const char *text,
  * frame, and drawing the shelf under a paused game would be a lie about where
  * the player is. */
 static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf);
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag);
 
 static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 {
@@ -5620,7 +5669,10 @@ static void bt_screen(app *a)
 		musec_poll();                       /* see menu_run_body */
 		aout_apply(false);
 		if (a->in.quit_requested) { a->running = false; return; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { power_off(a); return; }
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) { power_off(a); return; }
+		}
 		if (menu_leaving(a)) done = true;
 		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
 
@@ -5910,7 +5962,10 @@ static bool stats_screen(app *a)
 
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; return false; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { power_off(a); return false; }
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) { power_off(a); return false; }
+		}
 		if (menu_leaving(a)) done = true;
 		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
 
@@ -6065,7 +6120,10 @@ static void about_screen(app *a)
 
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; return; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { power_off(a); return; }
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) { power_off(a); return; }
+		}
 		if (menu_leaving(a)) done = true;
 		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
 
@@ -6112,7 +6170,10 @@ static void controls_screen(app *a)
 
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; return; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { power_off(a); return; }
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) { power_off(a); return; }
+		}
 		if (menu_leaving(a)) done = true;
 		/* SELECT opens Muse here as it does on every other menu screen -
 		 * which is one of the things this page exists to tell you. */
@@ -6289,6 +6350,65 @@ typedef struct {
 	int       screen;
 } sysmenu_ctx;
 
+/* Muse Settings, the fifth row of Muse's menu (TortOS-28l): whether a button
+ * pressed while music plays in the dark wakes the screen - see music_dark,
+ * which reads it - and how long music plays untouched before the screen goes
+ * off - see idle_due. */
+static const char *const MUSE_SCREEN_OFF_LABEL[] =
+	{ "5s", "10s", "15s", "30s", "1m", "Never" };
+
+static int muse_screen_off_at(void)
+{
+	int k, v = db_get_int(db_dev(), "muse.screenoff", 10);
+
+	for (k = 0; k < MUSE_SCREEN_OFF_COUNT; k++)
+		if (MUSE_SCREEN_OFF[k] == v) return k;
+	return 1;                             /* 10s, should it be off-ladder */
+}
+
+static int muse_set_build(void *ctx, menu_row *rows, int max,
+                          const char **heading)
+{
+	(void)ctx;
+	(void)max;
+	*heading = "Muse Settings";
+	rows[0] = (menu_row){ "Wake Screen On Press",
+	                      db_get_int(db_dev(), "muse.wake", 1) ? "Yes" : "No",
+	                      true };
+	rows[1] = (menu_row){ "Screen Off",
+	                      MUSE_SCREEN_OFF_LABEL[muse_screen_off_at()], true };
+	return 2;
+}
+
+/* Wake is a toggle, so A flips it as well as left/right - as Mute Switch.
+ * Screen Off is a ladder: left/right step along it, A steps forward and
+ * wraps, as Display Mode's A does. */
+static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
+{
+	int at;
+
+	(void)a;
+	(void)ctx;
+	if (sel == 0 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT))
+		db_set_int(db_dev(), "muse.wake",
+		           !db_get_int(db_dev(), "muse.wake", 1));
+	if (sel == 1 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		at = muse_screen_off_at();
+		if (key == IN_ACCEPT)     at = (at + 1) % MUSE_SCREEN_OFF_COUNT;
+		else if (key == IN_LEFT)  at = at > 0 ? at - 1 : 0;
+		else if (at < MUSE_SCREEN_OFF_COUNT - 1) at++;
+		db_set_int(db_dev(), "muse.screenoff", MUSE_SCREEN_OFF[at]);
+	}
+	return MENU_STAY;
+}
+
+static void muse_settings_screen(app *a)
+{
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+	                           .fixed_w = menu_std_width(a) },
+	         muse_set_build, muse_set_key, NULL);
+}
+
 static int sysmenu_build(void *ctx, menu_row *rows, int max,
                          const char **heading)
 {
@@ -6311,14 +6431,16 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		/* Muse's menu is its own four rows - see SM_MUSE_ROWS - so the
 		 * enum's row numbers below mean nothing on it: row 1 is Sort By,
 		 * which goes on to the Sort By below like any shelf's, row 2 Album
-		 * Art and row 3 Rescan Folder. Album Art is a dead row off the
-		 * network, and the runner does not land on dead rows. */
+		 * Art, row 3 Rescan Folder and row 4 Muse Settings. Album Art is a
+		 * dead row off the network, and the runner does not land on dead
+		 * rows. */
 		if (is_muse(&a->sys.systems[a->sys_cursor])) {
 			if (sel == 1) {
 				sel = SM_SORT;
 			} else {
 				if (key != IN_ACCEPT) return MENU_STAY;
 				if (sel == 2) { album_art_screen(a); return MENU_STAY; }
+				if (sel == 4) { muse_settings_screen(a); return MENU_STAY; }
 				if (sel != 3) return MENU_STAY;
 				wait_panel(a, "Muse", "Scanning...");
 				rescan_all(a);
@@ -6401,20 +6523,70 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 
-	/* Auto Off, on the left/right idiom Display mode uses. */
+	/* Auto Sleep, on the left/right idiom Display mode uses. */
 	if (d && sel == PM_SLEEP) {
-		int k, at = 0;
+		int k, at = AUTO_OFF_COUNT - 1;
 
+		/* The first rung at or above, not an exact match: 300s from the
+		 * pre-NextUI ladder steps from 240/360, not from never. */
 		for (k = 0; k < AUTO_OFF_COUNT; k++)
-			if (AUTO_OFF[k] == a->auto_off) { at = k; break; }
+			if (AUTO_OFF[k] >= a->auto_off) { at = k; break; }
 		at += d;
 		if (at < 0) at = 0;
 		if (at >= AUTO_OFF_COUNT) at = AUTO_OFF_COUNT - 1;
 		a->auto_off = AUTO_OFF[at];
 		auto_off_save(a->auto_off);
+		/* Mutually exclusive with Auto Off, matching NextUI: no two-tier
+		 * escalation ladder, so at most one of the pair is ever armed. */
+		if (a->auto_off && a->auto_poweroff) {
+			a->auto_poweroff = 0;
+			auto_poweroff_save(0);
+		}
 		/* From now, not from whenever the last countdown began: choosing 30s
 		 * should not inherit two minutes of an old one already spent. */
 		a->idle.since_ms = plat_now_ms();
+		return MENU_STAY;
+	}
+	/* Auto Off, same idiom as Auto Sleep above and mutually exclusive with
+	 * it - see that block's comment. */
+	if (d && sel == PM_AUTO_OFF) {
+		int k, at = 0;
+
+		for (k = 0; k < AUTO_POWEROFF_COUNT; k++)
+			if (AUTO_POWEROFF[k] == a->auto_poweroff) { at = k; break; }
+		at += d;
+		if (at < 0) at = 0;
+		if (at >= AUTO_POWEROFF_COUNT) at = AUTO_POWEROFF_COUNT - 1;
+		a->auto_poweroff = AUTO_POWEROFF[at];
+		auto_poweroff_save(a->auto_poweroff);
+		if (a->auto_poweroff && a->auto_off) {
+			a->auto_off = 0;
+			auto_off_save(0);
+		}
+		a->idle.since_ms = plat_now_ms();
+		return MENU_STAY;
+	}
+	/* Suspend Timeout, same idiom, and independent of both rows above: it
+	 * governs light sleep however it began. Clamped at both ends - there is
+	 * no "never", as in NextUI. */
+	if (d && sel == PM_SUSPEND) {
+		int k, at = 3;                    /* 30s, should the stored value be off-ladder */
+
+		for (k = 0; k < SUSPEND_TIMEOUT_COUNT; k++)
+			if (SUSPEND_TIMEOUT[k] == plat_suspend_timeout_secs()) { at = k; break; }
+		at += d;
+		if (at < 0) at = 0;
+		if (at >= SUSPEND_TIMEOUT_COUNT) at = SUSPEND_TIMEOUT_COUNT - 1;
+		db_set_int(db_dev(), "suspendtimeout", SUSPEND_TIMEOUT[at]);
+		return MENU_STAY;
+	}
+	/* Mute Switch: a toggle, so A flips it as well as left/right
+	 * (TortOS-ib9). */
+	if (sel == PM_MUTESW && (d || key == IN_ACCEPT)) {
+		bool lock = db_get_int(db_dev(), "muteswitch", 0) != 1;
+
+		db_set_int(db_dev(), "muteswitch", lock);
+		plat_mute_switch_lock(lock);
 		return MENU_STAY;
 	}
 	/* Text size, same idiom. Changing it reopens every font, so the whole UI
@@ -6799,10 +6971,13 @@ static int slot_strip(app *a, SDL_Texture *bg, int saving)
 		/* This screen used to ignore the power button outright - the one
 		 * screen in the launcher that did. Stop the game and close with
 		 * nothing chosen; game_menu sees the flag and closes behind us. */
-		if (a->in.pressed[IN_POWER] || idle_due(a)) {
-			plat_note_power_pressed();
-			plat_resident_line("STOP");
-			done = -1;
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) {
+				plat_note_power_pressed();
+				plat_resident_line("STOP");
+				done = -1;
+			}
 		}
 
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
@@ -6847,6 +7022,7 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 	u.dmode  = DMODES[a->view[a->sys_cursor].dmode].label;
 	u.earned = chv_earned();
 	u.total  = chv_count();
+	u.sleep_supported = plat_sleep_supported();
 	return gm_rows(&u, out, b);
 }
 
@@ -7001,12 +7177,15 @@ static bool cheevo_detail_screen(app *a, SDL_Texture *bg, bool over_shelf,
 		 * plat_resident_wait, so nothing else is watching power for it. Over
 		 * the shelf there is no game to stop, and stopping one is not what
 		 * power means there. */
-		if (a->in.pressed[IN_POWER] || idle_due(a)) {
-			if (over_shelf) { power_off(a); break; }
-			plat_note_power_pressed();
-			plat_resident_line("STOP");
-			done = 1;
-			close_all = true;
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) {
+				if (over_shelf) { power_off(a); break; }
+				plat_note_power_pressed();
+				plat_resident_line("STOP");
+				done = 1;
+				close_all = true;
+			}
 		}
 
 		chv_backdrop(a, bg, over_shelf);
@@ -7343,7 +7522,7 @@ static void np_line(SDL_Renderer *r, TTF_Font *f, const char *s, int y,
 
 /* Returns how long until the picture would change by itself, in ms - 0 while
  * a line is sliding - so the loop can leave the screen alone until then. */
-static unsigned np_draw(app *a, const mu_now *mn, const char *next)
+static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 {
 	SDL_Renderer *r = a->r;
 	SDL_Rect cov = { NP_X, NP_Y, NP_SIDE, NP_SIDE };
@@ -7400,7 +7579,14 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next)
 			snprintf(line, sizeof line, "%d of %d", mn->index + 1, mn->count);
 			gx += ui_text(r, fs, line, NP_TX, y, -1, UI_TEXT_DIM) + 18;
 		}
-		if (g >= 0) ui_glyph_draw(r, (ui_glyph)g, gx + gs / 2, y + asc - cap / 2, gs, acc);
+		if (g >= 0) {
+			ui_glyph_draw(r, (ui_glyph)g, gx + gs / 2, y + asc - cap / 2, gs, acc);
+			gx += gs + 12;
+		}
+		/* The Mute Switch down in muse button lock: what the buttons will
+		 * do once the screen goes dark, which is nothing. Only while it is
+		 * down, as an iPod shows its hold. TortOS-7cv. */
+		if (lock) ui_glyph_draw(r, UI_GLYPH_LOCK, gx + gs / 2, y + asc - cap / 2, gs, acc);
 	}
 	/* Room under it for the larger mark and for the title to stand clear of
 	 * the line above - which read as one block with it at 6px. */
@@ -7473,6 +7659,7 @@ static muse_exit muse_now_screen(app *a)
 	struct {
 		mu_state st;
 		int at, len, index, count, mode;
+		bool lock;
 		char title[128], artist[128], album[128];
 		SDL_Texture *tex;
 	} shown, drawn;
@@ -7497,7 +7684,10 @@ static muse_exit muse_now_screen(app *a)
 		mn = musec_now();
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; how = MUSE_CLOSE; break; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { muse_power(a); how = MUSE_CLOSE; break; }
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) { muse_power(a); how = MUSE_CLOSE; break; }
+		}
 		if (a->in.pressed[IN_BACK]) break;
 		if (a->in.pressed[IN_SELECT]) { how = MUSE_CLOSE; break; }
 		if (a->in.pressed[IN_MENU]) {
@@ -7545,12 +7735,13 @@ static muse_exit muse_now_screen(app *a)
 		memcpy(shown.album, mn->album, sizeof shown.album);
 		shown.tex = g_np.tex;
 		shown.mode = (int)musec_mode();
+		shown.lock = plat_hold_switch();
 		for (b = 0; b < IN_COUNT && !touched; b++)
 			touched = a->in.pressed[b] || a->in.down[b];
 		now = plat_now_ms();
 
 		if (touched || memcmp(&shown, &drawn, sizeof shown) || (int)(now - due) >= 0) {
-			unsigned wait = np_draw(a, mn, next);
+			unsigned wait = np_draw(a, mn, next, shown.lock);
 			Uint32 osd;
 
 			/* Asked after the draw, which is what retires a line whose
@@ -7715,7 +7906,10 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		}
 		if (a->in.pressed[IN_BACK]) done = 1;
 		if (a->in.pressed[IN_SELECT]) { how = MUSE_CLOSE; break; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { muse_power(a); how = MUSE_CLOSE; break; }
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) { muse_power(a); how = MUSE_CLOSE; break; }
+		}
 		/* After a rescan `al` is gone with the old library: not one more
 		 * frame from it. */
 		if (a->in.pressed[IN_MENU]) {
@@ -7866,7 +8060,10 @@ static void muse_shelf_screen(app *a, bool now)
 		cover_answers();
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; break; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { muse_power(a); break; }
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) { muse_power(a); break; }
+		}
 		/* B and SELECT both leave, which is the rule everywhere in Muse: one
 		 * button in, the same button out, and B for the level below. */
 		if (a->in.pressed[IN_BACK] || a->in.pressed[IN_SELECT]) break;
@@ -8072,10 +8269,13 @@ static void album_art_screen(app *a)
 
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { museart_cancel(); a->running = false; return; }
-		if (a->in.pressed[IN_POWER] || idle_due(a)) {
-			museart_cancel();
-			power_off(a);
-			return;
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) {
+				museart_cancel();
+				power_off(a);
+				return;
+			}
 		}
 		if (menu_leaving(a)) done = true;
 		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
@@ -8132,7 +8332,10 @@ static void synopsis_screen(app *a, const char *title, const char *text,
 		if (a->in.pressed[IN_SELECT]) muse_open(a, NULL, NULL);
 		/* Nothing else watches power for this screen, the same as every other
 		 * loop the launcher runs outside plat_resident_wait. */
-		if (a->in.pressed[IN_POWER] || idle_due(a)) { power_off(a); break; }
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) { power_off(a); break; }
+		}
 
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -8216,11 +8419,14 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 		 *
 		 * Opened from the game details screen there is no game to stop, and
 		 * power means what it means everywhere else on the shelf. */
-		if (a->in.pressed[IN_POWER] || idle_due(a)) {
-			if (over_shelf) { power_off(a); break; }
-			plat_note_power_pressed();
-			plat_resident_line("STOP");
-			done = 1;
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) {
+				if (over_shelf) { power_off(a); break; }
+				plat_note_power_pressed();
+				plat_resident_line("STOP");
+				done = 1;
+			}
 		}
 
 		chv_backdrop(a, bg, over_shelf);
@@ -8235,6 +8441,101 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 	free(rows);
 	free(vals);
 	free(vcols);
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+}
+
+/* The hotkey submenu (sibling Diatom feature, its ADR-0035): which of a
+ * short candidate list of buttons, if any, triggers fast-forward, rewind, a
+ * quicksave or a quickload. Candidates are exactly what Diatom's own
+ * display_chord does NOT already claim under SELECT (l1/r1/a) - see that
+ * ADR - so a binding made here can never be one Diatom would refuse.
+ *
+ * Four fixed rows, cycled left and right the way Display Mode already is -
+ * not a "press any button to capture it" flow, which this codebase has
+ * never built anywhere and would have been the highest-risk new interaction
+ * to write with no way to run it. A button already bound to one row is
+ * cleared from whichever OTHER row held it rather than refusing the change:
+ * the wire format itself refuses a spec with a button claimed twice
+ * (diatom's hotkeys_set), so allowing that here would mean silently failing
+ * to persist instead of a clear "last choice wins" - friendlier for a menu
+ * than for a protocol. The parser/serializer (hk_parse/hk_serialize) live
+ * in hkbind.c/.h, split out under ADR-0001 so a check can drive them with
+ * no SDL. */
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
+{
+	int btn_for_row[HK_ROW_COUNT];
+	menu_row rows[HK_ROW_COUNT];
+	char vals[HK_ROW_COUNT][8];
+	int sel = 0, done = 0, i;
+
+	hk_parse(plat_hotkey_map(tag), btn_for_row);
+
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+
+	while (!done && !want_quit) {
+		plat_input_poll(&a->in);
+
+		if (in_repeat(&a->in, IN_UP))   sel = (sel + HK_ROW_COUNT - 1) % HK_ROW_COUNT;
+		if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % HK_ROW_COUNT;
+
+		{
+			int d = 0;
+
+			if (in_repeat(&a->in, IN_LEFT))  d = -1;
+			if (in_repeat(&a->in, IN_RIGHT)) d = 1;
+			if (d) {
+				/* Skip candidates another row already holds, rather than
+				 * landing on one and clearing that row out from under it -
+				 * cycling past a taken button while looking for a further
+				 * one used to steal it with no way to tell "passing
+				 * through" from "selecting". A row is freed the same way
+				 * it is claimed: cycle it to None first. */
+				int nb = btn_for_row[sel];
+				char spec[128];
+				int tries;
+
+				for (tries = 0; tries < HK_BTN_COUNT; tries++) {
+					nb = (nb + d + HK_BTN_COUNT) % HK_BTN_COUNT;
+					if (nb == 0) break;
+					for (i = 0; i < HK_ROW_COUNT; i++)
+						if (i != sel && btn_for_row[i] == nb) break;
+					if (i == HK_ROW_COUNT) break;   /* nb is free */
+				}
+				btn_for_row[sel] = nb;
+
+				hk_serialize(btn_for_row, spec, sizeof spec);
+				plat_hotkey_set(tag, spec);
+				/* Live, not only persisted: this screen is only ever open
+				 * mid-session (reached from the in-game menu), so the
+				 * change should take hold without the player having to
+				 * quit and relaunch to see it. */
+				plat_resident_line("SETHOTKEYS\thotkeys=%s", spec);
+			}
+		}
+
+		if (menu_leaving(a)) done = 1;
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) {
+				plat_note_power_pressed();
+				plat_resident_line("STOP");
+				done = 1;
+			}
+		}
+
+		for (i = 0; i < HK_ROW_COUNT; i++)
+			snprintf(vals[i], sizeof vals[i], "%s", HK_BTN_NAME[btn_for_row[i]]);
+		for (i = 0; i < HK_ROW_COUNT; i++)
+			rows[i] = (menu_row){ HK_ACTION_LABEL[i], vals[i], true };
+
+		chv_backdrop(a, bg, false);
+		menu_draw(a, "Hotkeys", rows, HK_ROW_COUNT, sel, 0, MENU_ACCENT);
+		SDL_RenderPresent(a->r);
+		SDL_Delay(8);
+	}
+
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 }
@@ -8302,6 +8603,182 @@ static menu_result gm_power(app *a, void *ctx)
 	return MENU_DONE;
 }
 
+/* NextUI's Menu_beforeSleep: before the device sleeps or powers off with a
+ * game loaded, write it out - a battery that dies asleep loses whatever
+ * sleep did not save. SLOT_AUTO, silently: a safety net, not a save the
+ * player manages. Waits for Diatom's SAVED (its main.c answers every SAVE),
+ * as State_autosave finishes before PWR_sleep begins; a save that never
+ * answers costs three seconds, not the sleep. Nothing on the shelf: no game
+ * is loaded there, and the cursor's game is not the one that was running.
+ * The resume-into-game marker, NextUI's AUTO_RESUME_PATH, is .playing, which
+ * already stands for the whole of a game session. */
+static void checkpoint_game(app *a)
+{
+	sysview *sv = &a->view[a->sys_cursor];
+	int o;
+	char sp[LIB_PATH * 2], pp[LIB_PATH * 2];
+
+	if (!a->game_on || !plat_resident_ready()) return;
+	o = shelf_owner(a, a->sys_cursor, sv->cursor);
+	slot_state_path(a, o, &sv->list.items[sv->cursor], SLOT_AUTO,
+	                sp, sizeof sp);
+	plat_resident_line("SAVE\tpath=%s", sp);
+	slot_preview_path(a, o, &sv->list.items[sv->cursor], SLOT_AUTO,
+	                  pp, sizeof pp);
+	copy_file(plat_resident_last_preview(), pp);
+	plat_resident_saved(sp, 3000);
+}
+
+/* Sleep with music playing: the screen goes off and the album plays on.
+ * TortOS's own, asked for 2026-09-28 (TortOS-a5k) - a deliberate divergence
+ * from NextUI, whose PWR_enterSleep pauses the music (SND_pauseAudio) and
+ * sleeps as ever, the same kind of departure as Auto Off.
+ *
+ * Its own loop rather than light sleep's, because the launcher, not Muse,
+ * moves the queue on: musec_poll hands the daemon the next track at each END
+ * (musec.c's advance), so anything that stopped polling would end the album
+ * with the track it was on. The same poll carries a headset's buttons.
+ *
+ * iPod-style, the user's call: Muse's own buttons do what they do on Now
+ * Playing AND wake the screen; any other button only wakes; the volume keys
+ * act without waking. A POWER tap wakes, a hold powers off. Whichever wakes
+ * it, the press is used up - A in the dark toggles the music and does not
+ * also open the game under the cursor. Muse Settings' Wake Screen On Press
+ * set to No (TortOS-28l) keeps it dark instead: Muse's buttons act, every
+ * other button is ignored, and only POWER wakes.
+ *
+ * Once the music stops - paused here, by a headset, or the album's end - it
+ * stays dark with the same buttons live for the Suspend Timeout, so a pause
+ * in the dark can be undone in the dark (TortOS-28l); music again cancels
+ * the countdown. Only when it runs out does whatever asked for sleep carry
+ * on: suspend, at once - *waited is the time already spent, which light
+ * sleep counts toward the same timeout - or Auto Off's power-off. So the
+ * Suspend Timeout is ALSO Auto Off's grace after the music stops: one
+ * setting rather than a new one, the user's call 2026-09-28, and in the
+ * README. Never suspend while playing: suspend is where the sound would
+ * stop. */
+typedef enum { DARK_WOKE, DARK_STOPPED, DARK_POWEROFF } dark_end;
+
+static dark_end music_dark(app *a, unsigned *waited)
+{
+	static const char *const said[] = { "woke", "music stopped", "power off" };
+	dark_end end = DARK_STOPPED;
+	unsigned t0 = plat_now_ms();
+	unsigned grace = (unsigned)plat_suspend_timeout_secs() * 1000u;
+	unsigned stopped = 0;                 /* when it stopped; 0 while playing */
+	bool wake = db_get_int(db_dev(), "muse.wake", 1);
+	int b;
+
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	plat_screen(false);
+	for (;;) {
+		pwr_action pa;
+		unsigned now;
+
+		musec_poll();
+		now = plat_now_ms();
+		if (musec_playing())               stopped = 0;
+		else if (!stopped)                 stopped = now ? now : 1;
+		else if (now - stopped >= grace)   break;
+		plat_input_poll(&a->in);
+		pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+		if (pa != PWR_NONE) {
+			end = pa == PWR_POWEROFF ? DARK_POWEROFF : DARK_WOKE;
+			break;
+		}
+		/* The switch as an iPod's hold (TortOS-ib9): read every tick, so
+		 * flipping it here takes effect at once. Presses made while it is
+		 * down are dropped, not saved for later. POWER, above, and headset
+		 * keys, in musec_poll, stay live. */
+		if (plat_hold_switch()) { SDL_Delay(50); continue; }
+		if (in_repeat(&a->in, IN_VOLUP)) plat_volume_nudge(+1);
+		if (in_repeat(&a->in, IN_VOLDN)) plat_volume_nudge(-1);
+		for (b = 0; b < IN_COUNT; b++)
+			if (a->in.pressed[b] && b != IN_POWER &&
+			    b != IN_VOLUP && b != IN_VOLDN) break;
+		if (b < IN_COUNT) {
+			/* Now Playing's bindings - see muse_now_screen. */
+			if (b == IN_ACCEPT)     musec_toggle();
+			else if (b == IN_Y)     muse_cycle_mode();
+			else if (b == IN_L1)    musec_prev();
+			else if (b == IN_R1)    musec_next();
+			else if (b == IN_LEFT)  musec_seek_by(-10);
+			else if (b == IN_RIGHT) musec_seek_by(+10);
+			if (wake) { end = DARK_WOKE; break; }
+		}
+		SDL_Delay(50);
+	}
+	/* Stopped stays dark: suspend or the power-off comes next. */
+	if (end != DARK_STOPPED) plat_screen(true);
+	if (waited) *waited = end == DARK_STOPPED ? plat_now_ms() - stopped : 0;
+	fprintf(stderr, "sleep: music dark %us, %s%s\n",
+	        (plat_now_ms() - t0) / 1000, said[end],
+	        a->game_on ? " (in game)" : "");
+	stats_asleep(plat_now_ms() - t0);
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	a->idle.since_ms = plat_now_ms();
+	return end;
+}
+
+/* NextUI's one sleep, from its PWR_update: before_sleep, PWR_sleep,
+ * after_sleep - whatever asked for it, a tap, Auto Sleep's idle, or the game
+ * menu's Sleep row. Before: the game checkpointed (Menu_beforeSleep). NextUI
+ * pauses the music here too (SND_pauseAudio); TortOS instead turns only the
+ * screen off until it stops - music_dark, above. After:
+ * the idle clock starts over (last_input_at = now), no button is left
+ * standing down, and time asleep stays out of Play Time (gametimectl).
+ * False when light sleep found no suspend to escalate into: the caller
+ * powers off, as PWR_waitForWake does. */
+static bool sleep_cycle(app *a)
+{
+	unsigned t0, waited = 0;
+	bool awake;
+
+	checkpoint_game(a);
+	if (musec_playing()) {
+		dark_end end = music_dark(a, &waited);
+
+		if (end != DARK_STOPPED) return end == DARK_WOKE;
+	}
+	t0 = plat_now_ms();
+	awake = plat_light_sleep(waited);
+	fprintf(stderr, "sleep: %s after %us%s\n",
+	        awake ? "awake" : "no suspend, powering off",
+	        (plat_now_ms() - t0) / 1000, a->game_on ? " (in game)" : "");
+	stats_asleep(plat_now_ms() - t0);
+	memset(&a->in, 0, sizeof a->in);
+	a->idle.since_ms = plat_now_ms();
+	return awake;
+}
+
+/* Every screen's power check, in one place: the button (a tap sleeps, a hold
+ * powers off) and the idle clock. Auto Sleep's idle is the same sleep a tap
+ * is; Auto Off's (TortOS's own, no NextUI counterpart) is the same power-off
+ * a hold is, so each screen's own power-off branch - power_off() on the
+ * shelf, STOP in a game, where Diatom writes the Auto slot on its way out -
+ * serves both. Sleep happens in here; the caller only ever sees
+ * PWR_POWEROFF, or PWR_NONE to carry on. */
+static pwr_action power_check(app *a)
+{
+	pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+
+	if (pa == PWR_NONE && idle_due(a)) {
+		pa = a->auto_poweroff ? PWR_POWEROFF : PWR_SLEEP;
+		fprintf(stderr, "power: idle -> %s\n",
+		        pa == PWR_SLEEP ? "sleep" : "power off");
+		/* Auto Off during music: the screen now, the power-off once the
+		 * music has been stopped for the Suspend Timeout (music_dark). A
+		 * hold is not idle, and still does what it says at once. */
+		if (pa == PWR_POWEROFF && musec_playing() &&
+		    music_dark(a, NULL) == DARK_WOKE)
+			pa = PWR_NONE;
+	}
+	if (pa == PWR_SLEEP) pa = sleep_cycle(a) ? PWR_NONE : PWR_POWEROFF;
+	return pa;
+}
+
 static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 {
 	gm_ctx *c = ctx;
@@ -8360,6 +8837,19 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	case GM_CHEEVOS:
 		cheevos_screen(a, c->bg, false);
 		break;
+	case GM_SLEEP:
+		/* The same sleep as a tap: sleep_cycle checkpoints the game first. */
+		if (sleep_cycle(a)) break;
+		plat_note_power_pressed();          /* no suspend: power off instead */
+		plat_resident_line("STOP");
+		return MENU_DONE;
+	case GM_HOTKEYS: {
+		sysview *sv = &a->view[a->sys_cursor];
+		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
+
+		hotkeys_screen(a, c->bg, a->sys.systems[o].tag);
+		break;
+	}
 	case GM_RESET:
 		plat_resident_line("RESET");
 		c->resume = true;
@@ -8387,6 +8877,14 @@ static void game_menu(app *a)
 	const char *pv = plat_resident_last_preview();
 
 	c.a = a;
+	/* What was pressed in the game is not for this menu. The launcher reads
+	 * no input while a game runs, so it all waits in the queues, and the
+	 * first frame here replayed it: a stale MENU closed the menu before it
+	 * was seen, an Up then A wrapped to Quit and ended the game (seen on the
+	 * device 2026-09-28). NextUI's menu opens with PAD_reset for the same
+	 * reason. */
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
 	if (pv && *pv) {
 		SDL_Surface *sf = IMG_Load(pv);
 
@@ -8673,21 +9171,12 @@ static void launch(app *a)
 			plat_resident_line("SETDISPLAY\tmode=%s",
 			                   DMODES[a->view[o].dmode].name);
 
-			/* Auto Off. Out here rather than inside the chv_load branch
-			 * above, which is where the first version put it and is the same
-			 * mistake the paragraph below describes: that branch is the one a
-			 * game with no achievements never takes, so Auto Off only ever
-			 * worked for games that happened to have a cached set.
-			 *
-			 * Unless on the charger - the feature exists to stop a game
-			 * running unattended on battery, and plugged in there is no
-			 * battery reason and no cost to leaving it. on_game_tick keeps
-			 * this true if the cable changes mid-game. */
-			g_idle_secs = a->auto_off;
-			g_idle_charging = on_charger();
-			plat_resident_line("SETIDLE\tms=%d",
-			                   (g_idle_secs > 0 && !g_idle_charging)
-			                       ? g_idle_secs * 1000 : 0);
+			/* No idle anything during play: NextUI disables autosleep for
+			 * the whole of a running game (minarch.c's PWR_disableAutosleep)
+			 * and turns it back on only in the in-game menu, which is the
+			 * launcher's own idle_due. Said rather than assumed, because
+			 * Diatom's clock is its own global and outlives any one game. */
+			plat_resident_line("SETIDLE\tms=0");
 
 			/* The first play of this game: nothing was cached, so there is a
 			 * set to go and find. Out here and not inside the chv_load branch
@@ -8720,11 +9209,25 @@ static void launch(app *a)
 			 * engine when one side is fbdev. A warm launch is ~15ms, so there is
 			 * nothing to animate over anyway; the shelf simply holds until
 			 * the game's first frame replaces it. */
+			a->game_on = true;
 			for (;;) {
 				r = plat_resident_wait();
+				/* A tap mid-game: Diatom paused for it (platform.c), and
+				 * nothing was drawn over its pages, so it can simply be
+				 * resumed - or, if there was no suspend to escalate into,
+				 * stopped the way a held button stops it. */
+				if (r == RES_PAUSED && plat_resident_sleep_asked()) {
+					if (sleep_cycle(a)) plat_resident_line("RESUME");
+					else {
+						plat_note_power_pressed();
+						plat_resident_line("STOP");
+					}
+					continue;
+				}
 				if (r == RES_PAUSED) { game_menu(a); continue; }
 				break;
 			}
+			a->game_on = false;
 			resident = (r == RES_EXIT);
 
 			/* The Auto card's picture, written ONLY here - at the same moment
@@ -9780,7 +10283,7 @@ static void np_shot(app *a)
 		}
 	}
 	np_cover(a, shot_np);
-	np_draw(a, &mn, next);
+	np_draw(a, &mn, next, plat_hold_switch());
 }
 
 /* For a shot: every cover not on the card is a cover the music does not
@@ -10388,6 +10891,7 @@ int main(int argc, char *argv[])
 		/* Without this every HTTPS request fails verification, because the
 		 * device has no trust store of its own - res/ssl/README.md. */
 		a.auto_off = auto_off_load();
+		a.auto_poweroff = auto_poweroff_load();
 		g_aout_policy = aout_load();
 
 		snprintf(cp, sizeof cp, "%s/cacert.pem", P_ROOT);
@@ -10662,7 +11166,10 @@ int main(int argc, char *argv[])
 		 * device 2026-08-30 at a 30s timeout. Counting the charger as
 		 * activity is also what the setting says: unplugging starts a whole
 		 * fresh countdown, because until then the timeout was not running. */
-		if (a.in.pressed[IN_POWER] || idle_due(&a)) { power_off(&a); break; }
+		{
+			pwr_action pa = power_check(&a);
+			if (pa == PWR_POWEROFF) { power_off(&a); break; }
+		}
 
 		if (in_repeat(&a.in, IN_VOLUP))    plat_volume_nudge(+1);
 		if (in_repeat(&a.in, IN_VOLDN))    plat_volume_nudge(-1);
