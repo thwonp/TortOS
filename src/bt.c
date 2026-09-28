@@ -18,7 +18,7 @@
 #define BLUETOOTHCTL "/usr/bin/bluetoothctl"
 
 /* Where bluetoothd keeps its bonds, which is compiled into it: /etc/lib/bluetooth
- * on the Brick, /var/lib/bluetooth on the Brick Pro (TortOS-pky.10). bt-alsa.sh
+ * on the Brick, /etc/bluetooth/keys on the Brick Pro (TortOS-pky.10). bt-alsa.sh
  * asks the binary once at boot and exports the answer; without it (a tool run
  * over adb) this is the Brick's path, as it always was. */
 static const char *bonds(void)

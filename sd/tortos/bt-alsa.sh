@@ -38,10 +38,16 @@
 # keeps the Brick's path. Decided once and exported: launch.sh sources this
 # before starting tortos.elf, whose bonds() reads it, and plat_sleep's shell
 # inherits it rather than grepping 8 MB again.
+#
+# On the Pro, the link's target rather than the link: the init wrapper makes
+# /var/lib/bluetooth only when bluetoothd starts, ~20 s into boot, and by then
+# bt_write_asoundrc has run and found nothing - an empty .asoundrc, and every
+# headset on the speaker until the next pairing (TortOS-pky.12).
 if [ -z "$TORTOS_BT_BONDS" ]; then
 	if grep -q /var/lib/bluetooth /usr/bin/bluetoothd 2> /dev/null &&
 		! grep -q /etc/lib/bluetooth /usr/bin/bluetoothd 2> /dev/null; then
 		TORTOS_BT_BONDS=/var/lib/bluetooth
+		[ -d /etc/bluetooth/keys ] && TORTOS_BT_BONDS=/etc/bluetooth/keys
 	else
 		TORTOS_BT_BONDS=/etc/lib/bluetooth
 	fi
