@@ -112,6 +112,7 @@ matters to you - a card is the one part of this that gets reformatted.
 | **Y** | favorite it - Favorites is a shelf of its own. Nothing on Muse's shelf |
 | **Volume rocker** | volume, everywhere, including in game |
 | **F1/F2** | brightness, everywhere, including in game |
+| **Left stick** (Brick Pro) | the d-pad, in menus and in game; FN1/FN2 are its brightness keys |
 | **MENU** (on the systems row) | the TortOS menu - settings that are about the firmware |
 | **MENU** (inside a system) | that system's menu, below |
 | **MENU** (in `Cubic`) | always the TortOS menu; B is the system's |
