@@ -37,9 +37,9 @@
 
 /* The Brick Pro (TG4040) is the same machine with sticks. There 317/318 are
  * the stick clicks, and its two function keys arrive on the same node as
- * KEY_F1/KEY_F2 - SDL buttons 11 and 12, which the Brick never sends. Home is
- * KEY_HOMEPAGE, SDL button 15. Read off the device's own key bitmap on
- * 2026-09-28; NextUI numbers them the same way. */
+ * KEY_F1/KEY_F2 - SDL buttons 11 and 12, which the Brick never sends. Its
+ * Home key is the Brick's MENU, button 8. Pressed and logged 2026-09-28. The
+ * pad also advertises KEY_HOMEPAGE (button 15), which no key sends. */
 #define CODE_PRO_FN_LEFT  KEY_F1
 #define CODE_PRO_FN_RIGHT KEY_F2
 
@@ -77,7 +77,6 @@ enum {
 	JOY_L1 = 4, JOY_R1 = 5, JOY_SELECT = 6, JOY_START = 7,
 	JOY_MENU = 8, JOY_L3 = 9, JOY_R3 = 10,
 	JOY_VOLDN = 13, JOY_VOLUP = 14,
-	JOY_HOME = 15, /* Brick Pro only */
 };
 
 /* Hold-to-repeat. Short delay and a quick rate: this is a shelf you sweep
@@ -468,7 +467,6 @@ static in_button map_joy_button(int jb)
 	case JOY_START: return IN_START;
 	case JOY_SELECT: return IN_SELECT;
 	case JOY_MENU: return IN_MENU;
-	case JOY_HOME: return IN_MENU;
 	case JOY_VOLUP: return IN_VOLUP;
 	case JOY_VOLDN: return IN_VOLDN;
 	default: return IN_NONE;
