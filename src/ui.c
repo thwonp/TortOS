@@ -932,6 +932,20 @@ static void g_build(ui_glyph g, g_shape *s)
 	const float pi = 3.14159265f;
 
 	memset(s, 0, sizeof *s);
+	if (g == UI_GLYPH_LOCK) {
+		/* A padlock: the shackle, a half circle on two legs, over a body
+		 * filled with wide strokes whose round ends round its corners.
+		 * Close enough together that the sides come out straight. */
+		float y;
+
+		g_arc(s, 0.50f, 0.34f, 0.17f, pi, 1.5f * pi);
+		g_arc(s, 0.50f, 0.34f, 0.17f, 1.5f * pi, 2.0f * pi);
+		g_line(s, 0.33f, 0.34f, 0.33f, 0.48f, G_W);
+		g_line(s, 0.67f, 0.34f, 0.67f, 0.48f, G_W);
+		for (y = 0.56f; y < 0.77f; y += 0.05f)
+			g_line(s, 0.32f, y, 0.68f, y, 0.10f);
+		return;
+	}
 	if (g == UI_GLYPH_SHUFFLE) {
 		/* Two paths that cross, both arriving on the right. */
 		g_line(s, 0.10f, 0.32f, 0.30f, 0.32f, G_W);

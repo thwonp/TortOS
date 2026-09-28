@@ -143,10 +143,11 @@ than any one console:
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed - see **Audio** below |
 | **Over The Hare** | the file server; needs Wi-Fi and says so when there is none |
+| **Auto Off** | how long without a button before the device powers itself down instead of sleeping. Setting it turns Auto Sleep to `never`, and the other way round |
 | **Auto Sleep** | how long without a button before the device sleeps, the same as a tap of POWER. Not during play - only on the shelf and in the menus, the in-game menu included |
 | **Suspend Timeout** | how long a sleeping device waits for POWER before it suspends. On the charger it stays awake |
 | **Keep Awake Over USB** | plugged into a computer (not just a charger), nothing sleeps or turns off |
-| **Auto Off** | how long without a button before the device powers itself down instead of sleeping. Setting it turns Auto Sleep to `never`, and the other way round |
+| **Mute Switch** | what the side switch does: `mute`, or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
 | **UI Theme** | `Plain Jane` or `Fancy Pants` - which art the shelves wear |
 | **UI Direction** | `Horizontal`, `Vertical` or `Cubic` - see below |
 | **Box Art** | fetch what the whole library is missing |
@@ -373,11 +374,12 @@ dark can be undone in the dark. Then the device suspends, or with Auto Off it
 powers down: the Suspend Timeout is also Auto Off's grace once the music
 stops. NextUI pauses the music to sleep; this is TortOS's own.
 
-For a pocket, set **Mute Switch** (Settings) to `button lock`. The switch then
-no longer mutes; it works like an iPod's hold switch. While it is down and the
-music plays with the screen dark, every button and the volume keys are
+For a pocket, set **Mute Switch** (Settings) to `muse button lock`. The switch
+then no longer mutes; it works like an iPod's hold switch. While it is down
+and the music plays with the screen dark, every button and the volume keys are
 ignored. POWER and a headset's buttons still work. With the screen on, the
-switch does nothing.
+switch locks nothing; Now Playing shows a padlock beside the mode while it is
+down, so you can see it is set before the screen goes dark.
 
 Covers come from the music. The first time an album is shown, Muse takes the
 picture its files carry and keeps it beside the album, in

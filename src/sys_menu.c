@@ -118,7 +118,9 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	 * TortOS's own: idle until a full shutdown, resume-into-game putting you
 	 * back. It and Auto Sleep are mutually exclusive - main.c's
 	 * PM_SLEEP/PM_AUTO_OFF handling - so at most one of those two labels is
-	 * ever a real interval. */
+	 * ever a real interval, and why the two sit together, Auto Off on top. */
+	out[PM_AUTO_OFF]     = (menu_row){ "Auto Off",  b->a,      true  };
+	sys_menu_auto_off_label(u->auto_poweroff, b->a, sizeof b->a);
 	out[PM_SLEEP]        = (menu_row){ "Auto Sleep", b->c,     true  };
 	sys_menu_auto_off_label(u->auto_off, b->c, sizeof b->c);
 	out[PM_SUSPEND]      = (menu_row){ "Suspend Timeout", b->e, true };
@@ -128,11 +130,10 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	out[PM_KEEPAWAKE]    = (menu_row){ "Keep Awake Over USB",
 	                                   u->keep_awake_usb ? "on" : "off", true };
 	/* TortOS-ib9: what the side switch does. Button Lock is an iPod's hold
-	 * switch, and only while music plays with the screen off - music_dark. */
+	 * switch, and only while music plays with the screen off - music_dark.
+	 * "muse" in the value says so (TortOS-mhw). */
 	out[PM_MUTESW]       = (menu_row){ "Mute Switch",
-	                                   u->mute_lock ? "button lock" : "mute", true };
-	out[PM_AUTO_OFF]     = (menu_row){ "Auto Off",  b->a,      true  };
-	sys_menu_auto_off_label(u->auto_poweroff, b->a, sizeof b->a);
+	                                   u->mute_lock ? "muse button lock" : "mute", true };
 	/* Both change how the shelf looks and nothing about what is on it. They
 	 * are what is left of that group: Text Size stood here until the band it
 	 * offered turned out to be too narrow to matter - src/ui.c. */

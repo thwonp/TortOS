@@ -7530,7 +7530,7 @@ static void np_line(SDL_Renderer *r, TTF_Font *f, const char *s, int y,
 
 /* Returns how long until the picture would change by itself, in ms - 0 while
  * a line is sliding - so the loop can leave the screen alone until then. */
-static unsigned np_draw(app *a, const mu_now *mn, const char *next)
+static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 {
 	SDL_Renderer *r = a->r;
 	SDL_Rect cov = { NP_X, NP_Y, NP_SIDE, NP_SIDE };
@@ -7587,7 +7587,14 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next)
 			snprintf(line, sizeof line, "%d of %d", mn->index + 1, mn->count);
 			gx += ui_text(r, fs, line, NP_TX, y, -1, UI_TEXT_DIM) + 18;
 		}
-		if (g >= 0) ui_glyph_draw(r, (ui_glyph)g, gx + gs / 2, y + asc - cap / 2, gs, acc);
+		if (g >= 0) {
+			ui_glyph_draw(r, (ui_glyph)g, gx + gs / 2, y + asc - cap / 2, gs, acc);
+			gx += gs + 12;
+		}
+		/* The Mute Switch down in muse button lock: what the buttons will
+		 * do once the screen goes dark, which is nothing. Only while it is
+		 * down, as an iPod shows its hold. TortOS-7cv. */
+		if (lock) ui_glyph_draw(r, UI_GLYPH_LOCK, gx + gs / 2, y + asc - cap / 2, gs, acc);
 	}
 	/* Room under it for the larger mark and for the title to stand clear of
 	 * the line above - which read as one block with it at 6px. */
@@ -7660,6 +7667,7 @@ static muse_exit muse_now_screen(app *a)
 	struct {
 		mu_state st;
 		int at, len, index, count, mode;
+		bool lock;
 		char title[128], artist[128], album[128];
 		SDL_Texture *tex;
 	} shown, drawn;
@@ -7735,12 +7743,13 @@ static muse_exit muse_now_screen(app *a)
 		memcpy(shown.album, mn->album, sizeof shown.album);
 		shown.tex = g_np.tex;
 		shown.mode = (int)musec_mode();
+		shown.lock = plat_hold_switch();
 		for (b = 0; b < IN_COUNT && !touched; b++)
 			touched = a->in.pressed[b] || a->in.down[b];
 		now = plat_now_ms();
 
 		if (touched || memcmp(&shown, &drawn, sizeof shown) || (int)(now - due) >= 0) {
-			unsigned wait = np_draw(a, mn, next);
+			unsigned wait = np_draw(a, mn, next, shown.lock);
 			Uint32 osd;
 
 			/* Asked after the draw, which is what retires a line whose
@@ -10282,7 +10291,7 @@ static void np_shot(app *a)
 		}
 	}
 	np_cover(a, shot_np);
-	np_draw(a, &mn, next);
+	np_draw(a, &mn, next, plat_hold_switch());
 }
 
 /* For a shot: every cover not on the card is a cover the music does not

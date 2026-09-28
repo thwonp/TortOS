@@ -284,7 +284,7 @@ static void tortos_menu_online(void)
 	ck(!strcmp(val(&rows[PM_KEEPAWAKE]), "on"), "Keep Awake Over USB reads on");
 	u.mute_lock = true;
 	sys_menu_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[PM_MUTESW]), "button lock"), "Mute Switch reads button lock");
+	ck(!strcmp(val(&rows[PM_MUTESW]), "muse button lock"), "Mute Switch reads muse button lock");
 
 	/* THE SCREENSCRAPER ROW HAS THREE STATES, one more than the Cheevos row
 	 * beside it: the developer key comes from the environment at build time,

@@ -38,10 +38,11 @@ What this fork does differently from upstream TortOS. Details are in
   Suspend Timeout, with the playback buttons still live, before it suspends,
   or powers off when Auto Off is armed. There is no
   separate setting for Auto Off's grace; set Suspend Timeout to change it.
-- **Settings → Mute Switch: `mute` / `button lock`.** In `button lock` mode the
-  switch stops muting and works like an iPod's hold switch: while it is down
-  and music plays with the screen dark, all buttons and the volume keys are
-  ignored. POWER and headset buttons still work.
+- **Settings → Mute Switch: `mute` / `muse button lock`.** In
+  `muse button lock` mode the switch stops muting and works like an iPod's
+  hold switch: while it is down and music plays with the screen dark, all
+  buttons and the volume keys are ignored. POWER and headset buttons still
+  work. Now Playing shows a padlock while the switch is down.
 
 <div align="center">
   
@@ -194,7 +195,7 @@ The volume buttons and F1/F2 (brightness) work everywhere.
 <details>
 <summary>What's in each menu</summary>
 
-**The TortOS menu,** MENU on the consoles row: Play Time, Wi-Fi, Bluetooth, Audio Output, Over The Hare, Auto Sleep, Suspend Timeout, Keep Awake Over USB, Auto Off, UI Theme, UI Direction, Box Art, Cheevos, ScreenScraper, Controls, About TortOS.
+**The TortOS menu,** MENU on the consoles row: Play Time, Wi-Fi, Bluetooth, Audio Output, Over The Hare, Auto Off, Auto Sleep, Suspend Timeout, Keep Awake Over USB, Mute Switch, UI Theme, UI Direction, Box Art, Cheevos, ScreenScraper, Controls, About TortOS.
 
 **A console's menu,** MENU inside it: Sort By, Display Mode, Box Art for that console alone, and Rescan Folder for games copied since the Brick was turned on.
 
