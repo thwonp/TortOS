@@ -1981,6 +1981,7 @@ bool plat_muted(void) { return false; }
 bool plat_headphones_present(void) { return false; }
 static void jack_forget(void) { }
 static void mute_forget(void) { }
+static void backlight_off(void) { }
 
 /* No settings database on the host, so the config defaults are all there is.
  * Taken anyway rather than ignored: a shelf rendered by --shot should show the
@@ -1992,6 +1993,12 @@ void plat_settings_init(void)
 }
 
 #endif  /* __linux__ */
+
+void plat_screen(bool on)
+{
+	if (on) apply_brightness(cur_bright);
+	else    backlight_off();
+}
 
 
 /* The settings indicator: a thin line across the very top on any volume or

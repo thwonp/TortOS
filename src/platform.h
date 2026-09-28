@@ -197,6 +197,11 @@ bool plat_sleep(void);
  * which NextUI answers by powering off; the caller does that. */
 bool plat_light_sleep(void);
 
+/* The backlight alone, off or back at the player's level - no mute, no input
+ * flush, no escalation. For main.c's music_dark, the screen-off that lets an
+ * album play on where light sleep would pause it (TortOS-a5k). */
+void plat_screen(bool on);
+
 /* Keep Awake Over USB (main.c's PM_KEEPAWAKE) is on AND a computer has
  * enumerated the device - not merely a charger. NextUI's
  * CFG_getKeepAwakeWhenUSB() && is_usb_connected: holds the idle clock and

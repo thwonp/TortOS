@@ -2369,11 +2369,11 @@ static bool idle_due(app *a)
 	for (b = 0; b < IN_COUNT; b++)
 		if (a->in.pressed[b] || a->in.down[b]) break;
 
-	/* Music playing HOLDS the clock the way the charger does, rather than
-	 * counting as input: an album is somebody using the device with nobody
-	 * touching it, and when it stops the countdown starts fresh. */
-	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT,
-	                  keep_awake() || musec_playing());
+	/* Music does NOT hold the clock (it did until TortOS-a5k): an album is
+	 * somebody using the device with nobody touching it, so running out
+	 * during one turns only the screen off - music_dark - and whatever the
+	 * clock was armed for waits until the music stops. */
+	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT, keep_awake());
 }
 
 /* The keyboard takes callbacks rather than an app - it is deliberately
@@ -8545,29 +8545,103 @@ static void checkpoint_game(app *a)
 	plat_resident_saved(sp, 3000);
 }
 
+/* Sleep with music playing: the screen goes off and the album plays on.
+ * TortOS's own, asked for 2026-09-28 (TortOS-a5k) - a deliberate divergence
+ * from NextUI, whose PWR_enterSleep pauses the music (SND_pauseAudio) and
+ * sleeps as ever, the same kind of departure as Auto Off.
+ *
+ * Its own loop rather than light sleep's, because the launcher, not Muse,
+ * moves the queue on: musec_poll hands the daemon the next track at each END
+ * (musec.c's advance), so anything that stopped polling would end the album
+ * with the track it was on. The same poll carries a headset's buttons.
+ *
+ * iPod-style, the user's call: Muse's own buttons do what they do on Now
+ * Playing AND wake the screen; any other button only wakes; the volume keys
+ * act without waking. A POWER tap wakes, a hold powers off. Whichever wakes
+ * it, the press is used up - A in the dark toggles the music and does not
+ * also open the game under the cursor.
+ *
+ * Once the music stops - the album ends, or a headset pauses it - whatever
+ * asked for sleep carries on, still dark: light sleep, whose Suspend Timeout
+ * counts from then, or Auto Off's power-off. Never suspend while playing:
+ * suspend is where the sound would stop. */
+typedef enum { DARK_WOKE, DARK_STOPPED, DARK_POWEROFF } dark_end;
+
+static dark_end music_dark(app *a)
+{
+	static const char *const said[] = { "woke", "music stopped", "power off" };
+	dark_end end = DARK_STOPPED;
+	unsigned t0 = plat_now_ms();
+	int b;
+
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	plat_screen(false);
+	while (musec_playing()) {
+		pwr_action pa;
+
+		musec_poll();
+		plat_input_poll(&a->in);
+		pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
+		if (pa != PWR_NONE) {
+			end = pa == PWR_POWEROFF ? DARK_POWEROFF : DARK_WOKE;
+			break;
+		}
+		if (in_repeat(&a->in, IN_VOLUP)) plat_volume_nudge(+1);
+		if (in_repeat(&a->in, IN_VOLDN)) plat_volume_nudge(-1);
+		for (b = 0; b < IN_COUNT; b++)
+			if (a->in.pressed[b] && b != IN_POWER &&
+			    b != IN_VOLUP && b != IN_VOLDN) break;
+		if (b < IN_COUNT) {
+			/* Now Playing's bindings - see muse_now_screen. */
+			if (b == IN_ACCEPT)     musec_toggle();
+			else if (b == IN_Y)     muse_cycle_mode();
+			else if (b == IN_L1)    musec_prev();
+			else if (b == IN_R1)    musec_next();
+			else if (b == IN_LEFT)  musec_seek_by(-10);
+			else if (b == IN_RIGHT) musec_seek_by(+10);
+			end = DARK_WOKE;
+			break;
+		}
+		SDL_Delay(50);
+	}
+	/* Stopped stays dark: light sleep or the power-off comes next. */
+	if (end != DARK_STOPPED) plat_screen(true);
+	fprintf(stderr, "sleep: music dark %us, %s\n",
+	        (plat_now_ms() - t0) / 1000, said[end]);
+	stats_asleep(plat_now_ms() - t0);
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	a->idle.since_ms = plat_now_ms();
+	return end;
+}
+
 /* NextUI's one sleep, from its PWR_update: before_sleep, PWR_sleep,
  * after_sleep - whatever asked for it, a tap, Auto Sleep's idle, or the game
- * menu's Sleep row. Before: the game checkpointed (Menu_beforeSleep), the
- * music paused (SND_pauseAudio - the one sound the launcher owns). After:
+ * menu's Sleep row. Before: the game checkpointed (Menu_beforeSleep). NextUI
+ * pauses the music here too (SND_pauseAudio); TortOS instead turns only the
+ * screen off until it stops - music_dark, above. After:
  * the idle clock starts over (last_input_at = now), no button is left
  * standing down, and time asleep stays out of Play Time (gametimectl).
  * False when light sleep found no suspend to escalate into: the caller
  * powers off, as PWR_waitForWake does. */
 static bool sleep_cycle(app *a)
 {
-	bool music = musec_playing();
 	unsigned t0;
 	bool awake;
 
 	checkpoint_game(a);
-	if (music) musec_toggle();
+	if (musec_playing()) {
+		dark_end end = music_dark(a);
+
+		if (end != DARK_STOPPED) return end == DARK_WOKE;
+	}
 	t0 = plat_now_ms();
 	awake = plat_light_sleep();
 	fprintf(stderr, "sleep: %s after %us%s\n",
 	        awake ? "awake" : "no suspend, powering off",
 	        (plat_now_ms() - t0) / 1000, a->game_on ? " (in game)" : "");
 	stats_asleep(plat_now_ms() - t0);
-	if (music && awake) musec_toggle();
 	memset(&a->in, 0, sizeof a->in);
 	a->idle.since_ms = plat_now_ms();
 	return awake;
@@ -8588,6 +8662,12 @@ static pwr_action power_check(app *a)
 		pa = a->auto_poweroff ? PWR_POWEROFF : PWR_SLEEP;
 		fprintf(stderr, "power: idle -> %s\n",
 		        pa == PWR_SLEEP ? "sleep" : "power off");
+		/* Auto Off during music: the screen now, the power-off once the
+		 * music stops (music_dark). A hold is not idle, and still does
+		 * what it says at once. */
+		if (pa == PWR_POWEROFF && musec_playing() &&
+		    music_dark(a) == DARK_WOKE)
+			pa = PWR_NONE;
 	}
 	if (pa == PWR_SLEEP) pa = sleep_cycle(a) ? PWR_NONE : PWR_POWEROFF;
 	return pa;

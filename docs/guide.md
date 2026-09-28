@@ -354,8 +354,17 @@ a second. SELECT in the in-game menu is how to switch between them mid-game.
 An album's tracks are a list over its shelf, with what is playing under a rule
 at the foot. A on a track plays the album from there and opens Now Playing; on
 the track already playing it just opens Now Playing. The shoulders and the
-d-pad's sides do what they do on Now Playing. Auto Sleep and Auto Off wait while
-music plays, the way they do on the charger.
+d-pad's sides do what they do on Now Playing.
+
+Sleep leaves music playing. A tap of POWER, Auto Sleep or Auto Off while an
+album plays turns only the screen off, and the album plays on. In the dark the
+volume keys change the volume and a headset's buttons work, both without
+lighting the screen. Now Playing's buttons (A, Y, the shoulders, the d-pad's
+sides) do what they do there and wake the screen, like an iPod's. Any other
+button, or a tap of POWER, just wakes it. When the music stops, because the
+album ended or a headset paused it, the device carries on to what was asked:
+it sleeps, and suspends after the Suspend Timeout, or with Auto Off it powers
+down. NextUI pauses the music to sleep; this is TortOS's own.
 
 Covers come from the music. The first time an album is shown, Muse takes the
 picture its files carry and keeps it beside the album, in
