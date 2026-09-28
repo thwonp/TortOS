@@ -26,6 +26,10 @@ extern const char *P_WEB;      /* /mnt/SDCARD/TortOS/res/web - Hare's page */
 extern const char *P_FONT;     /* the UI typeface          */
 void paths_init(void);
 
+/* TG4040 rather than TG3040: the Brick Pro. Same panel, codec and PMIC; the
+ * differences are its sticks, its buttons and one more ring of LEDs. */
+bool plat_is_brick_pro(void);
+
 typedef enum {
 	IN_LEFT, IN_RIGHT, IN_UP, IN_DOWN,
 	IN_ACCEPT, IN_BACK, IN_X, IN_Y,

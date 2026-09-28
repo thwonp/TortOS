@@ -49,4 +49,9 @@ const char *ctl_page_name(ctl_page p);
  * track in Muse. */
 int ctl_rows(ctl_page p, ctl_dir dir, menu_row *out);
 
+/* The brightness keys' legend: "F1/F2" on the Brick, set to "FN1/FN2" at
+ * startup on the Brick Pro. Here rather than a call into platform.c so
+ * controls-check links without it. */
+extern const char *ctl_bright_keys;
+
 #endif

@@ -106,6 +106,9 @@ static int muse(menu_row *out)
 	return n;
 }
 
+/* What the two brightness keys are printed as. main sets the Brick Pro's. */
+const char *ctl_bright_keys = "F1/F2";
+
 static int anywhere(menu_row *out)
 {
 	int n = 0;
@@ -116,7 +119,7 @@ static int anywhere(menu_row *out)
 	 * game it is a different menu, and that page says so. */
 	out[n++] = (menu_row){ "MENU",          "Settings",   false };
 	out[n++] = (menu_row){ "Volume rocker", "Sound",      false };
-	out[n++] = (menu_row){ "F1/F2",       "Brightness", false };
+	out[n++] = (menu_row){ ctl_bright_keys, "Brightness", false };
 	out[n++] = (menu_row){ "POWER",         "Tap sleep, hold off", false };
 	return n;
 }

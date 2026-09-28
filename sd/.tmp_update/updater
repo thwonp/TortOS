@@ -4,6 +4,9 @@
 
 # The Brick and the Brick Hammer are both TG3040, and the model is in cpuinfo's
 # `hwserial` line - TG3040003C1D47AE on the device this was written against.
+# The Brick Pro is TG4040 (TG4040003C1F458A): the same A133P, panel, PMIC and
+# codec, with sticks and a different button set that platform.c tells apart
+# at runtime from this same line.
 # Nothing else in cpuinfo names the machine: /proc/device-tree/model says
 # sun50iw10 and board.json says allwinner,a133, which are the SoC and tell you
 # nothing about which handheld it is in.
@@ -13,9 +16,9 @@
 # hardware nobody had tried instead of leaving it on the firmware that works.
 INFO=$(cat /proc/cpuinfo 2> /dev/null)
 case $INFO in
-*TG3040*) ;;
+*TG3040*|*TG4040*) ;;
 *)
-	# Not a Brick / Brick Hammer: fall back to stock rather than half-booting.
+	# Not a Brick / Brick Hammer / Brick Pro: fall back to stock rather than half-booting.
 	if [ -f /usr/trimui/bin/runtrimui-original.sh ]; then
 		exec /usr/trimui/bin/runtrimui-original.sh
 	fi

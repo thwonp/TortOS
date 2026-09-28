@@ -35,6 +35,31 @@
 #define CODE_FN_LEFT  317
 #define CODE_FN_RIGHT 318
 
+/* The Brick Pro (TG4040) is the same machine with sticks. There 317/318 are
+ * the stick clicks, and its two function keys arrive on the same node as
+ * KEY_F1/KEY_F2 - SDL buttons 11 and 12, which the Brick never sends. Home is
+ * KEY_HOMEPAGE, SDL button 15. Read off the device's own key bitmap on
+ * 2026-09-28; NextUI numbers them the same way. */
+#define CODE_PRO_FN_LEFT  KEY_F1
+#define CODE_PRO_FN_RIGHT KEY_F2
+
+/* Which of the two, from the line the boot script already trusts: cpuinfo's
+ * hwserial names the model and nothing else on the device does. */
+bool plat_is_brick_pro(void)
+{
+	static int pro = -1;
+	if (pro < 0) {
+		char line[256];
+		FILE *f = fopen("/proc/cpuinfo", "r");
+		pro = 0;
+		while (f && fgets(line, sizeof line, f))
+			if (strncmp(line, "hwserial", 8) == 0 && strstr(line, "TG4040"))
+				pro = 1;
+		if (f) fclose(f);
+	}
+	return pro;
+}
+
 /* SDL joystick button indices on the Brick's "TRIMUI Player1" device.
  *
  * SDL numbers these in ascending evdev-code order and the device declares
@@ -52,6 +77,7 @@ enum {
 	JOY_L1 = 4, JOY_R1 = 5, JOY_SELECT = 6, JOY_START = 7,
 	JOY_MENU = 8, JOY_L3 = 9, JOY_R3 = 10,
 	JOY_VOLDN = 13, JOY_VOLUP = 14,
+	JOY_HOME = 15, /* Brick Pro only */
 };
 
 /* Hold-to-repeat. Short delay and a quick rate: this is a shelf you sweep
@@ -65,6 +91,11 @@ static SDL_Joystick *joy;
 static int fd_power = -1; /* axp2202-pek: KEY_POWER */
 static int fd_keys = -1;  /* sunxi-keyboard: volume keys */
 static int fd_joy = -1;   /* TRIMUI Player1: raw, for the front F1/F2 keys */
+
+/* The d-pad and the left stick both drive IN_LEFT..IN_DOWN; each keeps its
+ * own state so letting go of one does not release a direction the other
+ * still holds. Order: left, right, up, down. */
+static bool hat_dir[4], stick_dir[4];
 
 /* TORTOS_INPUT_DEBUG=1 logs raw evdev codes and SDL button indices, so one
  * press tells you exactly which device a control arrives on. */
@@ -392,6 +423,9 @@ void plat_input_flush(void)
 	SDL_Event e;
 	SDL_PumpEvents();
 	while (SDL_PollEvent(&e)) { }
+	/* Their releases were in what was just thrown away. */
+	memset(hat_dir, 0, sizeof hat_dir);
+	memset(stick_dir, 0, sizeof stick_dir);
 #ifdef __linux__
 	{
 		struct input_event ev;
@@ -434,6 +468,7 @@ static in_button map_joy_button(int jb)
 	case JOY_START: return IN_START;
 	case JOY_SELECT: return IN_SELECT;
 	case JOY_MENU: return IN_MENU;
+	case JOY_HOME: return IN_MENU;
 	case JOY_VOLUP: return IN_VOLUP;
 	case JOY_VOLDN: return IN_VOLDN;
 	default: return IN_NONE;
@@ -452,8 +487,10 @@ static void poll_raw_fd(int fd, in_state *st)
 		if (ev.code == KEY_POWER) b = IN_POWER;
 		else if (ev.code == KEY_VOLUMEUP) b = IN_VOLUP;
 		else if (ev.code == KEY_VOLUMEDOWN) b = IN_VOLDN;
-		else if (ev.code == CODE_FN_RIGHT) b = IN_BRIGHTUP;
-		else if (ev.code == CODE_FN_LEFT) b = IN_BRIGHTDN;
+		else if (ev.code == (plat_is_brick_pro() ? CODE_PRO_FN_RIGHT : CODE_FN_RIGHT))
+			b = IN_BRIGHTUP;
+		else if (ev.code == (plat_is_brick_pro() ? CODE_PRO_FN_LEFT : CODE_FN_LEFT))
+			b = IN_BRIGHTDN;
 		if (b != IN_NONE && ev.value != 2)
 			set_btn(st, b, ev.value == 1);
 	}
@@ -490,6 +527,25 @@ static volatile sig_atomic_t g_terminating;
 
 void plat_terminate(void) { g_terminating = 1; }
 
+/* Half deflection to press, a third to let go: the gap is what stops a stick
+ * resting near the threshold from chattering a direction on and off. */
+#define STICK_PRESS   16384
+#define STICK_RELEASE 10923
+
+static void stick_axis(bool *neg_pos, int v)
+{
+	neg_pos[0] = v < -(neg_pos[0] ? STICK_RELEASE : STICK_PRESS);
+	neg_pos[1] = v >  (neg_pos[1] ? STICK_RELEASE : STICK_PRESS);
+}
+
+static void set_dirs(in_state *st)
+{
+	set_btn(st, IN_LEFT,  hat_dir[0] || stick_dir[0]);
+	set_btn(st, IN_RIGHT, hat_dir[1] || stick_dir[1]);
+	set_btn(st, IN_UP,    hat_dir[2] || stick_dir[2]);
+	set_btn(st, IN_DOWN,  hat_dir[3] || stick_dir[3]);
+}
+
 void plat_input_poll(in_state *st)
 {
 	memset(st->pressed, 0, sizeof st->pressed);
@@ -517,14 +573,21 @@ void plat_input_poll(in_state *st)
 			set_btn(st, map_joy_button(e.jbutton.button),
 			        e.type == SDL_JOYBUTTONDOWN);
 			break;
-		case SDL_JOYHATMOTION: {
-			Uint8 v = e.jhat.value;
-			set_btn(st, IN_LEFT,  (v & SDL_HAT_LEFT)  != 0);
-			set_btn(st, IN_RIGHT, (v & SDL_HAT_RIGHT) != 0);
-			set_btn(st, IN_UP,    (v & SDL_HAT_UP)    != 0);
-			set_btn(st, IN_DOWN,  (v & SDL_HAT_DOWN)  != 0);
+		case SDL_JOYHATMOTION:
+			hat_dir[0] = (e.jhat.value & SDL_HAT_LEFT)  != 0;
+			hat_dir[1] = (e.jhat.value & SDL_HAT_RIGHT) != 0;
+			hat_dir[2] = (e.jhat.value & SDL_HAT_UP)    != 0;
+			hat_dir[3] = (e.jhat.value & SDL_HAT_DOWN)  != 0;
+			set_dirs(st);
 			break;
-		}
+		case SDL_JOYAXISMOTION:
+			/* The Brick Pro's left stick is a second d-pad. The Brick's
+			 * virtual pad advertises these axes too but never moves them. */
+			if (e.jaxis.axis == 0 || e.jaxis.axis == 1) {
+				stick_axis(&stick_dir[e.jaxis.axis == 0 ? 0 : 2], e.jaxis.value);
+				set_dirs(st);
+			}
+			break;
 		case SDL_JOYDEVICEADDED:
 			if (!joy) open_joystick();
 			break;
@@ -1424,10 +1487,10 @@ void plat_leds_off(void)
 {
 #ifdef __linux__
 	/* Stop the animation engine, scale every group to zero, then zero all 23
-	 * raw channels directly -- so it holds whatever state the stock input
+	 * raw channels (both models have 23) directly -- so it holds whatever state the stock input
 	 * daemon left the engine in. */
 	write_str("/sys/class/led_anim/effect_enable", "0");
-	static const char *groups[] = { "l", "r", "lr", "m", "f1", "f2" };
+	static const char *groups[] = { "l", "r", "lr", "m", "f1", "f2", "rear" };
 	char path[96];
 	for (size_t i = 0; i < sizeof groups / sizeof *groups; i++) {
 		snprintf(path, sizeof path, "/sys/class/led_anim/effect_rgb_hex_%s", groups[i]);
@@ -1436,6 +1499,9 @@ void plat_leds_off(void)
 	write_str("/sys/class/led_anim/max_scale", "0");
 	write_str("/sys/class/led_anim/max_scale_lr", "0");
 	write_str("/sys/class/led_anim/max_scale_f1f2", "0");
+	/* The Brick Pro's trigger ring; absent on the Brick, where the write
+	 * just fails to open. */
+	write_str("/sys/class/led_anim/max_scale_rear", "0");
 	for (int n = 0; n < 23; n++) {
 		for (const char *c = "rgb"; *c; c++) {
 			snprintf(path, sizeof path,
