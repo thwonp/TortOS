@@ -2160,24 +2160,25 @@ static bool radio_sh_call(const char *fn, bool background)
 }
 #endif
 
-void plat_sleep(void)
+bool plat_sleep(void)
 {
 #ifdef __linux__
+	bool slept = false;
 	char states[128] = { 0 };
 	int fd, saved;
 	ssize_t n;
 	bool bt_was_up, wifi_was_up;
 	int fd2, tries;
 
-	if (!plat_sleep_supported()) return;
+	if (!plat_sleep_supported()) return false;
 
 	fd = open("/sys/power/state", O_RDONLY);
-	if (fd < 0) return;
+	if (fd < 0) return false;
 	n = read(fd, states, sizeof states - 1);
 	close(fd);
-	if (n <= 0) return;
+	if (n <= 0) return false;
 	states[n] = '\0';
-	if (!strstr(states, "mem")) return;   /* listed states don't include it */
+	if (!strstr(states, "mem")) return false;   /* listed states don't include it */
 
 	/* apply_brightness(), not plat_brightness_set(): this dims the panel and
 	 * puts it back, and must not persist a sleep-only value as the player's
@@ -2209,10 +2210,10 @@ void plat_sleep(void)
 		fd2 = open("/sys/power/state", O_WRONLY);
 		wrote = fd2 < 0 ? -1 : write(fd2, "mem", 3);
 		if (fd2 >= 0) close(fd2);
-		if (wrote == 3) break;
+		if (wrote == 3) { slept = true; break; }
 
 		woke = time(NULL);
-		if (woke - went > 5) break;   /* false-negative override */
+		if (woke - went > 5) { slept = true; break; }  /* false-negative override */
 		sleep(3);
 	}
 
@@ -2235,55 +2236,109 @@ void plat_sleep(void)
 	if (bt_was_up) radio_sh_call("bt_on", true);
 
 	apply_brightness(saved);
+	/* The script's exit status: PWR_deepSleep's ret, which PWR_waitForWake
+	 * answers with a power-off when it is not 0. */
+	return slept;
+#else
+	return false;
 #endif
 }
 
+/* The one press either caller could currently be watching - a->in.down every
+ * frame from the shelf/menu path, or a level tracked locally from raw evdev
+ * once a tick during a game. Only one of those runs at a time, so one timer
+ * is enough. 0 means no press is open right now. */
+static unsigned pwr_since;
+
+/* When the last light sleep ended - NextUI's pwr.resume_tick. A power press
+ * that STARTS within a second of it is the tail of the wake, not a request,
+ * and plat_power_tap_or_hold drops it whole (api.c's "ignoring spurious
+ * power button press (just resumed)"). 0 until the first sleep. */
+static unsigned resume_at;
+
 #ifdef __linux__
-/* Blocks up to ms waiting for a power-button event on the raw evdev fd -
- * press or release, either is evidence someone is at the device. Used only
- * to detect wake, never tap/hold intent (plat_power_tap_or_hold already
- * owns that), so any KEY_POWER event is enough. */
-static bool power_event_within(int ms)
+/* Blocks up to ms for the power button to be RELEASED - the wake condition,
+ * as in NextUI's PLAT_shouldWake, which wakes on SDL_KEYUP of POWER. Waking
+ * on the press would leave its release for the tap dispatcher to read as a
+ * fresh tap, and put the device straight back to sleep. */
+static bool power_released_within(int ms)
 {
 	struct pollfd pfd;
 	struct input_event ev;
+	bool up = false;
 
-	if (fd_power < 0) return false;
+	if (fd_power < 0) { usleep(ms * 1000); return false; }
 	pfd.fd = fd_power;
 	pfd.events = POLLIN;
 	if (poll(&pfd, 1, ms) <= 0) return false;
 	while (read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
-		if (ev.type == EV_KEY && ev.code == KEY_POWER) return true;
-	return false;
+		if (ev.type == EV_KEY && ev.code == KEY_POWER && ev.value == 0)
+			up = true;
+	return up;
 }
 #endif
 
-/* Task B (TortOS-1v7.1.2.3): the intermediate power state entered when Auto
- * Sleep (not Auto Off) is the active setting and idle fires - mirrors
- * NextUI's PWR_enterSleep/PWR_waitForWake/PWR_exitSleep shape (screen off,
- * audio muted, wait for the power button, restore both) but waits
- * indefinitely, with none of PWR_waitForWake's own further suspend-timeout
- * escalation into deep sleep/poweroff: Auto Sleep and Auto Off are
- * mutually exclusive (task A), so there is nothing for this state to
- * escalate into - Auto Off's real suspend (task D) only ever fires from
- * its own independent idle branch, never out of this loop. The CPU stays
- * awake throughout and plat_sleep() is never called here - this is
- * NextUI's "hybrid sleep," a screen-off idle state, not a kernel suspend. */
-void plat_light_sleep(void)
+/* NextUI's PWR_sleep, whole: PWR_enterSleep, PWR_waitForWake, PWR_exitSleep
+ * (api.c:4262-4380), for every way into sleep - a tap, Auto Sleep's idle,
+ * the game menu's Sleep row. The CPU stays awake; the screen is off and the
+ * sound muted, neither persisted (NextUI's SetRawVolume, not SetVolume - a
+ * crash asleep must not boot dark and silent).
+ *
+ * Left unwoken for the Suspend Timeout it escalates into real suspend,
+ * plat_sleep(), and returns once that resumes. Charging, or a computer with
+ * Keep Awake Over USB on, puts the escalation off a minute at a time instead.
+ * Returns false only when escalation found no suspend to go to - unsupported,
+ * or every attempt failed - which NextUI answers with PWR_powerOff; the
+ * caller does, since powering off is the launcher's (main.c's power_off).
+ *
+ * What NextUI's enter/exit also do and why none of it is here: the LED
+ * sleep profile is the player's LED setup set to breathe, and TortOS keeps
+ * every LED off, so it stays off; keymon/batmon/audiomon are NextUI daemons
+ * TortOS has no counterpart of; the status-poll frequency drop is automatic,
+ * the launcher's loop being blocked right here; audio the launcher owns
+ * (the music player) is paused by the caller, main.c's sleep_cycle; the
+ * haptic pulse is gated on a setting NextUI ships off and TortOS lacks
+ * (TortOS-1v7.1.2.11). */
+bool plat_light_sleep(void)
 {
+	bool awake = true;
 #ifdef __linux__
 	int saved_bright = cur_bright;
 	int saved_vol = cur_vol;
+	int timeout_ms = plat_suspend_timeout_secs() * 1000;
+	unsigned since;
 
+	plat_input_flush();                   /* PAD_reset */
 	apply_brightness(0);
-	plat_volume_set_pct(0);
+	if (mixer_fd >= 0) apply_volume(0);
+	sync();
 
-	while (!power_event_within(200))
-		;
+	since = plat_now_ms();
+	for (;;) {
+		bool charging = false;
+
+		if (power_released_within(200)) break;
+		/* Signed: "a minute from now" makes since run ahead of now. */
+		if ((int)(plat_now_ms() - since) < timeout_ms) continue;
+		plat_battery(NULL, &charging);
+		if (charging || plat_usb_keep_awake()) {
+			since += 60000;               /* check again in a minute */
+			continue;
+		}
+		awake = plat_sleep();
+		break;
+	}
 
 	apply_brightness(saved_bright);
 	if (mixer_fd >= 0 && saved_vol >= 0) apply_volume(saved_vol);
+	sync();
+	plat_input_flush();                   /* PAD_reset, and whatever was
+	                                       * pressed in the dark */
 #endif
+	pwr_since = 0;
+	resume_at = plat_now_ms();
+	if (!resume_at) resume_at = 1;
+	return awake;
 }
 
 bool plat_usb_keep_awake(void)
@@ -2315,16 +2370,20 @@ int plat_suspend_timeout_secs(void)
 
 #define POWER_HOLD_MS 400u
 
-/* The one press either caller could currently be watching - a->in.down every
- * frame from the shelf/menu path, or a level tracked locally from raw evdev
- * once a tick during a game. Only one of those runs at a time, so one timer
- * is enough. 0 means no press is open right now. */
-static unsigned pwr_since;
-
 pwr_action plat_power_tap_or_hold(bool down)
 {
+	static bool spurious;             /* this press began just after a wake */
 	unsigned now = plat_now_ms();
 
+	/* NextUI's resume_tick check: a press that starts inside a second of
+	 * waking is dropped whole - neither its hold nor its release counts. */
+	if (down && !pwr_since && !spurious && resume_at &&
+	    now - resume_at < 1000)
+		spurious = true;
+	if (spurious) {
+		if (!down) spurious = false;
+		return PWR_NONE;
+	}
 	if (down) {
 		if (!pwr_since) pwr_since = now ? now : 1;
 		if (now - pwr_since >= POWER_HOLD_MS) {

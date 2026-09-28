@@ -177,22 +177,21 @@ bool plat_resident_sync_rect(int timeout_ms);
 void plat_request_poweroff(void);
 void plat_leds_off(void);
 
-/* Real suspend-to-RAM - what Auto Off calls once its idle threshold fires
- * (sys_menu.c, main.c's auto_poweroff_fire). See platform.c for what
- * "supported" actually probes and why sleep needs no protocol message to
- * Diatom. plat_sleep() blocks for the whole suspend and returns once the
- * device wakes; a caller resumes exactly where it called from, with
- * nothing to poll for in between. Both are safe no-ops - never a crash,
- * never a wrong write - when this kernel does not offer it. */
+/* Real suspend-to-RAM - NextUI's PWR_deepSleep and its suspend script,
+ * reached only from plat_light_sleep's escalation. See platform.c for what
+ * "supported" actually probes. plat_sleep() blocks for the whole suspend and
+ * returns once the device wakes: true if it suspended, false if it could not
+ * (unsupported, or every attempt failed - the script's nonzero exit). Never
+ * a crash, never a wrong write, when this kernel does not offer it. */
 bool plat_sleep_supported(void);
-void plat_sleep(void);
+bool plat_sleep(void);
 
-/* Auto Sleep's screen-off idle state (TortOS-1v7.1.2.3) - NOT suspend, the
- * CPU stays awake. Mutually exclusive with Auto Off (sys_menu.c), so unlike
- * plat_sleep() this never itself decides to suspend or power off; it only
- * waits for the power button and returns. Blocks for the whole wait, same
- * calling convention as plat_sleep(). */
-void plat_light_sleep(void);
+/* NextUI's PWR_sleep: screen off, sound muted, CPU awake, until the power
+ * button is released - or, left for the Suspend Timeout, real suspend via
+ * plat_sleep(). The one way into sleep, whatever asked for it. Blocks for the
+ * whole of it. Returns false only when escalation found no suspend to go to,
+ * which NextUI answers by powering off; the caller does that. */
+bool plat_light_sleep(void);
 
 /* Keep Awake Over USB (main.c's PM_KEEPAWAKE) is on AND a computer has
  * enumerated the device - not merely a charger. NextUI's
