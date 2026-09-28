@@ -46,6 +46,7 @@
 #include "controls.h"
 #include "cards.h"
 #include "game_menu.h"
+#include "hkbind.h"
 #include "ui.h"
 #include "wifi_menu.h"
 
@@ -5492,6 +5493,7 @@ static void synopsis_screen(app *a, const char *title, const char *text,
  * frame, and drawing the shelf under a paused game would be a lie about where
  * the player is. */
 static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf);
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag);
 
 static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 {
@@ -8443,6 +8445,101 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 	memset(&a->in, 0, sizeof a->in);
 }
 
+/* The hotkey submenu (sibling Diatom feature, its ADR-0035): which of a
+ * short candidate list of buttons, if any, triggers fast-forward, rewind, a
+ * quicksave or a quickload. Candidates are exactly what Diatom's own
+ * display_chord does NOT already claim under SELECT (l1/r1/a) - see that
+ * ADR - so a binding made here can never be one Diatom would refuse.
+ *
+ * Four fixed rows, cycled left and right the way Display Mode already is -
+ * not a "press any button to capture it" flow, which this codebase has
+ * never built anywhere and would have been the highest-risk new interaction
+ * to write with no way to run it. A button already bound to one row is
+ * cleared from whichever OTHER row held it rather than refusing the change:
+ * the wire format itself refuses a spec with a button claimed twice
+ * (diatom's hotkeys_set), so allowing that here would mean silently failing
+ * to persist instead of a clear "last choice wins" - friendlier for a menu
+ * than for a protocol. The parser/serializer (hk_parse/hk_serialize) live
+ * in hkbind.c/.h, split out under ADR-0001 so a check can drive them with
+ * no SDL. */
+static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
+{
+	int btn_for_row[HK_ROW_COUNT];
+	menu_row rows[HK_ROW_COUNT];
+	char vals[HK_ROW_COUNT][8];
+	int sel = 0, done = 0, i;
+
+	hk_parse(plat_hotkey_map(tag), btn_for_row);
+
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+
+	while (!done && !want_quit) {
+		plat_input_poll(&a->in);
+
+		if (in_repeat(&a->in, IN_UP))   sel = (sel + HK_ROW_COUNT - 1) % HK_ROW_COUNT;
+		if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % HK_ROW_COUNT;
+
+		{
+			int d = 0;
+
+			if (in_repeat(&a->in, IN_LEFT))  d = -1;
+			if (in_repeat(&a->in, IN_RIGHT)) d = 1;
+			if (d) {
+				/* Skip candidates another row already holds, rather than
+				 * landing on one and clearing that row out from under it -
+				 * cycling past a taken button while looking for a further
+				 * one used to steal it with no way to tell "passing
+				 * through" from "selecting". A row is freed the same way
+				 * it is claimed: cycle it to None first. */
+				int nb = btn_for_row[sel];
+				char spec[128];
+				int tries;
+
+				for (tries = 0; tries < HK_BTN_COUNT; tries++) {
+					nb = (nb + d + HK_BTN_COUNT) % HK_BTN_COUNT;
+					if (nb == 0) break;
+					for (i = 0; i < HK_ROW_COUNT; i++)
+						if (i != sel && btn_for_row[i] == nb) break;
+					if (i == HK_ROW_COUNT) break;   /* nb is free */
+				}
+				btn_for_row[sel] = nb;
+
+				hk_serialize(btn_for_row, spec, sizeof spec);
+				plat_hotkey_set(tag, spec);
+				/* Live, not only persisted: this screen is only ever open
+				 * mid-session (reached from the in-game menu), so the
+				 * change should take hold without the player having to
+				 * quit and relaunch to see it. */
+				plat_resident_line("SETHOTKEYS\thotkeys=%s", spec);
+			}
+		}
+
+		if (menu_leaving(a)) done = 1;
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) {
+				plat_note_power_pressed();
+				plat_resident_line("STOP");
+				done = 1;
+			}
+		}
+
+		for (i = 0; i < HK_ROW_COUNT; i++)
+			snprintf(vals[i], sizeof vals[i], "%s", HK_BTN_NAME[btn_for_row[i]]);
+		for (i = 0; i < HK_ROW_COUNT; i++)
+			rows[i] = (menu_row){ HK_ACTION_LABEL[i], vals[i], true };
+
+		chv_backdrop(a, bg, false);
+		menu_draw(a, "Hotkeys", rows, HK_ROW_COUNT, sel, 0, MENU_ACCENT);
+		SDL_RenderPresent(a->r);
+		SDL_Delay(8);
+	}
+
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+}
+
 /* Measured across every mode label, so cycling the row does not resize the
  * panel under the cursor - the same reason the shelf menus have a fixed width. */
 static int gm_width(app *a)
@@ -8746,6 +8843,13 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		plat_note_power_pressed();          /* no suspend: power off instead */
 		plat_resident_line("STOP");
 		return MENU_DONE;
+	case GM_HOTKEYS: {
+		sysview *sv = &a->view[a->sys_cursor];
+		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
+
+		hotkeys_screen(a, c->bg, a->sys.systems[o].tag);
+		break;
+	}
 	case GM_RESET:
 		plat_resident_line("RESET");
 		c->resume = true;

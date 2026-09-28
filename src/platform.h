@@ -154,6 +154,13 @@ const char *plat_coreopt(const char *tag, int i);
 /* The turbo map for this system, or NULL. Diatom's ADR-0028, docs/turbo.md. */
 const char *plat_turbo_map(const char *tag);
 
+/* The hotkey submenu's binding for this system - "l2:ff,r2:rewind,..." - or
+ * "" for none set. Never NULL: an empty spec is itself a valid SETHOTKEYS
+ * value (diatom's ADR-0035). plat_hotkey_set persists it and updates the
+ * cache in the same call, for the settings screen that edits it live. */
+const char *plat_hotkey_map(const char *tag);
+void        plat_hotkey_set(const char *tag, const char *spec);
+
 /* Where Diatom is actually drawing the game, from its DISPLAY message. False
  * until it has said, which is the standalone path and the first moments of a
  * launch. Cached rather than asked for: Diatom reports it from the one place

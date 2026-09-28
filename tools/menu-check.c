@@ -746,12 +746,14 @@ static void ingame_rows(void)
 	n = gm_rows(&u, rows, &b);
 
 	printf("in-game menu, a game with a set, sleep supported:\n");
-	ck(n == GM_ROWS, "eight rows");
+	ck(n == GM_ROWS, "nine rows");
 	ck(!strcmp(rows[GM_CONTINUE].label, "Continue"), "Continue leads");
 	ck(!strcmp(val(&rows[GM_DISPLAY]), "Native"), "Display carries the mode");
 	ck(!strcmp(val(&rows[GM_CHEEVOS]), "12 / 40"), "Cheevos counts the set");
 	ck(rows[GM_CHEEVOS].live, "and is reachable");
 	ck(rows[GM_SLEEP].live, "Sleep is reachable");
+	ck(!strcmp(rows[GM_HOTKEYS].label, "Hotkeys"), "Hotkeys is there");
+	ck(rows[GM_HOTKEYS].live, "and is reachable");
 	k = reachable(rows, n, got, GM_ROWS);
 	ck(k == GM_ROWS, "every row is a stop");
 
