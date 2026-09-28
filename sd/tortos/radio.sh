@@ -9,6 +9,13 @@
 # bt_write_asoundrc: `/bin/sh -c '. "$0" && fn' radio.sh`, with the script path
 # passed as $0, never pasted into the command, so it is never read as shell.
 
+# bt_pcm_name, for bt_reconnect below - and bt_write_asoundrc for launch.sh,
+# which gets it from here. Sourced here rather than in launch.sh because this
+# file is the one that also runs without launch.sh around it (TortOS-1jx).
+# Guarded, for the reason bt-alsa.sh's own header gives: `.` on a missing file
+# ends a non-interactive shell.
+[ -f "$TORTOS_DIR/bt-alsa.sh" ] && . "$TORTOS_DIR/bt-alsa.sh"
+
 # ---- Wi-Fi ----
 
 # Boot-time bring-down: retries stopping wpa_supplicant across a 20s window to

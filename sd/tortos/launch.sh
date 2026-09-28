@@ -6,7 +6,9 @@
 # resident emulator's -- happens behind it, so the animation costs its length
 # and nothing else.
 
-TORTOS_DIR=/mnt/SDCARD/TortOS
+# Exported for radio.sh: plat_sleep() runs it in a shell of its own, which
+# sees only the launcher's environment (TortOS-1jx).
+export TORTOS_DIR=/mnt/SDCARD/TortOS
 SDCARD=/mnt/SDCARD
 
 export PLATFORM=tg3040

@@ -1,8 +1,9 @@
 #!/bin/sh
 # One named ALSA PCM per bonded headset: bt_pcm_name and bt_write_asoundrc.
 #
-# Sourced, never run. launch.sh sources it at boot and calls bt_write_asoundrc
-# before the emulator starts; the launcher sources it into a shell of its own
+# Sourced, never run. radio.sh sources it, so launch.sh has it at boot, to call
+# bt_write_asoundrc before the emulator starts, and plat_sleep's radio.sh has
+# bt_pcm_name after a wake; the launcher sources it into a shell of its own
 # after a pair or a forget (bt_asoundrc in src/bt.c) and calls the same
 # function.
 #
