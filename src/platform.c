@@ -2444,8 +2444,11 @@ pwr_action plat_power_tap_or_hold(bool down)
 	/* NextUI's resume_tick check: a press that starts inside a second of
 	 * waking is dropped whole - neither its hold nor its release counts. */
 	if (down && !pwr_since && !spurious && resume_at &&
-	    now - resume_at < 1000)
+	    now - resume_at < 1000) {
 		spurious = true;
+		fprintf(stderr, "power: press ignored, %ums after a wake\n",
+		        now - resume_at);
+	}
 	if (spurious) {
 		if (!down) spurious = false;
 		return PWR_NONE;
@@ -2454,11 +2457,15 @@ pwr_action plat_power_tap_or_hold(bool down)
 		if (!pwr_since) pwr_since = now ? now : 1;
 		if (now - pwr_since >= POWER_HOLD_MS) {
 			pwr_since = 0;          /* fire once per press */
+			fprintf(stderr, "power: hold -> power off\n");
 			return PWR_POWEROFF;
 		}
 		return PWR_NONE;
 	}
 	if (!pwr_since) return PWR_NONE;   /* not pressed, nothing just ended */
+	/* One line per decision, so an unexpected power-off leaves the press
+	 * that caused it in the log (TortOS-1v7.1.2.7: one did, and didn't). */
+	fprintf(stderr, "power: tap (%ums)\n", now - pwr_since);
 	pwr_since = 0;
 	/* Not gated on plat_sleep_supported(): NextUI's tap always enters light
 	 * sleep, and suspend support only matters at its escalation. */

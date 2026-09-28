@@ -3296,6 +3296,7 @@ static void anim_poweroff(app *a)
 
 static void power_off(app *a)
 {
+	fprintf(stderr, "power: off\n");
 	/* Here rather than only on the return path: launch.sh runs its leds_off at
 	 * the TOP of its restart loop, and a power-off breaks that loop instead of
 	 * going round it, so this is the last chance to darken them. */
@@ -8562,6 +8563,9 @@ static bool sleep_cycle(app *a)
 	if (music) musec_toggle();
 	t0 = plat_now_ms();
 	awake = plat_light_sleep();
+	fprintf(stderr, "sleep: %s after %us%s\n",
+	        awake ? "awake" : "no suspend, powering off",
+	        (plat_now_ms() - t0) / 1000, a->game_on ? " (in game)" : "");
 	stats_asleep(plat_now_ms() - t0);
 	if (music && awake) musec_toggle();
 	memset(&a->in, 0, sizeof a->in);
@@ -8580,8 +8584,11 @@ static pwr_action power_check(app *a)
 {
 	pwr_action pa = plat_power_tap_or_hold(a->in.down[IN_POWER]);
 
-	if (pa == PWR_NONE && idle_due(a))
+	if (pa == PWR_NONE && idle_due(a)) {
 		pa = a->auto_poweroff ? PWR_POWEROFF : PWR_SLEEP;
+		fprintf(stderr, "power: idle -> %s\n",
+		        pa == PWR_SLEEP ? "sleep" : "power off");
+	}
 	if (pa == PWR_SLEEP) pa = sleep_cycle(a) ? PWR_NONE : PWR_POWEROFF;
 	return pa;
 }
@@ -8684,6 +8691,14 @@ static void game_menu(app *a)
 	const char *pv = plat_resident_last_preview();
 
 	c.a = a;
+	/* What was pressed in the game is not for this menu. The launcher reads
+	 * no input while a game runs, so it all waits in the queues, and the
+	 * first frame here replayed it: a stale MENU closed the menu before it
+	 * was seen, an Up then A wrapped to Quit and ended the game (seen on the
+	 * device 2026-09-28). NextUI's menu opens with PAD_reset for the same
+	 * reason. */
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
 	if (pv && *pv) {
 		SDL_Surface *sf = IMG_Load(pv);
 
