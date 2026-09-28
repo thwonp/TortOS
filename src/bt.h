@@ -12,10 +12,11 @@
  *   JUDGE BY `info`, NEVER BY THE RETURN OF `connect`. bluetoothctl reports
  *   Failed for a2dp even when the link came up. Cost an evening.
  *
- *   BONDS LIVE IN /etc/lib/bluetooth/<adapter>/<device>/, not the
- *   /etc/bluetooth/keys/ that the init wrapper symlinks into being. bluetoothd
- *   has its storage path compiled in with --localstatedir=/etc and never reads
- *   the decoy. Reading the bonds directly is also how the paired list is built
+ *   BONDS LIVE WHERE bluetoothd'S BUILD SAYS: /etc/lib/bluetooth/<adapter>/
+ *   <device>/ on the Brick (5.54, --localstatedir=/etc), where the
+ *   /etc/bluetooth/keys/ the init wrapper symlinks into being is a decoy; but
+ *   /var/lib/bluetooth -> /etc/bluetooth/keys/ on the Brick Pro (5.78).
+ *   bt-alsa.sh asks the binary which, as $TORTOS_BT_BONDS. Reading the bonds directly is also how the paired list is built
  *   without forking anything.
  *
  * FORKING IS THE COST HERE. This process is ~119 MB, every query is a fork,

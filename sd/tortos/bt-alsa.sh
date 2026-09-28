@@ -22,13 +22,31 @@
 # 2026-09-05 - it failed in place and then worked immediately on restarting the
 # emulator with the file already there.
 #
-# The bond is persistent (/etc/lib/bluetooth/<adapter>/<device>/), so every
+# The bond is persistent ($TORTOS_BT_BONDS/<adapter>/<device>/), so every
 # headset that could connect is known now, without waiting for one to. A PCM
 # for a headset that is not connected simply fails to open, and the port falls
 # back to the speaker and says so - which is ADR-0029's behavior anyway.
 #
 # One per device rather than one reused name, so switching headsets needs no
 # restart. bt_pcm_name is the single place the naming is decided.
+
+# Where bluetoothd keeps bonds: a path compiled into it, so the binary is
+# asked. The Brick's BlueZ 5.54 was built with --localstatedir=/etc and uses
+# /etc/lib/bluetooth; the Brick Pro's 5.78 uses /var/lib/bluetooth, linked to
+# /etc/bluetooth/keys (TortOS-pky.10). Both firmwares have BOTH directories,
+# so what is in them proves nothing. Anything short of a clear /var/lib answer
+# keeps the Brick's path. Decided once and exported: launch.sh sources this
+# before starting tortos.elf, whose bonds() reads it, and plat_sleep's shell
+# inherits it rather than grepping 8 MB again.
+if [ -z "$TORTOS_BT_BONDS" ]; then
+	if grep -q /var/lib/bluetooth /usr/bin/bluetoothd 2> /dev/null &&
+		! grep -q /etc/lib/bluetooth /usr/bin/bluetoothd 2> /dev/null; then
+		TORTOS_BT_BONDS=/var/lib/bluetooth
+	else
+		TORTOS_BT_BONDS=/etc/lib/bluetooth
+	fi
+	export TORTOS_BT_BONDS
+fi
 
 bt_pcm_name() {
 	echo "bt_$(echo "$1" | tr ':' '_')"
@@ -37,7 +55,7 @@ bt_pcm_name() {
 bt_write_asoundrc() {
 	rc=$USERDATA_PATH/.asoundrc
 	: > "$rc.tmp"
-	for d in /etc/lib/bluetooth/*/*:*; do
+	for d in "$TORTOS_BT_BONDS"/*/*:*; do
 		[ -d "$d" ] || continue
 		grep -q '^Trusted=true' "$d/info" 2> /dev/null || continue
 		grep -q '^\[LinkKey\]' "$d/info" 2> /dev/null || continue   # see bt_reconnect

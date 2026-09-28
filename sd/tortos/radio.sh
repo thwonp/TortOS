@@ -214,11 +214,11 @@ bt_on() {
 # Keep a remembered headset connected, so powering it on reconnects it wherever
 # you are rather than only at a screen that happens to be watching.
 #
-# Trusted devices with a key only: BlueZ writes those to
-# /etc/lib/bluetooth/<adapter>/, NOT to /etc/bluetooth/keys/ - that directory
-# is a decoy created by the bluetoothd init wrapper's `ln -snf ...
-# /var/lib/bluetooth`, and bluetoothd never reads it because its storage path
-# is compiled in with --localstatedir=/etc.
+# Trusted devices with a key only, from wherever this bluetoothd keeps bonds:
+# $TORTOS_BT_BONDS, set in bt-alsa.sh. On the Brick that is /etc/lib/bluetooth, and
+# /etc/bluetooth/keys/ is a decoy from the init wrapper's `ln -snf ...
+# /var/lib/bluetooth`; on the Brick Pro's newer BlueZ the symlink is the real
+# one (TortOS-pky.10).
 #
 # Judge success by `info`, never by the return of `connect`: bluetoothctl reports
 # Failed for a2dp even when the link came up.
@@ -235,7 +235,7 @@ bt_reconnect() {
 		bt_player
 		connected=
 		bonds=
-		for d in /etc/lib/bluetooth/"$adapter"/*:*; do
+		for d in "$TORTOS_BT_BONDS/$adapter"/*:*; do
 			[ -d "$d" ] || continue
 			grep -q '^Trusted=true' "$d/info" 2> /dev/null || continue
 			# And a key on the card, or it is not a bond: a memory-only pairing

@@ -16,7 +16,16 @@
 #include "bt.h"
 
 #define BLUETOOTHCTL "/usr/bin/bluetoothctl"
-#define BONDS        "/etc/lib/bluetooth"
+
+/* Where bluetoothd keeps its bonds, which is compiled into it: /etc/lib/bluetooth
+ * on the Brick, /var/lib/bluetooth on the Brick Pro (TortOS-pky.10). bt-alsa.sh
+ * asks the binary once at boot and exports the answer; without it (a tool run
+ * over adb) this is the Brick's path, as it always was. */
+static const char *bonds(void)
+{
+	const char *b = getenv("TORTOS_BT_BONDS");
+	return b && *b ? b : "/etc/lib/bluetooth";
+}
 
 /* AA:BB:CC:DD:EE:FF and nothing else. Everything that reaches bluetoothctl as
  * an argument goes through this first: a name can be arbitrary, an address
@@ -178,7 +187,7 @@ int bt_sweep_cache(const char *root)
 	struct dirent *a;
 	int gone = 0;
 
-	if (!root) root = BONDS;
+	if (!root) root = bonds();
 	if (!(ad = opendir(root))) return 0;
 	while ((a = readdir(ad))) {
 		char cdir[600];
@@ -369,14 +378,14 @@ int bt_bonded(bt_device *out, int max)
 	int n = 0;
 
 	if (!out || max <= 0) return 0;
-	if (!(ad = opendir(BONDS))) return 0;
+	if (!(ad = opendir(bonds()))) return 0;
 	while ((a = readdir(ad)) && n < max) {
 		char adapter[512];
 		DIR *dd;
 		struct dirent *d;
 
 		if (a->d_name[0] == '.') continue;
-		snprintf(adapter, sizeof adapter, "%s/%s", BONDS, a->d_name);
+		snprintf(adapter, sizeof adapter, "%s/%s", bonds(), a->d_name);
 		if (!(dd = opendir(adapter))) continue;
 		while ((d = readdir(dd)) && n < max) {
 			if (!bt_mac_valid(d->d_name)) continue;
@@ -475,13 +484,13 @@ static bool bond_has_key(const char *mac)
 	struct dirent *a;
 	bool found = false;
 
-	if (!(ad = opendir(BONDS))) return false;
+	if (!(ad = opendir(bonds()))) return false;
 	while (!found && (a = readdir(ad))) {
 		char path[700], line[64];
 		FILE *f;
 
 		if (a->d_name[0] == '.') continue;
-		snprintf(path, sizeof path, "%s/%s/%.17s/info", BONDS, a->d_name, mac);
+		snprintf(path, sizeof path, "%s/%s/%.17s/info", bonds(), a->d_name, mac);
 		if (!(f = fopen(path, "r"))) continue;
 		while (fgets(line, sizeof line, f))
 			if (!strncmp(line, "[LinkKey]", 9)) { found = true; break; }
@@ -596,12 +605,12 @@ static void forget_cache(const char *mac)
 	DIR *ad;
 	struct dirent *a;
 
-	if (!(ad = opendir(BONDS))) return;
+	if (!(ad = opendir(bonds()))) return;
 	while ((a = readdir(ad))) {
 		char path[700];
 
 		if (a->d_name[0] == '.') continue;
-		snprintf(path, sizeof path, "%s/%s/cache/%.17s", BONDS, a->d_name, mac);
+		snprintf(path, sizeof path, "%s/%s/cache/%.17s", bonds(), a->d_name, mac);
 		unlink(path);
 	}
 	closedir(ad);
