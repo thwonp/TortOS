@@ -135,25 +135,38 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	 * offered turned out to be too narrow to matter - src/ui.c. */
 	out[PM_THEME]        = (menu_row){ "UI Theme",  u->cards,     true };
 	out[PM_DIR]          = (menu_row){ "UI Direction", u->cards_dir, true };
-	out[PM_SCRAPE]       = (menu_row){ "Box Art",   NEEDS_WIFI(net), net };
+	/* Box Art and the ScreenScraper account moved under here with gamelist
+	 * import (TortOS-mh0) - see sys_menu_scraping_build. Always live: the
+	 * import needs no network, whatever the other two do. */
+	out[PM_SCRAPING]     = (menu_row){ "Scraping",  NULL,      true  };
 	out[PM_ACHIEVEMENTS] = (menu_row){ "Cheevos",
 	                                   u->ra_in ? u->ra_name : "sign in",
 	                                   true };
-	/* Beside Cheevos because it is the same kind of row: an account, named by
-	 * the service it belongs to, reading "sign in" until there is one. Not
-	 * beside Box Art, which is a job you run rather than a thing you are.
-	 *
-	 * Dead when the build has no developer key, because then there is nothing
-	 * to sign into - and saying so is better than a row that opens a keyboard
-	 * and refuses whatever is typed into it. */
-	out[PM_SS]           = (menu_row){ "ScreenScraper",
-	                                   !u->ss_have ? "not in this build"
-	                                   : u->ss_in ? u->ss_name : "sign in",
-	                                   u->ss_have };
 	/* What every button does, per screen. Needs nothing of the device, which
 	 * is the point: it is the page you reach when the thing you have forgotten
 	 * is which button opens Muse. See src/controls.h. */
 	out[PM_CONTROLS]     = (menu_row){ "Controls",    NULL,   true  };
 	out[PM_ABOUT]        = (menu_row){ "About TortOS", NULL,   true  };
 	return PM_ROWS;
+}
+
+int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading)
+{
+	bool net = u->wifi == WIFI_CONNECTED;
+
+	*heading = "Scraping";
+	out[SC_BOXART] = (menu_row){ "Box Art", NEEDS_WIFI(net), net };
+	/* An account, named by the service it belongs to, reading "sign in"
+	 * until there is one - as Cheevos does in the menu above.
+	 *
+	 * Dead when the build has no developer key, because then there is nothing
+	 * to sign into - and saying so is better than a row that opens a keyboard
+	 * and refuses whatever is typed into it. */
+	out[SC_SS]     = (menu_row){ "ScreenScraper",
+	                             !u->ss_have ? "not in this build"
+	                             : u->ss_in ? u->ss_name : "sign in",
+	                             u->ss_have };
+	/* Reads Roms/<system>/gamelist.xml off the card: no network, no account. */
+	out[SC_IMPORT] = (menu_row){ "Import gamelist.xml metadata", NULL, true };
+	return SC_ROWS;
 }

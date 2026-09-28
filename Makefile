@@ -31,7 +31,8 @@ all: build/tortos.elf
 CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
          check-db check-stats check-sort check-bt check-backlog check-ss \
-         check-muselib check-musequeue check-museart check-controls check-hkbind
+         check-muselib check-musequeue check-museart check-controls check-hkbind \
+         check-gamelist
 
 check:
 	@fail=0; for c in $(CHECKS); do \
@@ -367,6 +368,21 @@ build-native/db-check: tools/db-check.c src/db.c src/db.h src/atomic.c FORCE
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
 	      -o $@ tools/db-check.c src/db.c src/atomic.c
+
+# The on-device gamelist.xml import (TortOS-mh0), against its fixtures and
+# against tools/gamelist-import.py's reading of the same fixtures - the two
+# must map every field the same way.
+GL_FIX = tools/fixtures/gamelist/Roms
+check-gamelist: build-native/gamelist-check
+	@python3 tools/gamelist-import.py --roms $(GL_FIX) \
+	         --out build-native/gamelist.meta 2>/dev/null
+	@./build-native/gamelist-check $(GL_FIX) build-native/gamelist.meta
+
+build-native/gamelist-check: tools/gamelist-check.c src/gamelist.c src/gamelist.h \
+                             src/db.c src/db.h src/atomic.c FORCE
+	@mkdir -p build-native
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
+	      -o $@ tools/gamelist-check.c src/gamelist.c src/db.c src/atomic.c -lm
 
 # The in-game Hotkeys screen's binding parser (sibling Diatom feature,
 # ADR-0035 there). Links src/hkbind.c and NOT SDL, same split as db-check.

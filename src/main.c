@@ -18,6 +18,7 @@
 #include "btvol.h"
 #include "bt_menu.h"
 #include "db.h"
+#include "gamelist.h"
 #include "stats.h"
 #include "sort.h"
 #include "coverflow.h"
@@ -4374,36 +4375,71 @@ static bool menu_leaving(app *a)
  * Power is handled here rather than left to the caller. A confirm can sit on
  * screen indefinitely, which makes it exactly the kind of place the device gets
  * put down and the power button pressed. */
-static bool confirm_panel(app *a, const char *heading, const char *msg,
-                          const char *yes_label)
+/* ...and its general form: `n` answers, then Cancel. Returns the answer's
+ * index, or -1 for Cancel and everything confirm_panel counts as "not that".
+ * Settings > Scraping's import is the caller with two (TortOS-mh0). */
+static int pick_panel(app *a, const char *heading, const char *msg,
+                      const char *const *opts, int n)
 {
-	menu_row rows[3];
-	int sel = 2;
+	menu_row rows[4];
+	int sel, i;
 
+	if (n > 2) n = 2;
 	rows[0] = (menu_row){ msg, NULL, false };
-	rows[1] = (menu_row){ yes_label, NULL, true };
-	rows[2] = (menu_row){ "Cancel", NULL, true };
+	for (i = 0; i < n; i++) rows[1 + i] = (menu_row){ opts[i], NULL, true };
+	rows[1 + n] = (menu_row){ "Cancel", NULL, true };
+	sel = 1 + n;
 
 	for (;;) {
 		plat_input_poll(&a->in);
-		if (a->in.quit_requested) { a->running = false; return false; }
+		if (a->in.quit_requested) { a->running = false; return -1; }
 		{
 			pwr_action pa = power_check(a);
-			if (pa == PWR_POWEROFF) { power_off(a); return false; }
+			if (pa == PWR_POWEROFF) { power_off(a); return -1; }
 		}
-		if (menu_leaving(a)) return false;
+		if (menu_leaving(a)) return -1;
 
-		/* Only the two answerable rows are reachable; row 0 is the question. */
-		if (in_repeat(&a->in, IN_UP) || in_repeat(&a->in, IN_DOWN))
-			sel = (sel == 1) ? 2 : 1;
-		if (a->in.pressed[IN_ACCEPT]) return sel == 1;
+		/* Only the answerable rows are reachable; row 0 is the question. */
+		if (in_repeat(&a->in, IN_UP))   sel = sel > 1 ? sel - 1 : 1 + n;
+		if (in_repeat(&a->in, IN_DOWN)) sel = sel < 1 + n ? sel + 1 : 1;
+		if (a->in.pressed[IN_ACCEPT]) return sel <= n ? sel - 1 : -1;
 
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 		SDL_RenderFillRect(a->r, NULL);
-		menu_draw(a, heading, rows, 3, sel, 0, MENU_ACCENT);
+		menu_draw(a, heading, rows, 2 + n, sel, 0, MENU_ACCENT);
+		plat_draw_osd(a->r);
+		SDL_RenderPresent(a->r);
+		SDL_Delay(8);
+	}
+}
+
+static bool confirm_panel(app *a, const char *heading, const char *msg,
+                          const char *yes_label)
+{
+	return pick_panel(a, heading, msg, &yes_label, 1) == 0;
+}
+
+/* Rows to read and nothing to choose, until A or B: a job's result. */
+static void note_panel(app *a, const char *heading, const menu_row *rows, int n)
+{
+	for (;;) {
+		plat_input_poll(&a->in);
+		if (a->in.quit_requested) { a->running = false; return; }
+		{
+			pwr_action pa = power_check(a);
+			if (pa == PWR_POWEROFF) { power_off(a); return; }
+		}
+		if (menu_leaving(a) || a->in.pressed[IN_ACCEPT]) return;
+
+		tick_tint(a);
+		draw_shelf(a);
+		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
+		SDL_RenderFillRect(a->r, NULL);
+		menu_draw(a, heading, rows, n, -1, 0, MENU_ACCENT);
 		plat_draw_osd(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
@@ -6409,6 +6445,86 @@ static void muse_settings_screen(app *a)
 	         muse_set_build, muse_set_key, NULL);
 }
 
+/* Settings > Scraping (TortOS-mh0): Box Art and the ScreenScraper account,
+ * moved here from the top menu, and gamelist.xml import. The rows are
+ * src/sys_menu.c's, so tools/menu-check.c can state what they say. */
+static int scraping_build(void *ctx, menu_row *rows, int max,
+                          const char **heading)
+{
+	char ss[WIFI_SSID_MAX];
+	sys_ui u = { 0 };
+
+	(void)ctx;
+	(void)max;
+	u.wifi    = menu_wifi(ss, sizeof ss);
+	u.ss_have = ss_have_dev();
+	u.ss_in   = ss_signed_in();
+	u.ss_name = u.ss_in ? ss_user() : NULL;
+	return sys_menu_scraping_build(&u, rows, heading);
+}
+
+/* Every system's gamelist.xml into the games table. Fill In Missing leaves a
+ * game that already has metadata - a ScreenScraper hit, an earlier import -
+ * alone; Replace All writes over it. The same rule as `--meta`. */
+static void gamelist_import_screen(app *a)
+{
+	static const char *const OPTS[] = { "Fill in missing", "Replace all" };
+	const char *heading = "Import gamelist.xml";
+	char l0[64], l1[96], l2[CFG_STR + 48];
+	menu_row rows[4];
+	gl_result r;
+	int pick, n = 0;
+
+	pick = pick_panel(a, heading, "Games that already have metadata:", OPTS, 2);
+	if (pick < 0) return;
+	wait_panel(a, heading, "Importing...");
+	gl_import(db_lib(), P_ROMS, &a->sys, pick == 1, &r);
+	fprintf(stderr, "gamelist: %d list(s), %d written, %d skipped, %d rejected, "
+	        "%d unreadable\n", r.lists, r.wrote, r.skipped, r.bad, r.unreadable);
+
+	if (!r.lists && !r.unreadable) {
+		rows[n++] = (menu_row){ "No gamelist.xml in any system folder", NULL, false };
+	} else {
+		snprintf(l0, sizeof l0, "Imported %d game%s", r.wrote, r.wrote == 1 ? "" : "s");
+		rows[n++] = (menu_row){ l0, NULL, false };
+		if (r.skipped) {
+			snprintf(l1, sizeof l1, "Skipped %d (already had metadata)", r.skipped);
+			rows[n++] = (menu_row){ l1, NULL, false };
+		}
+		if (r.unreadable) {
+			if (r.unreadable == 1)
+				snprintf(l2, sizeof l2, "Could not read %s's gamelist",
+				         r.first_unreadable);
+			else
+				snprintf(l2, sizeof l2, "Could not read %d gamelists, first %s",
+				         r.unreadable, r.first_unreadable);
+			rows[n++] = (menu_row){ l2, NULL, false };
+		}
+	}
+	rows[n++] = (menu_row){ "B to close", NULL, false };
+	note_panel(a, heading, rows, n);
+}
+
+static menu_result scraping_key(app *a, void *ctx, in_button key, int sel)
+{
+	(void)ctx;
+	if (key != IN_ACCEPT) return MENU_STAY;
+	switch (sel) {
+	case SC_BOXART: art_screen(a, NULL, NULL, NULL, NULL, MENU_ACCENT); break;
+	case SC_SS:     ss_signin_screen(a); break;
+	case SC_IMPORT: gamelist_import_screen(a); break;
+	default: break;
+	}
+	return MENU_STAY;
+}
+
+static void scraping_screen(app *a)
+{
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+	                           .fixed_w = menu_std_width(a) },
+	         scraping_build, scraping_key, NULL);
+}
+
 static int sysmenu_build(void *ctx, menu_row *rows, int max,
                          const char **heading)
 {
@@ -6638,9 +6754,8 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 	switch (sel) {
 	case PM_WIFI:         wifi_screen(a); break;
 	case PM_XFER:         xfer_screen(a); break;
-	case PM_SCRAPE:       art_screen(a, NULL, NULL, NULL, NULL, MENU_ACCENT); break;
+	case PM_SCRAPING:     scraping_screen(a); break;
 	case PM_ACHIEVEMENTS: ra_signin_screen(a); break;
-	case PM_SS:           ss_signin_screen(a); break;
 	case PM_BT:           bt_screen(a); break;
 	case PM_STATS:        if (stats_screen(a)) return MENU_DONE; break;
 	case PM_CONTROLS:     controls_screen(a); break;
