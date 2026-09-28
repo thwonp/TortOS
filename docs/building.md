@@ -38,7 +38,7 @@ exists because something once broke in a way nothing noticed:
 |---|---|
 | `check-menus` | what each menu CONTAINS in a given state, with no renderer and no device |
 | `check-audioout` | where sound goes given a cable, a headset and a setting - all eight combinations |
-| `check-idle` | the Auto Off clock, including the charger case and the counter wrapping |
+| `check-idle` | the idle clock behind Auto Sleep and Auto Off, including the charger case and the counter wrapping |
 | `check-cheevos` | the achievement half: parsing and filtering |
 | `check-rahash` | the C and Python ROM hashers agree, over the whole library |
 | `check-raset` | the C and Python set converters agree (needs `RA_USER`/`RA_PASS`) |

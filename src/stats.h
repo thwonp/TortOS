@@ -54,6 +54,11 @@
 /* RUN. In-memory only - see the header note. */
 void stats_begin(const char *tag, const char *file, unsigned now_ms);
 
+/* Time the device spent asleep mid-session, which is not play: NextUI stops
+ * its play clock across sleep (gametimectl stop_all/resume). Subtracted from
+ * the session, never from the key - g_t0 names the row. */
+void stats_asleep(unsigned ms);
+
 /* From the game tick. Writes at most one unsynced row, and usually nothing. */
 void stats_tick(unsigned now_ms);
 

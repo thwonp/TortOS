@@ -207,8 +207,7 @@ bool plat_usb_keep_awake(void);
  * light sleep waits unwoken before real suspend. Never 0. */
 int plat_suspend_timeout_secs(void);
 
-/* A tap sleeps (or powers off, when sleep is unsupported or "power.tap" says
- * not to); a hold still powers off immediately, same as it always has - see
+/* A tap sleeps (or powers off, when "power.tap" says to); a hold still powers off immediately, same as it always has - see
  * platform.c for the 400ms line between the two. Fed the button's current
  * level every time a caller already polls it: once a frame from the
  * shelf/menu path (a->in.down[IN_POWER]), once a tick from diatom_wait()'s
@@ -218,10 +217,10 @@ int plat_suspend_timeout_secs(void);
 typedef enum { PWR_NONE, PWR_SLEEP, PWR_POWEROFF } pwr_action;
 pwr_action plat_power_tap_or_hold(bool down);
 
-/* Auto Off's own decision, and Diatom's mid-game IDLE: sleep if supported and
- * "power.idle" allows it, else today's poweroff. No duration to track, so
- * nothing stateful. */
-pwr_action plat_power_idle_action(void);
+/* True once, when the RES_PAUSED plat_resident_wait just returned answers a
+ * mid-game tap's PAUSE: launch() sleeps and RESUMEs rather than opening the
+ * menu. */
+bool plat_resident_sleep_asked(void);
 
 /* The two level scales, stated once. TortOS shares them verbatim with
  * launch.sh and with Diatom, so a level crossing the socket needs no

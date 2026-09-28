@@ -149,6 +149,20 @@ static void the_clock_wrapping_is_not_a_49_day_session(void)
 	ck(!strcmp(only_value(), "10\tquit"), "ten seconds, not forty-nine days");
 }
 
+static void sleep_is_not_play(void)
+{
+	printf("time asleep:\n");
+	scrub();
+	stats_begin("GB", "Tetris.zip", 0);
+	stats_asleep(45000);                            /* a light sleep */
+	stats_end("quit", 60000);
+	ck(!strcmp(only_value(), "15\tquit"), "a minute with 45s asleep is 15s played");
+	scrub();
+	stats_begin("GB", "Tetris.zip", 100000);
+	stats_end("quit", 110000);
+	ck(!strcmp(only_value(), "10\tquit"), "the next session does not inherit it");
+}
+
 static void two_systems_can_hold_the_same_filename(void)
 {
 	printf("the same file on two shelves is two games:\n");
@@ -323,6 +337,7 @@ int main(void)
 	a_long_session_marks_and_checkpoints();
 	a_power_cut_is_recovered_at_the_checkpoint();
 	the_clock_wrapping_is_not_a_49_day_session();
+	sleep_is_not_play();
 	two_systems_can_hold_the_same_filename();
 	summarize_folds_and_ranks();
 	windows_cut_on_a_boundary();

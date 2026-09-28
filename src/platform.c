@@ -1205,6 +1205,17 @@ static void d_apply_levels(void)
 	d_pend_vol = d_pend_bri = -1;
 }
 
+/* A mid-game tap asked Diatom to PAUSE so the device can sleep; the PAUSED
+ * it answers with is that, not the menu. */
+static bool d_sleep_asked;
+
+bool plat_resident_sleep_asked(void)
+{
+	bool was = d_sleep_asked;
+	d_sleep_asked = false;
+	return was;
+}
+
 static int diatom_wait(void)
 {
 	int sent_stop = 0;
@@ -1241,28 +1252,18 @@ static int diatom_wait(void)
 		plat_mute_poll(false);
 		while ((l = dline(100))) {
 			if      (strncmp(l, "RUNNING", 7) == 0) d_got_running = 1;
-			else if (strncmp(l, "PAUSED", 6) == 0)  return RES_PAUSED;
+			else if (strncmp(l, "PAUSED", 6) == 0) {
+				/* A sleep's PAUSE overtaken by a hold's STOP: the game is
+				 * ending, and its EXIT is what to wait for. */
+				if (d_sleep_asked && sent_stop) { d_sleep_asked = false; continue; }
+				return RES_PAUSED;
+			}
 			else if (strncmp(l, "PREVIEW\tpath=", 13) == 0)
 				snprintf(d_preview, sizeof d_preview, "%s", l + 13);
 			else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
 			else if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
 			else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
 			else if (strncmp(l, "CHEEVO\t", 7) == 0) d_note_cheevo(l);
-			/* Nobody has pressed anything for as long as the player asked.
-			 * Sleep needs none of what follows - it freezes the game
-			 * along with everything else and there is nothing to stop -
-			 * so only the poweroff decision still goes through STOP and
-			 * the launcher's existing after-the-game check. */
-			else if (strncmp(l, "IDLE", 4) == 0 && !sent_stop) {
-				if (plat_power_idle_action() == PWR_SLEEP) {
-					plat_sleep();
-				} else {
-					run_power_pressed = true;
-					sent_stop = 1;
-					stop_at = plat_now_ms();
-					dsend("STOP");
-				}
-			}
 			else if (strncmp(l, "EXIT", 4) == 0) {
 				/* A crash and a quit arrive on the SAME line, and only the
 				 * reason tells them apart. This threw the line away and
@@ -1325,8 +1326,12 @@ static int diatom_wait(void)
 			 * as the shelf/menu path checks a->in.down every frame. */
 			if (!sent_stop) {
 				pwr_action pa = plat_power_tap_or_hold(pwr_down);
+				/* Asleep in-process, as minarch is: the game stops first.
+				 * PAUSE, and the PAUSED that answers it comes back to
+				 * launch() as a sleep rather than the menu - see
+				 * plat_resident_sleep_asked. */
 				if (pa == PWR_SLEEP) {
-					plat_sleep();
+					if (!d_sleep_asked) { d_sleep_asked = true; dsend("PAUSE"); }
 				} else if (pa == PWR_POWEROFF) {
 					run_power_pressed = true;
 					sent_stop = 1;
@@ -2415,14 +2420,9 @@ pwr_action plat_power_tap_or_hold(bool down)
 	}
 	if (!pwr_since) return PWR_NONE;   /* not pressed, nothing just ended */
 	pwr_since = 0;
-	return (plat_sleep_supported() && db_get_int(db_dev(), "power.tap", 1))
-	       ? PWR_SLEEP : PWR_POWEROFF;
-}
-
-pwr_action plat_power_idle_action(void)
-{
-	return (plat_sleep_supported() && db_get_int(db_dev(), "power.idle", 1))
-	       ? PWR_SLEEP : PWR_POWEROFF;
+	/* Not gated on plat_sleep_supported(): NextUI's tap always enters light
+	 * sleep, and suspend support only matters at its escalation. */
+	return db_get_int(db_dev(), "power.tap", 1) ? PWR_SLEEP : PWR_POWEROFF;
 }
 
 /* ---- battery ---- */
