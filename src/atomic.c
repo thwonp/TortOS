@@ -55,6 +55,13 @@ bool atomic_commit(FILE *f, const char *path)
 		unlink(tmp);
 		return false;
 	}
+	/* Without this the rename reaches the card only with writeback, up to
+	 * 30 s later, and a hard power-off inside that window brings back the
+	 * previous file. It likely also narrows the window in which a reset
+	 * mid-writeback can leave exFAT's bitmap and directory disagreeing, the
+	 * suspected cause of cross-linked files (TortOS-pq0). About 25 ms on the
+	 * card. */
+	sync();
 	return true;
 }
 
