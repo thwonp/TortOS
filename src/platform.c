@@ -7,6 +7,7 @@
 #include "ui.h"   /* the settings line shares the rail's weight and palette */
 
 #include <dlfcn.h>
+#include <glob.h>
 #include <fcntl.h>
 #include <signal.h>
 #ifdef __linux__
@@ -2283,6 +2284,27 @@ void plat_light_sleep(void)
 	apply_brightness(saved_bright);
 	if (mixer_fd >= 0 && saved_vol >= 0) apply_volume(saved_vol);
 #endif
+}
+
+bool plat_usb_keep_awake(void)
+{
+	glob_t g;
+	size_t i;
+	bool host = false;
+
+	if (!db_get_int(db_dev(), "keepawakeusb", 0)) return false;
+	/* NextUI's PLAT_isUSBConnected (tg5040): the UDC says "configured" once
+	 * a host has enumerated the device, which a wall charger never does. */
+	if (glob("/sys/class/udc/*/state", 0, NULL, &g) != 0) return false;
+	for (i = 0; i < g.gl_pathc && !host; i++) {
+		char st[32] = "";
+		FILE *f = fopen(g.gl_pathv[i], "r");
+		if (!f) continue;
+		if (fgets(st, sizeof st, f)) host = !strncmp(st, "configured", 10);
+		fclose(f);
+	}
+	globfree(&g);
+	return host;
 }
 
 int plat_suspend_timeout_secs(void)

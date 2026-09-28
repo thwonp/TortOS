@@ -122,6 +122,10 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	sys_menu_auto_off_label(u->auto_off, b->c, sizeof b->c);
 	out[PM_SUSPEND]      = (menu_row){ "Suspend Timeout", b->e, true };
 	sys_menu_auto_off_label(u->suspend_timeout, b->e, sizeof b->e);
+	/* NextUI's "Keep awake over USB": attached to a computer - enumerated,
+	 * not merely charging - neither timer above runs down. */
+	out[PM_KEEPAWAKE]    = (menu_row){ "Keep Awake Over USB",
+	                                   u->keep_awake_usb ? "on" : "off", true };
 	out[PM_AUTO_OFF]     = (menu_row){ "Auto Off",  b->a,      true  };
 	sys_menu_auto_off_label(u->auto_poweroff, b->a, sizeof b->a);
 	/* Both change how the shelf looks and nothing about what is on it. They

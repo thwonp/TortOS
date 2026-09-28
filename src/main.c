@@ -1900,8 +1900,8 @@ static void aout_retry_in_game(void)
 /* Auto Off while a game runs. Diatom holds the clock, because it owns the pad
  * and this process is blocked in plat_resident_wait; the launcher's part is
  * telling it the number and keeping that number true as the charger comes and
- * goes. See on_charger, which lives beside battery_low. */
-static bool on_charger(void);
+ * goes. See keep_awake, which lives beside battery_low. */
+static bool keep_awake(void);
 static int  g_idle_secs;         /* the Auto Off setting, 0 off */
 static bool g_idle_charging;     /* what was true when SETIDLE was last sent */
 
@@ -1943,7 +1943,7 @@ static void on_game_tick(void)
 	aout_retry_in_game();
 
 	if (g_idle_secs > 0) {
-		bool ch = on_charger();
+		bool ch = keep_awake();
 
 		if (ch != g_idle_charging) {
 			g_idle_charging = ch;
@@ -2332,7 +2332,8 @@ static bool battery_low(void)
 	return low;
 }
 
-/* On the charger, cached. Both halves of Auto Off ask this - the shelf every
+/* On the charger - or on a computer with Keep Awake Over USB set - cached.
+ * Both halves of Auto Off ask this - the shelf every
  * frame, the in-game tick ten times a second - and every call is two sysfs
  * files opened, read and closed. Two seconds is well inside the shortest
  * timeout anyone can set, so the lag is not observable. Same trick and the
@@ -2340,7 +2341,7 @@ static bool battery_low(void)
  *
  * plat_battery leaves its out-parameter alone when it fails, so the answer is
  * written before the call rather than after it. */
-static bool on_charger(void)
+static bool keep_awake(void)
 {
 	static unsigned last;
 	static bool     charging, primed;
@@ -2353,6 +2354,9 @@ static bool on_charger(void)
 		last = now;
 		charging = false;
 		plat_battery(NULL, &charging);
+		/* NextUI's PWR_preventAutosleep: charging, or attached to a
+		 * computer with Keep Awake Over USB on - one reason, not two. */
+		if (!charging) charging = plat_usb_keep_awake();
 	}
 	return charging;
 }
@@ -2386,7 +2390,7 @@ static bool idle_due(app *a)
 	 * counting as input: an album is somebody using the device with nobody
 	 * touching it, and when it stops the countdown starts fresh. */
 	return idle_check(&a->idle, plat_now_ms(), b < IN_COUNT,
-	                  on_charger() || musec_playing());
+	                  keep_awake() || musec_playing());
 }
 
 /* The keyboard takes callbacks rather than an app - it is deliberately
@@ -4275,6 +4279,7 @@ static int menu_build(app *a, screen_id screen, int sys,
 		u.auto_off  = a->auto_off;
 		u.auto_poweroff = a->auto_poweroff;
 		u.suspend_timeout = plat_suspend_timeout_secs();
+		u.keep_awake_usb = db_get_int(db_dev(), "keepawakeusb", 0);
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
 
@@ -6531,6 +6536,13 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		if (at < 0) at = 0;
 		if (at >= SUSPEND_TIMEOUT_COUNT) at = SUSPEND_TIMEOUT_COUNT - 1;
 		db_set_int(db_dev(), "suspendtimeout", SUSPEND_TIMEOUT[at]);
+		return MENU_STAY;
+	}
+	/* Keep Awake Over USB: a toggle, so A flips it as well as left/right. */
+	if (sel == PM_KEEPAWAKE && (d || key == IN_ACCEPT)) {
+		db_set_int(db_dev(), "keepawakeusb",
+		           !db_get_int(db_dev(), "keepawakeusb", 0));
+		a->idle.since_ms = plat_now_ms();
 		return MENU_STAY;
 	}
 	/* Text size, same idiom. Changing it reopens every font, so the whole UI
@@ -9003,7 +9015,7 @@ static void launch(app *a)
 			 * battery reason and no cost to leaving it. on_game_tick keeps
 			 * this true if the cable changes mid-game. */
 			g_idle_secs = a->auto_off;
-			g_idle_charging = on_charger();
+			g_idle_charging = keep_awake();
 			plat_resident_line("SETIDLE\tms=%d",
 			                   (g_idle_secs > 0 && !g_idle_charging)
 			                       ? g_idle_secs * 1000 : 0);
