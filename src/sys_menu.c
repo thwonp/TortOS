@@ -8,9 +8,9 @@
 
 void sys_menu_auto_off_label(int seconds, char *out, size_t n)
 {
-	if (seconds <= 0)      snprintf(out, n, "never");
-	else if (seconds < 60) snprintf(out, n, "%ds", seconds);
-	else                   snprintf(out, n, "%dm", seconds / 60);
+	if (seconds <= 0)       snprintf(out, n, "never");
+	else if (seconds < 120) snprintf(out, n, "%ds", seconds);
+	else                    snprintf(out, n, "%dm", seconds / 60);
 }
 
 /* Three rows say the same thing when the radio is down, and they say it in
@@ -110,13 +110,18 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	 * answer to the row above rather than a separate idea. */
 	out[PM_XFER]         = (menu_row){ "Over The Hare", NEEDS_WIFI(net), net };
 	out[PM_STATS]        = (menu_row){ "Play Time",  NULL,      true  };
-	/* Auto Sleep suspends to RAM (src/platform.c's plat_sleep) and resumes
-	 * instantly; Auto Off powers down and relies on resume-into-game to put
-	 * you back. Mutually exclusive, matching NextUI - see main.c's
-	 * PM_SLEEP/PM_AUTO_OFF handling - so at most one of the two labels below
-	 * is ever a real interval; the other always reads "never". */
+	/* NextUI's two sleep rows, same meaning: Auto Sleep is its "Screen
+	 * timeout" (idle until light sleep - screen off, CPU awake), Suspend
+	 * Timeout its "Suspend timeout" (how long light sleep waits unwoken
+	 * before real suspend, whether a tap or idle began it). Auto Off is
+	 * TortOS's own: idle until a full shutdown, resume-into-game putting you
+	 * back. It and Auto Sleep are mutually exclusive - main.c's
+	 * PM_SLEEP/PM_AUTO_OFF handling - so at most one of those two labels is
+	 * ever a real interval. */
 	out[PM_SLEEP]        = (menu_row){ "Auto Sleep", b->c,     true  };
 	sys_menu_auto_off_label(u->auto_off, b->c, sizeof b->c);
+	out[PM_SUSPEND]      = (menu_row){ "Suspend Timeout", b->e, true };
+	sys_menu_auto_off_label(u->suspend_timeout, b->e, sizeof b->e);
 	out[PM_AUTO_OFF]     = (menu_row){ "Auto Off",  b->a,      true  };
 	sys_menu_auto_off_label(u->auto_poweroff, b->a, sizeof b->a);
 	/* Both change how the shelf looks and nothing about what is on it. They

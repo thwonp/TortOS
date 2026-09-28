@@ -194,6 +194,10 @@ void plat_sleep(void);
  * calling convention as plat_sleep(). */
 void plat_light_sleep(void);
 
+/* The Suspend Timeout setting (main.c's PM_SUSPEND), in seconds: how long
+ * light sleep waits unwoken before real suspend. Never 0. */
+int plat_suspend_timeout_secs(void);
+
 /* A tap sleeps (or powers off, when sleep is unsupported or "power.tap" says
  * not to); a hold still powers off immediately, same as it always has - see
  * platform.c for the 400ms line between the two. Fed the button's current

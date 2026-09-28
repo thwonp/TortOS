@@ -1043,20 +1043,18 @@ static void chv_active_path(char *out, size_t n)
 	snprintf(out, n, "%s/cheevos-active.set", P_USERDATA);
 }
 
-/* Auto Off: how long without input before the device powers itself down.
- *
- * Seconds, 0 for off. Eric's ladder, and it is deliberately aggressive at the
- * short end - 30s will fire while you read a dialogue box. That is a sound
- * trade only because resume-into-game exists: powering off costs about two
- * seconds and puts you back in the same game with the menu up. Without that
- * it would be hostile. */
-static const int AUTO_OFF[] = { 0, 30, 60, 120, 300, 600 };
+/* Auto Sleep: how long without input before light sleep (screen off, CPU
+ * awake - platform.c's plat_light_sleep). NextUI's "Screen timeout" exactly:
+ * its ladder and its default (settings.cpp's screen_timeout_secs,
+ * CFG_DEFAULT_SCREENTIMEOUTSECS). Seconds, 0 for never. The array and db key
+ * keep their old auto_off/autooff names from when this row meant power-off. */
+static const int AUTO_OFF[] = { 0, 5, 10, 15, 30, 45, 60, 90, 120, 240, 360, 600 };
 #define AUTO_OFF_COUNT ((int)(sizeof AUTO_OFF / sizeof AUTO_OFF[0]))
 
 static int auto_off_load(void)
 {
 	int v = db_get_int(db_dev(), "autooff", -1);
-	return v >= 0 ? v : 120;                  /* the default: two minutes */
+	return v >= 0 ? v : 60;                   /* NextUI's default: a minute */
 }
 
 static void auto_off_save(int seconds)
@@ -1081,6 +1079,14 @@ static void auto_poweroff_save(int seconds)
 {
 	db_set_int(db_dev(), "autopoweroff", seconds);
 }
+
+/* Suspend Timeout: how long light sleep waits for the power button before
+ * escalating into real suspend. NextUI's "Suspend timeout" exactly - its
+ * sleep_timeout_secs ladder and CFG_DEFAULT_SUSPENDTIMEOUTSECS. No 0 on
+ * purpose, as in NextUI: once the screen is off some escalation always
+ * applies. Independent of both rows above. platform.c reads the same key. */
+static const int SUSPEND_TIMEOUT[] = { 5, 10, 15, 30, 45, 60, 90, 120, 240, 360, 600 };
+#define SUSPEND_TIMEOUT_COUNT ((int)(sizeof SUSPEND_TIMEOUT / sizeof SUSPEND_TIMEOUT[0]))
 
 
 /* Defined with the Wi-Fi screen it began in, and used here because signing in
@@ -4268,6 +4274,7 @@ static int menu_build(app *a, screen_id screen, int sys,
 		u.cards_dir = CARD_DIRS[g_dir].name;
 		u.auto_off  = a->auto_off;
 		u.auto_poweroff = a->auto_poweroff;
+		u.suspend_timeout = plat_suspend_timeout_secs();
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
 
@@ -6471,10 +6478,12 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 
 	/* Auto Sleep, on the left/right idiom Display mode uses. */
 	if (d && sel == PM_SLEEP) {
-		int k, at = 0;
+		int k, at = AUTO_OFF_COUNT - 1;
 
+		/* The first rung at or above, not an exact match: 300s from the
+		 * pre-NextUI ladder steps from 240/360, not from never. */
 		for (k = 0; k < AUTO_OFF_COUNT; k++)
-			if (AUTO_OFF[k] == a->auto_off) { at = k; break; }
+			if (AUTO_OFF[k] >= a->auto_off) { at = k; break; }
 		at += d;
 		if (at < 0) at = 0;
 		if (at >= AUTO_OFF_COUNT) at = AUTO_OFF_COUNT - 1;
@@ -6508,6 +6517,20 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 			auto_off_save(0);
 		}
 		a->idle.since_ms = plat_now_ms();
+		return MENU_STAY;
+	}
+	/* Suspend Timeout, same idiom, and independent of both rows above: it
+	 * governs light sleep however it began. Clamped at both ends - there is
+	 * no "never", as in NextUI. */
+	if (d && sel == PM_SUSPEND) {
+		int k, at = 3;                    /* 30s, should the stored value be off-ladder */
+
+		for (k = 0; k < SUSPEND_TIMEOUT_COUNT; k++)
+			if (SUSPEND_TIMEOUT[k] == plat_suspend_timeout_secs()) { at = k; break; }
+		at += d;
+		if (at < 0) at = 0;
+		if (at >= SUSPEND_TIMEOUT_COUNT) at = SUSPEND_TIMEOUT_COUNT - 1;
+		db_set_int(db_dev(), "suspendtimeout", SUSPEND_TIMEOUT[at]);
 		return MENU_STAY;
 	}
 	/* Text size, same idiom. Changing it reopens every font, so the whole UI

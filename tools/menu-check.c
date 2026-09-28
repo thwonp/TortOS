@@ -183,6 +183,7 @@ static void tortos_menu_offline(void)
 	u.cards = "Plain Jane";
 	u.cards_dir = "Horizontal";
 	u.auto_off = 120;
+	u.suspend_timeout = 90;
 	n = sys_menu_build(&u, rows, &b, &heading);
 
 	printf("TortOS menu, radio off:\n");
@@ -196,6 +197,8 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(val(&rows[PM_ACHIEVEMENTS]), "sign in"), "Cheevos invites a sign in");
 	ck(rows[PM_ACHIEVEMENTS].live, "Cheevos is reachable signed out");
 	ck(!strcmp(val(&rows[PM_SLEEP]), "2m"), "120s reads as 2m");
+	ck(!strcmp(val(&rows[PM_SUSPEND]), "90s"), "90s stays in seconds, as NextUI spells it");
+	ck(rows[PM_SUSPEND].live, "Suspend Timeout is reachable offline");
 	ck(!strcmp(val(&rows[PM_THEME]), "Plain Jane"), "the card set names itself");
 	ck(!strcmp(val(&rows[PM_DIR]), "Horizontal"), "and so does the direction");
 	ck(rows[PM_DIR].live, "UI Direction is reachable offline too");
@@ -273,6 +276,7 @@ static void tortos_menu_online(void)
 	ck(rows[PM_SCRAPE].live, "Box Art is live");
 	ck(!strcmp(val(&rows[PM_ACHIEVEMENTS]), "eric"), "Cheevos shows the account");
 	ck(!strcmp(val(&rows[PM_SLEEP]), "never"), "0s reads as never");
+	ck(!strcmp(val(&rows[PM_AUTO_OFF]), "never"), "Auto Off unset reads as never");
 
 	/* THE SCREENSCRAPER ROW HAS THREE STATES, one more than the Cheevos row
 	 * beside it: the developer key comes from the environment at build time,
@@ -441,14 +445,15 @@ static void system_menu(void)
 	}
 }
 
-/* The labels, on their own. A row that reads "90s" for a minute and a half
- * would be wrong in a way no screenshot makes obvious. */
+/* The labels, on their own - NextUI's spelling (settings.cpp's
+ * screen_timeout_labels/sleep_timeout_labels): seconds through 90s, whole
+ * minutes from 2m. A minute and a half reads "90s" there, so it does here. */
 static void auto_off_words(void)
 {
 	char s[16];
 	struct { int sec; const char *want; } t[] = {
-		{ 0, "never" }, { 30, "30s" }, { 60, "1m" },
-		{ 120, "2m" }, { 300, "5m" }, { 600, "10m" },
+		{ 0, "never" }, { 5, "5s" }, { 30, "30s" }, { 60, "60s" },
+		{ 90, "90s" }, { 120, "2m" }, { 300, "5m" }, { 600, "10m" },
 	};
 	size_t i;
 

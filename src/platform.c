@@ -2285,6 +2285,12 @@ void plat_light_sleep(void)
 #endif
 }
 
+int plat_suspend_timeout_secs(void)
+{
+	int v = db_get_int(db_dev(), "suspendtimeout", 30);
+	return v > 0 ? v : 30;          /* NextUI's default; 0 is not a choice */
+}
+
 #define POWER_HOLD_MS 400u
 
 /* The one press either caller could currently be watching - a->in.down every
