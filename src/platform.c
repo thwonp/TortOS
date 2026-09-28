@@ -8,6 +8,7 @@
 
 #include <dlfcn.h>
 #include <glob.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #ifdef __linux__
@@ -1905,6 +1906,17 @@ static void apply_brightness(int b)
 	ioctl(disp_fd, DISP_LCD_SET_BRIGHTNESS, a);
 }
 
+/* The backlight OFF, for sleep - NextUI's SetRawBrightness(0). Not
+ * apply_brightness(0): rung 0 is 2/255, still lit, which is a dim screen
+ * rather than a dark one (found on hardware, 2026-09-28). cur_bright is left
+ * alone, so apply_brightness(cur_bright) puts the player's level back. */
+static void backlight_off(void)
+{
+	unsigned long a[4] = { 0, 0, 0, 0 };
+
+	if (disp_fd >= 0) ioctl(disp_fd, DISP_LCD_SET_BRIGHTNESS, a);
+}
+
 void plat_settings_init(void)
 {
 	int v = -1, b = -1;
@@ -2186,12 +2198,38 @@ static bool radio_sh_call(const char *fn, bool background)
 }
 #endif
 
+#ifdef __linux__
+/* Blocks up to ms for a POWER event with this value - 1 a press, 0 a
+ * release - reading whatever else is queued on the way.
+ *
+ * Light sleep waits for the RELEASE, as NextUI's PLAT_shouldWake wakes on
+ * SDL_KEYUP of POWER: waking on the press would leave its release for the
+ * tap dispatcher to read as a fresh tap, and put the device straight back to
+ * sleep. plat_sleep's retries look for the PRESS, and its release is drained
+ * with the rest when it returns. */
+static bool power_key_within(int ms, int value)
+{
+	struct pollfd pfd;
+	struct input_event ev;
+	bool hit = false;
+
+	if (fd_power < 0) { usleep(ms * 1000); return false; }
+	pfd.fd = fd_power;
+	pfd.events = POLLIN;
+	if (poll(&pfd, 1, ms) <= 0) return false;
+	while (read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+		if (ev.type == EV_KEY && ev.code == KEY_POWER && ev.value == value)
+			hit = true;
+	return hit;
+}
+#endif
+
 bool plat_sleep(void)
 {
 #ifdef __linux__
 	bool slept = false;
 	char states[128] = { 0 };
-	int fd, saved;
+	int fd;
 	ssize_t n;
 	bool bt_was_up, wifi_was_up;
 	int fd2, tries;
@@ -2206,11 +2244,9 @@ bool plat_sleep(void)
 	states[n] = '\0';
 	if (!strstr(states, "mem")) return false;   /* listed states don't include it */
 
-	/* apply_brightness(), not plat_brightness_set(): this dims the panel and
-	 * puts it back, and must not persist a sleep-only value as the player's
-	 * chosen brightness - see levels_save() in plat_brightness_set above. */
-	saved = cur_bright;
-	apply_brightness(0);
+	/* Not plat_brightness_set(): a sleep-only level must never be persisted
+	 * as the player's chosen brightness - see levels_save() above. */
+	backlight_off();
 
 	/* before(): only touch a radio that was actually running - a player who
 	 * turned Bluetooth or Wi-Fi off in settings must not find it back on
@@ -2228,19 +2264,44 @@ bool plat_sleep(void)
 	 * the write call itself was blocked, to catch a kernel that suspended
 	 * fine but still returned nonzero - see the time_asleep check below,
 	 * ported verbatim from the shipped script's own comment on it. */
+	/*
+	 * One divergence from the script, which cannot see the button: a POWER
+	 * press is a wake, never a failure. Suspending takes 2-3s after the
+	 * screen goes dark, and a press in that window makes the kernel abort
+	 * with EBUSY at suspend_noirq (measured 2026-09-28: 6 of 7 failures,
+	 * wakeup IRQ = the axp2202 PMIC). The script retries 3s later and
+	 * suspends again, swallowing the press that asked to wake. So: a press
+	 * before a write, or during the wait after a failed one, ends it awake.
+	 * Other failures (a charger plugged in, same IRQ) still retry.
+	 *
+	 * Not covered, and cannot be from here: a press in the ~1.1s after the
+	 * kernel freezes this process and before suspend_noirq. axp2101-pek is
+	 * no wakeup source, so nothing aborts; the press waits unread and the
+	 * NEXT press wakes. NextUI on this device has the same window. Closing
+	 * it takes the wakeup_count handshake plus EPOLLWAKEUP on fd_power,
+	 * whose read blocks while USB holds usb_connecting - weighed and
+	 * declined 2026-09-28 (TortOS-1v7.1.2.7).
+	 */
 	for (tries = 0; tries < 5; tries++) {
 		time_t went, woke;
 		ssize_t wrote;
+		int err;
 
+		if (power_key_within(0, 1)) { slept = true; break; }
 		went = time(NULL);
 		fd2 = open("/sys/power/state", O_WRONLY);
 		wrote = fd2 < 0 ? -1 : write(fd2, "mem", 3);
+		err = errno;
 		if (fd2 >= 0) close(fd2);
-		if (wrote == 3) { slept = true; break; }
-
 		woke = time(NULL);
+		/* The script's own trace, one line an attempt: the kernel's answer
+		 * is the one thing a log can't reconstruct afterwards. */
+		fprintf(stderr, "sleep: attempt %d of 5: %s%s, %lds\n", tries + 1,
+		        wrote == 3 ? "ok" : "failed: ",
+		        wrote == 3 ? "" : strerror(err), (long)(woke - went));
+		if (wrote == 3) { slept = true; break; }
 		if (woke - went > 5) { slept = true; break; }  /* false-negative override */
-		sleep(3);
+		if (power_key_within(3000, 1)) { slept = true; break; }  /* sleep(3) */
 	}
 
 	/* POWER is the ordinary way to wake the device, and that very press is
@@ -2261,9 +2322,10 @@ bool plat_sleep(void)
 	if (wifi_was_up) radio_sh_call("wifi_on", true);
 	if (bt_was_up) radio_sh_call("bt_on", true);
 
-	apply_brightness(saved);
+	apply_brightness(cur_bright);
 	/* The script's exit status: PWR_deepSleep's ret, which PWR_waitForWake
-	 * answers with a power-off when it is not 0. */
+	 * answers with a power-off when it is not 0. A wake press counts as
+	 * success - the player is asking for exactly what a resume gives. */
 	return slept;
 #else
 	return false;
@@ -2282,27 +2344,6 @@ static unsigned pwr_since;
  * power button press (just resumed)"). 0 until the first sleep. */
 static unsigned resume_at;
 
-#ifdef __linux__
-/* Blocks up to ms for the power button to be RELEASED - the wake condition,
- * as in NextUI's PLAT_shouldWake, which wakes on SDL_KEYUP of POWER. Waking
- * on the press would leave its release for the tap dispatcher to read as a
- * fresh tap, and put the device straight back to sleep. */
-static bool power_released_within(int ms)
-{
-	struct pollfd pfd;
-	struct input_event ev;
-	bool up = false;
-
-	if (fd_power < 0) { usleep(ms * 1000); return false; }
-	pfd.fd = fd_power;
-	pfd.events = POLLIN;
-	if (poll(&pfd, 1, ms) <= 0) return false;
-	while (read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
-		if (ev.type == EV_KEY && ev.code == KEY_POWER && ev.value == 0)
-			up = true;
-	return up;
-}
-#endif
 
 /* NextUI's PWR_sleep, whole: PWR_enterSleep, PWR_waitForWake, PWR_exitSleep
  * (api.c:4262-4380), for every way into sleep - a tap, Auto Sleep's idle,
@@ -2329,13 +2370,12 @@ bool plat_light_sleep(void)
 {
 	bool awake = true;
 #ifdef __linux__
-	int saved_bright = cur_bright;
 	int saved_vol = cur_vol;
 	int timeout_ms = plat_suspend_timeout_secs() * 1000;
 	unsigned since;
 
 	plat_input_flush();                   /* PAD_reset */
-	apply_brightness(0);
+	backlight_off();
 	if (mixer_fd >= 0) apply_volume(0);
 	sync();
 
@@ -2343,7 +2383,7 @@ bool plat_light_sleep(void)
 	for (;;) {
 		bool charging = false;
 
-		if (power_released_within(200)) break;
+		if (power_key_within(200, 0)) break;
 		/* Signed: "a minute from now" makes since run ahead of now. */
 		if ((int)(plat_now_ms() - since) < timeout_ms) continue;
 		plat_battery(NULL, &charging);
@@ -2355,7 +2395,7 @@ bool plat_light_sleep(void)
 		break;
 	}
 
-	apply_brightness(saved_bright);
+	apply_brightness(cur_bright);
 	if (mixer_fd >= 0 && saved_vol >= 0) apply_volume(saved_vol);
 	sync();
 	plat_input_flush();                   /* PAD_reset, and whatever was

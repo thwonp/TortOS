@@ -183,7 +183,8 @@ void plat_leds_off(void);
 /* Real suspend-to-RAM - NextUI's PWR_deepSleep and its suspend script,
  * reached only from plat_light_sleep's escalation. See platform.c for what
  * "supported" actually probes. plat_sleep() blocks for the whole suspend and
- * returns once the device wakes: true if it suspended, false if it could not
+ * returns once the device wakes: true if it suspended, or if POWER was
+ * pressed before it managed to (a wake, not a failure); false if it could not
  * (unsupported, or every attempt failed - the script's nonzero exit). Never
  * a crash, never a wrong write, when this kernel does not offer it. */
 bool plat_sleep_supported(void);
