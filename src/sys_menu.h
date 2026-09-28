@@ -34,7 +34,7 @@
 typedef enum {
 	PM_STATS,
 	PM_WIFI, PM_BT, PM_AUDIO, PM_XFER,
-	PM_SLEEP, PM_THEME, PM_DIR, PM_SCRAPE, PM_ACHIEVEMENTS, PM_SS,
+	PM_AUTO_OFF, PM_SLEEP, PM_SUSPEND, PM_THEME, PM_DIR, PM_SCRAPE, PM_ACHIEVEMENTS, PM_SS,
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
 } pm_row;
 
@@ -69,7 +69,7 @@ typedef enum {
  * ROM folder and no display mode. Album order was Eric's, 2026-09-19. */
 #define SM_MUSE_ROWS 4
 
-#define MENU_MAX_ROWS 13
+#define MENU_MAX_ROWS 16
 
 /* The array every caller declares must hold every row a build can produce, and
  * on 2026-09-16 it stopped: PM_ROWS went to 13 against a cap of 12 when the
@@ -92,7 +92,7 @@ _Static_assert(MENU_MAX_ROWS >= SM_ROWS, "MENU_MAX_ROWS < SM_ROWS");
 /* Where the built rows' text lives. A row holds pointers, not copies, so the
  * strings a build formats have to outlive the build; the caller owns this and
  * keeps it alive as long as it keeps the rows. */
-typedef struct { char a[24], b[CFG_STR], c[16], d[40]; } menu_bufs;
+typedef struct { char a[24], b[CFG_STR], c[16], d[40], e[16]; } menu_bufs;
 
 /* Everything either menu needs to know about the device, gathered by the
  * caller. A struct rather than a dozen arguments so that adding a fact to a
@@ -119,7 +119,11 @@ typedef struct {
 	const char *ss_name;     /* only read when ss_in */
 	const char *cards;       /* the showing card set's name, from CARD_SETS */
 	const char *cards_dir;   /* which way the shelves run, from CARD_DIRS */
-	int         auto_off;    /* seconds, 0 for off */
+	int         auto_off;    /* Auto Sleep, seconds, 0 for off */
+	int         auto_poweroff; /* Auto Off, seconds, 0 for off - mutually
+	                             * exclusive with auto_off, see PM_AUTO_OFF */
+	int         suspend_timeout; /* seconds light sleep waits before real
+	                              * suspend, never 0 - see PM_SUSPEND */
 	/* Where sound goes: the policy the player set, and where it actually ends
 	 * up under that policy. Both, because the row has to name a place - "Auto"
 	 * on its own is a rule, not somewhere you can hear. */
@@ -143,8 +147,10 @@ typedef struct {
 	const char *sort;
 } sys_ui;
 
-/* Seconds to the label a row shows. Pure, and here rather than in main.c so
- * the check can hold it to "never", "30s" and "2m" without a device. */
+/* Seconds to the label a row shows, in NextUI's own spelling (its
+ * settings.cpp labels): seconds up to 90s, whole minutes from 2m. Pure, and
+ * here rather than in main.c so the check can hold it to "never", "90s" and
+ * "2m" without a device. */
 void sys_menu_auto_off_label(int seconds, char *out, size_t n);
 
 /* Build whichever menu u->games calls for. Returns the row count, so the input

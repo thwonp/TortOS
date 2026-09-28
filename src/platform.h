@@ -166,9 +166,55 @@ bool plat_resident_rect(SDL_Rect *out);
  * game is about to be, rather than on the next wait after resuming. A missed
  * reply costs a stale backdrop, never a hang. */
 bool plat_resident_sync_rect(int timeout_ms);
+/* Read replies for up to timeout_ms until Diatom confirms the SAVE to path
+ * (its SAVED line). False on an ERROR, a timeout, or no Diatom at all. */
+bool plat_resident_saved(const char *path, int timeout_ms);
 
 void plat_request_poweroff(void);
 void plat_leds_off(void);
+
+/* Real suspend-to-RAM - NextUI's PWR_deepSleep and its suspend script,
+ * reached only from plat_light_sleep's escalation. See platform.c for what
+ * "supported" actually probes. plat_sleep() blocks for the whole suspend and
+ * returns once the device wakes: true if it suspended, or if POWER was
+ * pressed before it managed to (a wake, not a failure); false if it could not
+ * (unsupported, or every attempt failed - the script's nonzero exit). Never
+ * a crash, never a wrong write, when this kernel does not offer it. */
+bool plat_sleep_supported(void);
+bool plat_sleep(void);
+
+/* NextUI's PWR_sleep: screen off, sound muted, CPU awake, until the power
+ * button is released - or, left for the Suspend Timeout, real suspend via
+ * plat_sleep(). The one way into sleep, whatever asked for it. Blocks for the
+ * whole of it. Returns false only when escalation found no suspend to go to,
+ * which NextUI answers by powering off; the caller does that. */
+bool plat_light_sleep(void);
+
+/* A computer has enumerated the device - not merely a charger, which never
+ * does. With charging, what keeps TortOS awake: it holds the idle clock and
+ * postpones light sleep's escalation. NextUI's is_usb_connected, minus the
+ * Keep Awake Over USB setting it is gated on there - a computer always counts
+ * (TortOS-2pv). Logs each change. Reads sysfs; callers throttle. */
+bool plat_usb_host(void);
+
+/* The Suspend Timeout setting (main.c's PM_SUSPEND), in seconds: how long
+ * light sleep waits unwoken before real suspend. Never 0. */
+int plat_suspend_timeout_secs(void);
+
+/* A tap sleeps (or powers off, when "power.tap" says to); a hold still powers off immediately, same as it always has - see
+ * platform.c for the 400ms line between the two. Fed the button's current
+ * level every time a caller already polls it: once a frame from the
+ * shelf/menu path (a->in.down[IN_POWER]), once a tick from diatom_wait()'s
+ * raw evdev watchdog during a game. One call handles both grains, because
+ * only one of those two ever runs at a time - the same assumption fd_power
+ * itself already makes. */
+typedef enum { PWR_NONE, PWR_SLEEP, PWR_POWEROFF } pwr_action;
+pwr_action plat_power_tap_or_hold(bool down);
+
+/* True once, when the RES_PAUSED plat_resident_wait just returned answers a
+ * mid-game tap's PAUSE: launch() sleeps and RESUMEs rather than opening the
+ * menu. */
+bool plat_resident_sleep_asked(void);
 
 /* The two level scales, stated once. TortOS shares them verbatim with
  * launch.sh and with Diatom, so a level crossing the socket needs no

@@ -183,6 +183,7 @@ static void tortos_menu_offline(void)
 	u.cards = "Plain Jane";
 	u.cards_dir = "Horizontal";
 	u.auto_off = 120;
+	u.suspend_timeout = 90;
 	n = sys_menu_build(&u, rows, &b, &heading);
 
 	printf("TortOS menu, radio off:\n");
@@ -196,6 +197,8 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(val(&rows[PM_ACHIEVEMENTS]), "sign in"), "Cheevos invites a sign in");
 	ck(rows[PM_ACHIEVEMENTS].live, "Cheevos is reachable signed out");
 	ck(!strcmp(val(&rows[PM_SLEEP]), "2m"), "120s reads as 2m");
+	ck(!strcmp(val(&rows[PM_SUSPEND]), "90s"), "90s stays in seconds, as NextUI spells it");
+	ck(rows[PM_SUSPEND].live, "Suspend Timeout is reachable offline");
 	ck(!strcmp(val(&rows[PM_THEME]), "Plain Jane"), "the card set names itself");
 	ck(!strcmp(val(&rows[PM_DIR]), "Horizontal"), "and so does the direction");
 	ck(rows[PM_DIR].live, "UI Direction is reachable offline too");
@@ -273,6 +276,7 @@ static void tortos_menu_online(void)
 	ck(rows[PM_SCRAPE].live, "Box Art is live");
 	ck(!strcmp(val(&rows[PM_ACHIEVEMENTS]), "eric"), "Cheevos shows the account");
 	ck(!strcmp(val(&rows[PM_SLEEP]), "never"), "0s reads as never");
+	ck(!strcmp(val(&rows[PM_AUTO_OFF]), "never"), "Auto Off unset reads as never");
 
 	/* THE SCREENSCRAPER ROW HAS THREE STATES, one more than the Cheevos row
 	 * beside it: the developer key comes from the environment at build time,
@@ -441,14 +445,15 @@ static void system_menu(void)
 	}
 }
 
-/* The labels, on their own. A row that reads "90s" for a minute and a half
- * would be wrong in a way no screenshot makes obvious. */
+/* The labels, on their own - NextUI's spelling (settings.cpp's
+ * screen_timeout_labels/sleep_timeout_labels): seconds through 90s, whole
+ * minutes from 2m. A minute and a half reads "90s" there, so it does here. */
 static void auto_off_words(void)
 {
 	char s[16];
 	struct { int sec; const char *want; } t[] = {
-		{ 0, "never" }, { 30, "30s" }, { 60, "1m" },
-		{ 120, "2m" }, { 300, "5m" }, { 600, "10m" },
+		{ 0, "never" }, { 5, "5s" }, { 30, "30s" }, { 60, "60s" },
+		{ 90, "90s" }, { 120, "2m" }, { 300, "5m" }, { 600, "10m" },
 	};
 	size_t i;
 
@@ -721,8 +726,9 @@ static void info_rows(void)
 
 /* ---------- the in-game menu ---------------------------------------------- */
 
-/* Cheevos is the only row that can be dead, and it is dead exactly when the
- * game has no set. Everything else is always something A does. */
+/* Cheevos and Sleep are the only rows that can be dead: Cheevos exactly when
+ * the game has no set, Sleep exactly when the kernel does not offer suspend.
+ * Everything else is always something A does. */
 static void ingame_rows(void)
 {
 	gm_ui u;
@@ -730,15 +736,16 @@ static void ingame_rows(void)
 	menu_row rows[GM_ROWS];
 	int got[GM_ROWS], n, k;
 
-	u.dmode = "Native"; u.earned = 12; u.total = 40;
+	u.dmode = "Native"; u.earned = 12; u.total = 40; u.sleep_supported = true;
 	n = gm_rows(&u, rows, &b);
 
-	printf("in-game menu, a game with a set:\n");
-	ck(n == GM_ROWS, "seven rows");
+	printf("in-game menu, a game with a set, sleep supported:\n");
+	ck(n == GM_ROWS, "eight rows");
 	ck(!strcmp(rows[GM_CONTINUE].label, "Continue"), "Continue leads");
 	ck(!strcmp(val(&rows[GM_DISPLAY]), "Native"), "Display carries the mode");
 	ck(!strcmp(val(&rows[GM_CHEEVOS]), "12 / 40"), "Cheevos counts the set");
 	ck(rows[GM_CHEEVOS].live, "and is reachable");
+	ck(rows[GM_SLEEP].live, "Sleep is reachable");
 	k = reachable(rows, n, got, GM_ROWS);
 	ck(k == GM_ROWS, "every row is a stop");
 
@@ -752,6 +759,15 @@ static void ingame_rows(void)
 	ck(!holds(got, k, GM_CHEEVOS), "and never rests on it");
 	ck(holds(got, k, GM_QUIT) && holds(got, k, GM_CONTINUE),
 	   "the rows either side of it still work");
+
+	u.earned = 12; u.total = 40; u.sleep_supported = false;
+	n = gm_rows(&u, rows, &b);
+	printf("in-game menu, sleep unsupported:\n");
+	ck(!strcmp(val(&rows[GM_SLEEP]), "unsupported"), "Sleep says why");
+	ck(!rows[GM_SLEEP].live, "and does nothing");
+	k = reachable(rows, n, got, GM_ROWS);
+	ck(k == GM_ROWS - 1, "so the cursor steps over it too");
+	ck(!holds(got, k, GM_SLEEP), "and never rests on it");
 }
 
 /* The save slots, and the one constant that survived a rename by being written

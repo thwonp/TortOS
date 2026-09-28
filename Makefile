@@ -546,7 +546,7 @@ deploy: all
 	@# transcript. The same reason mk/cross.mk writes the ScreenScraper key
 	@# into a header rather than onto a compile line.
 	@tar -cf - -C build tortos.elf setbright muse musectl btplayer -C ../config systems.cfg \
-	    -C ../sd/tortos launch.sh bt-alsa.sh -C ../../res/fonts menu.ttf | \
+	    -C ../sd/tortos launch.sh bt-alsa.sh radio.sh -C ../../res/fonts menu.ttf | \
 	    $(SSH) 'tar -xf - -C /mnt/SDCARD/TortOS'
 	@tar -cf - -C res cards | $(SSH) 'tar -xf - -C /mnt/SDCARD/TortOS'
 

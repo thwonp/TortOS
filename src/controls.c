@@ -74,7 +74,7 @@ static int game(menu_row *out)
 	out[n++] = (menu_row){ "MENU",   "Pause and menu",     false };
 	out[n++] = (menu_row){ "SELECT", "Muse, in that menu", false };
 	out[n++] = (menu_row){ "X/Y",  "Turbo A/B *",        false };
-	out[n++] = (menu_row){ "POWER",  "Save and turn off",  false };
+	out[n++] = (menu_row){ "POWER",  "Tap sleep, hold off", false };
 	/* The exception as a note rather than a longer row, because it is true of
 	 * two systems out of eleven: on those two, X and Y are the pad's own
 	 * buttons. Kept short - a note runs the width of the panel and is cut at
@@ -117,7 +117,7 @@ static int anywhere(menu_row *out)
 	out[n++] = (menu_row){ "MENU",          "Settings",   false };
 	out[n++] = (menu_row){ "Volume rocker", "Sound",      false };
 	out[n++] = (menu_row){ "F1/F2",       "Brightness", false };
-	out[n++] = (menu_row){ "POWER",         "Turn off",   false };
+	out[n++] = (menu_row){ "POWER",         "Tap sleep, hold off", false };
 	return n;
 }
 

@@ -22,6 +22,7 @@ static char     g_file[STATS_FILE_MAX];
 static long     g_start;          /* unix time, the key's middle segment */
 static unsigned g_t0;             /* now_ms at RUN, for the elapsed seconds */
 static unsigned g_written;        /* now_ms of the last row written, 0 = none */
+static unsigned g_slept;          /* ms of this session spent asleep */
 static bool     g_running;
 
 /* The millisecond clock is in the key, not for ordering but for UNIQUENESS.
@@ -44,7 +45,7 @@ static void session_key(char *out, size_t n, long start, unsigned t0,
  * clock subtracts correctly rather than producing a session of 49 days. */
 static long elapsed_s(unsigned now_ms)
 {
-	return (long)((now_ms - g_t0) / 1000u);
+	return (long)((now_ms - g_t0 - g_slept) / 1000u);
 }
 
 static void write_row(unsigned now_ms, const char *state)
@@ -70,7 +71,13 @@ void stats_begin(const char *tag, const char *file, unsigned now_ms)
 	g_start   = (long)time(NULL);
 	g_t0      = now_ms;
 	g_written = 0;
+	g_slept   = 0;
 	g_running = true;
+}
+
+void stats_asleep(unsigned ms)
+{
+	if (g_running) g_slept += ms;
 }
 
 void stats_tick(unsigned now_ms)

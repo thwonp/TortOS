@@ -65,6 +65,29 @@ left with it.
 
 ---
 
+## Launcher features derived from NextUI (sleep mode, hotkey shortcuts, fast-forward/rewind)
+
+- **Origin:** NextUI, an independent handheld-launcher fork.
+  https://github.com/LoveRetro/NextUI
+- **License:** **PolyForm Noncommercial 1.0.0** (source-available, not OSI
+  open source). Full terms: https://polyformproject.org/licenses/noncommercial/1.0.0
+- This is a personal fork of TortOS (github.com/thwonp/TortOS) that will not
+  be upstreamed to github.com/ericreinsmidt/TortOS. Given that, the features
+  tracked as bd issues TortOS-1v7.1 (sleep mode), TortOS-1v7.2 (hotkey
+  submenu) and TortOS-1v7.3 (fast-forward/rewind) are built by porting or
+  adapting NextUI's source directly, rather than as clean-room
+  reimplementations.
+- **Same restriction this file already carries for `snes9x2010_libretro.so`
+  and `genesis_plus_gx_libretro.so` above: noncommercial only.** A build of
+  this fork that includes any of these three features may not be sold or
+  otherwise put to commercial use; hobby redistribution (a free public git
+  repo, sharing a card image with other hobbyists) is what PolyForm
+  Noncommercial's license is for and is what this fork relies on, the same
+  way the two non-commercial cores already do.
+- The rest of this fork - everything not covered by one of the three bd
+  issues above - remains **MIT** under the root `LICENSE`, unchanged from
+  upstream TortOS.
+
 ## Fonts
 
 - `res/fonts/menu.ttf` - **Josefin Sans**, SIL Open Font License 1.1. Full text
