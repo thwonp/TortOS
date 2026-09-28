@@ -154,8 +154,11 @@ static void orders(void)
 	CHECK(ml_order_index("artist") == ML_BY_ARTIST, "artist as \"artist\"");
 	CHECK(ml_order_index("name") == ML_BY_ARTIST && ml_order_index(NULL) == ML_BY_ARTIST,
 	      "anything else is the folder's own order");
-	CHECK(!strcmp(ml_order_label(ML_BY_ALBUM), "Album") &&
-	      !strcmp(ml_order_label(ML_BY_ARTIST), "Artist"), "what the menu says");
+	CHECK(!strcmp(ml_order_label(ML_BY_ALBUM, false), "Album") &&
+	      !strcmp(ml_order_label(ML_BY_ARTIST, false), "Artist"), "what the menu says");
+	CHECK(!strcmp(ml_order_label(ML_BY_ALBUM, true), "Title") &&
+	      !strcmp(ml_order_label(ML_BY_ARTIST, true), "Author"),
+	      "and what it says on the books");
 	CHECK(!strcmp(ml_order_name((ml_order)ML_ORDERS), "artist"),
 	      "a number out of range reads as the first order, not past the table");
 
@@ -177,17 +180,87 @@ static void orders(void)
 	CHECK(ml_scan(sub, &l) && l.nalbums == 5, "five albums: %d", l.nalbums);
 	if (l.nalbums != 5) { ml_free(&l); return; }
 
-	ml_shelf_order(&l, ML_BY_ARTIST, out);
+	CHECK(ml_shelf_order(&l, ML_BY_ARTIST, false, out) == 5, "every album is music");
 	for (k = 0; k < 5; k++)
 		CHECK(out[k] == k, "by artist is the scan's order: card %d is album %d", k, out[k]);
 
-	ml_shelf_order(&l, ML_BY_ALBUM, out);
+	ml_shelf_order(&l, ML_BY_ALBUM, false, out);
 	for (k = 0; k < 5; k++)
 		CHECK(!strcmp(l.albums[out[k]].name, want[k]),
 		      "by album, card %d: want %s, got %s", k, want[k], l.albums[out[k]].name);
 	CHECK(!strncmp(l.tracks[l.albums[out[1]].first].path, "Blur/", 5) &&
 	      !strncmp(l.tracks[l.albums[out[2]].first].path, "Queen/", 6),
 	      "two of one title go in their artists' order");
+	CHECK(ml_shelf_order(&l, ML_BY_ALBUM, true, out) == 0, "and none is a book");
+	ml_free(&l);
+}
+
+/* A card's two folders read as one library, the books marked: what Muse's
+ * shelf filters on, and what the launcher resumes. Then the pictures a folder
+ * carries, which is where a book's cover usually is. */
+static void card(void)
+{
+	char c[300], img[600], want[600];
+	ml_lib l;
+	int out[8], dcc, hs, n;
+
+	printf("a card's Music and Audiobooks\n");
+	dir("card");
+	dir("card/Music");
+	dir("card/Music/Blur");
+	dir("card/Music/Blur/Parklife");
+	touch("card/Music/Blur/Parklife/01 Girls And Boys.mp3");
+	touch("card/Music/Blur/Parklife/cover.JPG");
+	dir("card/Audiobooks");
+	dir("card/Audiobooks/Dungeon Crawler Carl 3");
+	touch("card/Audiobooks/Dungeon Crawler Carl 3/Book 3.m4b");
+	touch("card/Audiobooks/Dungeon Crawler Carl 3/Book 3.jpg");
+	touch("card/Audiobooks/Dungeon Crawler Carl 3/Book 3.cue");
+	dir("card/Audiobooks/Banks");
+	dir("card/Audiobooks/Banks/The Hydrogen Sonata");
+	touch("card/Audiobooks/Banks/The Hydrogen Sonata/disc 02.mp3");
+	touch("card/Audiobooks/Banks/The Hydrogen Sonata/disc 01.mp3");
+	touch("card/Audiobooks/Banks/The Hydrogen Sonata/back.jpg");
+	touch("card/Audiobooks/Banks/The Hydrogen Sonata/front.jpg");
+	snprintf(c, sizeof c, "%s/card", root);
+
+	CHECK(ml_scan_card(c, &l), "a card with both folders scans");
+	CHECK(l.nalbums == 3 && ml_count(&l, false) == 1 && ml_count(&l, true) == 2,
+	      "one album and two books: %d, %d, %d", l.nalbums, ml_count(&l, false),
+	      ml_count(&l, true));
+	dcc = album_named(&l, "Dungeon Crawler Carl 3");
+	hs  = album_named(&l, "The Hydrogen Sonata");
+	CHECK(dcc >= 0 && hs >= 0, "books named by folder, in both shapes");
+	if (dcc < 0 || hs < 0) { ml_free(&l); return; }
+	CHECK(l.albums[dcc].book && l.albums[hs].book && !l.albums[album_named(&l, "Parklife")].book,
+	      "the books are marked, the album is not");
+	CHECK(!strcmp(l.tracks[l.albums[hs].first].path,
+	              "Audiobooks/Banks/The Hydrogen Sonata/disc 01.mp3"),
+	      "paths are relative to the card: %s", l.tracks[l.albums[hs].first].path);
+	CHECK(ml_album_of(&l, "Audiobooks/Dungeon Crawler Carl 3/Book 3.m4b") == dcc,
+	      "which book a file is in");
+	n = ml_shelf_order(&l, ML_BY_ARTIST, true, out);
+	CHECK(n == 2 && out[0] == hs && out[1] == dcc,
+	      "the book shelf is the books alone, by author: %d", n);
+	CHECK(ml_shelf_order(&l, ML_BY_ARTIST, false, out) == 1, "the music shelf the album alone");
+
+	ml_cover_base(c, &l, dcc, img, sizeof img);
+	snprintf(want, sizeof want, "%s/Audiobooks/.media/Dungeon Crawler Carl 3", c);
+	CHECK(!strcmp(img, want), "a book's cover is kept like an album's: %s", img);
+
+	printf("pictures in a folder\n");
+	snprintf(want, sizeof want, "%s/Audiobooks/Dungeon Crawler Carl 3/Book 3.jpg", c);
+	CHECK(ml_folder_image(c, &l, dcc, img, sizeof img) && !strcmp(img, want),
+	      "the only picture, whatever it is called: %s", img);
+	snprintf(want, sizeof want, "%s/Music/Blur/Parklife/cover.JPG", c);
+	CHECK(ml_folder_image(c, &l, album_named(&l, "Parklife"), img, sizeof img) &&
+	      !strcmp(img, want), "cover, in any case: %s", img);
+	CHECK(!ml_folder_image(c, &l, hs, img, sizeof img),
+	      "two pictures and neither named cover: no guess");
+	ml_free(&l);
+
+	snprintf(c, sizeof c, "%s/nothing", root);
+	CHECK(!ml_scan_card(c, &l), "a card with neither folder does not scan");
 	ml_free(&l);
 }
 
@@ -198,10 +271,11 @@ int main(void)
 	snprintf(root, sizeof root, "/tmp/muselib-check.XXXXXX");
 	if (!mkdtemp(root)) { perror("mkdtemp"); return 1; }
 
-	printf("muselib: the Music folder\n");
+	printf("muselib: the Music and Audiobooks folders\n");
 	names();
 	scan();
 	orders();
+	card();
 
 	snprintf(cmd, sizeof cmd, "rm -rf '%s'", root);
 	if (system(cmd) != 0) { }

@@ -311,14 +311,19 @@ does not wait for the launcher to notice the headset is gone.
 
 ## Muse
 
-Muse plays the music on the card. Its card at the end of the shelf opens Muse,
+Muse plays the music and the audiobooks on the card. Its card at the end of
+the shelf opens Muse,
 the same as SELECT does: Now Playing when something is playing or paused, and
 otherwise a shelf of album covers, the way a console's opens onto its games -
 in all three layouts, with the other axis jumping from one initial to the
 next. A on an
-album opens its tracks. MENU, anywhere in Muse, has the album count, Sort By,
-Album Art (below), and Rescan Folder for music copied on while the Brick was
-running.
+album opens its tracks. MENU, anywhere in Muse, has the album count, Show,
+Sort By, Album Art (below), and Rescan Folder for music copied on while the
+Brick was running.
+
+**Show** switches the shelf between music and audiobooks, and is there only
+when the card has both. Muse opens on whichever you left it on, except that
+SELECT with a book playing lands on the books, on that book.
 
 **Sort By** puts the shelf in order by artist, the way the folders are, or by
 album title, two of the same title going in their artists' order. The jump
@@ -338,6 +343,18 @@ reaches `Music/` too, and albums sent that way are on the shelf when you leave
 its screen. MP3, M4A, M4B, AAC, FLAC, Ogg, Opus and WAV play. Tracks play in
 file-name order, and the number at the front of a file name is left off the
 name shown.
+
+**Audiobooks** go in `Audiobooks/`, in the same two shapes: an author's folder
+with a folder per book, or a book's folder on its own. A book is one M4B or a
+folder of files, which play in name order. A on a book goes straight to Now
+Playing and carries on where you left it: its place is kept every thirty
+seconds while it plays, whenever it pauses or moves to the next file, and when
+the Brick turns off. B from there is the book's files, and A on one starts it
+from its beginning. A book played to its end says Finished under its cover,
+and A on it starts it over. Books always play in order, so Y does nothing on
+their Now Playing, and on books Sort By is by author or by title and there is
+no Album Art. A book's cover is the one its files carry, or the picture in its
+folder: one named cover or folder, or the only one there.
 
 With something playing or paused, SELECT goes straight to **Now Playing**: the
 cover, the track, where in it you are, and what comes next.

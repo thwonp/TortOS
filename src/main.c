@@ -450,7 +450,8 @@ static int g_dir;
  * is the honest value and the tag is what says which of the two it is. */
 #define MUSE_ACCENT 0x9CD345u
 static ml_lib g_muse;
-static char   g_muse_root[CFG_STR * 2];      /* where the scan read it from */
+/* Where the scan read it from: the card, which holds Music and Audiobooks. */
+static char   g_muse_root[CFG_STR * 2];
 /* Bumped by every build of the library, so a Muse screen can tell that MENU's
  * Rescan Folder replaced it while its menu was open - see muse_menu. */
 static unsigned g_muse_gen;
@@ -463,9 +464,137 @@ static bool is_muse(const system_cfg *s)
 /* What is known about each album's cover: one per album in g_muse, rebuilt
  * with it. ASKED carries when, because an answer can be lost with the daemon,
  * and an album is then asked about again rather than waited on for good. */
-enum { COV_UNKNOWN, COV_ASKED, COV_JPG, COV_PNG, COV_NONE };
+enum { COV_UNKNOWN, COV_ASKED, COV_JPG, COV_PNG, COV_FOLDER, COV_NONE };
 typedef struct { unsigned char st; unsigned asked_ms; } cover_state;
 static cover_state *g_cov;
+
+/* ---- Muse: books ------------------------------------------------------------ */
+
+/* Which kind Muse's shelf shows, music or books. Eric's, 2026-09-27: one Muse
+ * card and a Show row in its menu, rather than a card for books beside it -
+ * two ways into one player read as two players. Kept across restarts. */
+static bool g_muse_books;
+
+/* Whether each album is a book listened to the end: one per album in g_muse,
+ * rebuilt with it, like g_cov. A finished book is marked and not forgotten,
+ * and A on it starts it over. Eric's, 2026-09-27. */
+static bool *g_book_done;
+
+/* The kind the shelf really shows: the one chosen, unless there is none of it
+ * and some of the other. */
+static bool muse_books_shown(void)
+{
+	int books = ml_count(&g_muse, true), music = ml_count(&g_muse, false);
+
+	if (!books) return false;
+	if (!music) return true;
+	return g_muse_books;
+}
+
+/* Where book `al`'s place is kept: the settings, under its folder. */
+static void book_key(int al, char *out, size_t n)
+{
+	const char *p = g_muse.tracks[g_muse.albums[al].first].path;
+	const char *slash = strrchr(p, '/');
+
+	snprintf(out, n, "book.%.*s", slash ? (int)(slash - p) : 0, p);
+}
+
+/* A place is "<seconds>\t<file>", the file by its name rather than its number
+ * so a file added to the folder later moves nothing, or "finished". */
+static void book_write(int al, const char *track, double at)
+{
+	char key[LIB_PATH + 8], val[LIB_PATH + 32];
+	const char *file = strrchr(track, '/');
+
+	book_key(al, key, sizeof key);
+	snprintf(val, sizeof val, "%.1f\t%s", at, file ? file + 1 : track);
+	db_set_str(db_dev(), key, val);
+	g_book_done[al] = false;
+}
+
+static void book_finish(int al)
+{
+	char key[LIB_PATH + 8];
+
+	book_key(al, key, sizeof key);
+	db_set_str(db_dev(), key, "finished");
+	g_book_done[al] = true;
+	fprintf(stderr, "muse: finished %s\n", g_muse.albums[al].name);
+}
+
+/* Where book `al` starts: its file, and `at` seconds into it. The beginning
+ * for a book never started, or finished. */
+static int book_place(int al, double *at)
+{
+	const ml_album *b = &g_muse.albums[al];
+	char key[LIB_PATH + 8], val[LIB_PATH + 32];
+	const char *tab;
+	int i;
+
+	*at = 0;
+	book_key(al, key, sizeof key);
+	db_get_str(db_dev(), key, val, sizeof val, "");
+	if (!(tab = strchr(val, '\t'))) return 0;
+	for (i = 0; i < b->n; i++) {
+		const char *p = g_muse.tracks[b->first + i].path;
+		const char *f = strrchr(p, '/');
+
+		if (!strcmp(f ? f + 1 : p, tab + 1)) { *at = atof(val); return i; }
+	}
+	return 0;
+}
+
+/* KEEPING A BOOK'S PLACE, wherever Muse is polled: on its screens, over the
+ * shelf and the menus, and through a game, which is where a book is likely to
+ * be heard.
+ *
+ * Written when the file changes, when it pauses or stops, and every thirty
+ * seconds of listening in between, so a Brick that loses its battery goes back
+ * half a minute at most. `now` writes whatever there is, for the power button
+ * and for a new queue about to replace this one. */
+static struct { int al, index; mu_state st; double at; } g_bk = { -1, -1, MU_OFF, 0 };
+
+static void book_keep(bool now)
+{
+	const mu_now *mn = musec_now();
+	const char *track;
+	bool ran_out = musec_take_ran_out();
+	int al;
+
+	if (!musec_is_book() || !g_book_done) { g_bk.al = -1; return; }
+	track = musec_track(mn->index);
+	al = ml_album_of(&g_muse, track);
+	if (al < 0 || !g_muse.albums[al].book) { g_bk.al = -1; return; }
+	if (ran_out) { book_finish(al); g_bk.al = -1; return; }
+	if (mn->state != MU_PLAYING && mn->state != MU_PAUSED) return;
+	if (now || al != g_bk.al || mn->index != g_bk.index || mn->state != g_bk.st ||
+	    fabs(mn->at - g_bk.at) >= 30) {
+		book_write(al, track, mn->at);
+		g_bk.al = al;
+		g_bk.index = mn->index;
+		g_bk.st = mn->state;
+		g_bk.at = mn->at;
+	}
+}
+
+/* Muse, polled: what the daemon said, and a book's place kept. Everything that
+ * polls Muse comes through here. */
+static void muse_poll(void)
+{
+	musec_poll();
+	book_keep(false);
+}
+
+/* A new queue. Whatever book it replaces has its place written first, since
+ * the queue is the only record of where that was. */
+static void muse_play(const char *const *paths, int n, int start, double at,
+                      bool book, const char *artist, const char *album)
+{
+	book_keep(true);
+	g_bk.al = -1;
+	musec_play(paths, n, start, at, book, artist, album);
+}
 
 /* The play modes as the player meets them: the name saved in the settings and
  * the mark. In order has no mark: it is what plays when nothing has been asked
@@ -1011,6 +1140,19 @@ static void free_view_textures(sysview *v)
 		if (v->cb) v->cb[k] = 0.0f;
 	}
 	faces_stale();
+}
+
+/* Muse's shelf onto the other kind: music or books, from the first card. The
+ * textures go first, while the count is still the old kind's, since every card
+ * is about to be a different album. */
+static void muse_show(sysview *v, bool books)
+{
+	g_muse_books = books;
+	db_set_str(db_dev(), "muse.show", books ? "books" : "music");
+	free_view_textures(v);
+	muse_order_view(v);
+	v->cursor = 0;
+	cf_reset(&v->cf, 0);
 }
 
 static void free_all_textures(app *a)
@@ -1862,7 +2004,7 @@ static void aout_before_muse(void)
  * screens, so handing it back on every pause would only be churn. */
 static void muse_screen_poll(void)
 {
-	musec_poll();
+	muse_poll();
 	if (musec_heard()) aout_apply(false);
 }
 
@@ -1955,7 +2097,7 @@ static void on_game_tick(void)
 	 * here at ten a second, which is how pausing the music or the album
 	 * ending brings the game's sound back within a tenth of a second. Only a
 	 * change is sent. */
-	musec_poll();
+	muse_poll();
 	plat_resident_quiet(musec_playing());
 
 	/* Play time. Writes at most one unsynced row and usually nothing, and
@@ -2828,10 +2970,14 @@ static void draw_systems(app *a)
 	}
 
 	if (is_muse(label)) {
-		/* Muse has albums rather than games, and they are not a list the
-		 * shelf holds - the Music folder is read when you go in. */
-		snprintf(line, sizeof line, "%d album%s", g_muse.nalbums,
-		         g_muse.nalbums == 1 ? "" : "s");
+		/* Muse has albums and books rather than games, each counted, and a
+		 * kind the card has none of left out. */
+		int albums = ml_count(&g_muse, false), books = ml_count(&g_muse, true);
+		char al[32] = "", bk[32] = "";
+
+		if (albums) snprintf(al, sizeof al, "%d album%s", albums, albums == 1 ? "" : "s");
+		if (books)  snprintf(bk, sizeof bk, "%d book%s", books, books == 1 ? "" : "s");
+		snprintf(line, sizeof line, "%s%s%s", al, al[0] && bk[0] ? ", " : "", bk);
 	} else {
 		int gc = a->view[(int)(label - a->sys.systems)].list.count;
 
@@ -3054,8 +3200,16 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 		 * on this clock, and two lines moving at once is a lot of motion. */
 		if (is_muse(s)) {
 			char afit[192];
+			const char *under = g->name;
+			int al = v->album && idx >= 0 && idx < v->list.count ? v->album[idx] : -1;
 
-			ui_fit_text(ui_font(UI_F_MENU), g->name, afit, sizeof afit, boxw);
+			/* A book says it is finished there, and says nothing rather than
+			 * its own name again when it is a folder with no author above it. */
+			if (al >= 0 && g_muse.albums[al].book) {
+				if (g_book_done && g_book_done[al]) under = "Finished";
+				else if (!strcmp(g->name, g->title)) under = "";
+			}
+			ui_fit_text(ui_font(UI_F_MENU), under, afit, sizeof afit, boxw);
 			ui_text(a->r, ui_font(UI_F_MENU), afit, tx, 40 + line + 4, 0,
 			        UI_TEXT_DIM);
 		}
@@ -3364,6 +3518,7 @@ static void power_off(app *a)
 	 * going round it, so this is the last chance to darken them. */
 	plat_leds_off();
 	remember_place(a);
+	book_keep(true);
 	plat_request_poweroff();
 	anim_poweroff(a);
 	a->running = false;
@@ -4307,7 +4462,9 @@ static int menu_build(app *a, screen_id screen, int sys,
 		u.fav        = !u.muse && sc->core[0] == '\0' && sc->folder[0] == '\0';
 		u.game_count = a->view[sys].list.count;
 		u.dmode      = DMODES[a->view[sys].dmode].label;
-		u.sort       = u.muse ? ml_order_label((ml_order)a->view[sys].sort)
+		u.muse_books = u.muse && muse_books_shown();
+		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
+		u.sort       = u.muse ? ml_order_label((ml_order)a->view[sys].sort, u.muse_books)
 		                      : SORTS[a->view[sys].sort].label;
 	} else {
 		aout_state ao = aout_now();
@@ -4601,7 +4758,7 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		 * end of a track, which is when the next is sent - waited for the menus
 		 * to be left, so the row read stale and an album stopped at the end of a
 		 * song while a menu was open. #45. */
-		musec_poll();
+		muse_poll();
 		aout_apply(false);
 		if (a->in.quit_requested) { a->running = false; return MENU_LEFT_GONE; }
 		{
@@ -5712,7 +5869,7 @@ static void bt_await_route(const char *mac)
 	snprintf(want, sizeof want, "bt_%s", mac);
 	for (i = 3; want[i]; i++) if (want[i] == ':') want[i] = '_';
 	while ((int)(until - plat_now_ms()) > 0) {
-		musec_poll();
+		muse_poll();
 		aout_apply(false);
 #if defined(PLATFORM_GKD)
 		if (plat_bt_audio()) return;        /* PipeWire already moved it */
@@ -5760,7 +5917,7 @@ static void bt_screen(app *a)
 		                      BT_VISIBLE);
 
 		plat_input_poll(&a->in);
-		musec_poll();                       /* see menu_run_body */
+		muse_poll();                        /* see menu_run_body */
 		aout_apply(false);
 		if (a->in.quit_requested) { a->running = false; return; }
 		{
@@ -6355,9 +6512,28 @@ static int menu_shelf_width(app *a)
 	for (i = 0; i < a->sys.count; i++) {
 		bool muse = is_muse(&a->sys.systems[i]);
 		bool own  = muse || a->view[i].owner;
-		int  srow = own ? 1 : SM_SORT;
+		int  srow = own ? 1 : SM_SORT, show = -1;
 
 		n = menu_build(a, SCREEN_GAMES, i, rows, &bufs, &heading);
+		if (muse) {
+			sm_muse_row ids[SM_MUSE_ROWS];
+			int both = ml_count(&g_muse, true) && ml_count(&g_muse, false);
+			int nn = sys_menu_muse_rows(muse_books_shown(), both, ids);
+
+			for (k = 0; k < nn; k++) {
+				if (ids[k] == SMM_SORT) srow = k;
+				if (ids[k] == SMM_SHOW) show = k;
+			}
+			/* The longer of Show's two values, so turning it over does not
+			 * change the menu's width under the cursor. */
+			if (show >= 0) {
+				int mw;
+
+				rows[show].value = "Audiobooks";
+				mw = menu_measure(rows, n, heading);
+				if (mw > w) w = mw;
+			}
+		}
 		for (k = 0; !own && k < DMODE_COUNT; k++) {
 			int mw;
 			rows[SM_DISPLAY].value = DMODES[k].label;
@@ -6367,9 +6543,14 @@ static int menu_shelf_width(app *a)
 		if (!own) rows[SM_DISPLAY].value = DMODES[0].label;
 		for (k = 0; k < (muse ? ML_ORDERS : SORT_COUNT); k++) {
 			int mw;
-			rows[srow].value = muse ? ml_order_label((ml_order)k) : SORTS[k].label;
+			rows[srow].value = muse ? ml_order_label((ml_order)k, false) : SORTS[k].label;
 			mw = menu_measure(rows, n, heading);
 			if (mw > w) w = mw;
+			if (muse) {
+				rows[srow].value = ml_order_label((ml_order)k, true);
+				mw = menu_measure(rows, n, heading);
+				if (mw > w) w = mw;
+			}
 		}
 	}
 	a->menu_w = w;
@@ -6619,20 +6800,31 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 	(void)ctx;
 
 	if (a->screen == SCREEN_GAMES) {
-		/* Muse's menu is its own four rows - see SM_MUSE_ROWS - so the
-		 * enum's row numbers below mean nothing on it: row 1 is Sort By,
-		 * which goes on to the Sort By below like any shelf's, row 2 Album
-		 * Art, row 3 Rescan Folder and row 4 Muse Settings. Album Art is a
-		 * dead row off the network, and the runner does not land on dead
-		 * rows. */
+		/* Muse's menu is its own rows - see SM_MUSE_ROWS - and which is
+		 * where depends on what its shelf shows, so the enum's row numbers
+		 * below mean nothing on it: sys_menu_muse_rows says. Sort By goes on
+		 * to the Sort By below like any shelf's. Album Art is a dead row off
+		 * the network, and the runner does not land on dead rows. Muse
+		 * Settings is the fork's own row (TortOS-28l), always last. */
 		if (is_muse(&a->sys.systems[a->sys_cursor])) {
-			if (sel == 1) {
+			sm_muse_row ids[SM_MUSE_ROWS];
+			int n = sys_menu_muse_rows(muse_books_shown(),
+			                           ml_count(&g_muse, true) && ml_count(&g_muse, false),
+			                           ids);
+			sm_muse_row id = sel >= 0 && sel < n ? ids[sel] : SMM_COUNT;
+
+			if (id == SMM_SORT) {
 				sel = SM_SORT;
+			} else if (id == SMM_SHOW) {
+				/* Two values, so left, right and A all turn it over. */
+				if (d || key == IN_ACCEPT)
+					muse_show(&a->view[a->sys_cursor], !muse_books_shown());
+				return MENU_STAY;
 			} else {
 				if (key != IN_ACCEPT) return MENU_STAY;
-				if (sel == 2) { album_art_screen(a); return MENU_STAY; }
-				if (sel == 4) { muse_settings_screen(a); return MENU_STAY; }
-				if (sel != 3) return MENU_STAY;
+				if (id == SMM_ART) { album_art_screen(a); return MENU_STAY; }
+				if (id == SMM_SETTINGS) { muse_settings_screen(a); return MENU_STAY; }
+				if (id != SMM_RESCAN) return MENU_STAY;
 				wait_panel(a, "Muse", "Scanning...");
 				rescan_all(a);
 				return MENU_DONE;
@@ -7477,6 +7669,7 @@ static bool cover_file(int al, char *out, size_t n)
 		snprintf(out, n, "%s.%s", base, c->st == COV_JPG ? "jpg" : "png");
 		return true;
 	}
+	if (c->st == COV_FOLDER) return ml_folder_image(g_muse_root, &g_muse, al, out, n);
 	if (c->st == COV_NONE) return false;
 	if (c->st == COV_ASKED && now - c->asked_ms < 5000) return false;
 
@@ -7506,10 +7699,15 @@ static bool cover_answers(void)
 		landed = true;
 		fl = strlen(file);
 		for (i = 0; g_cov && i < g_muse.nalbums; i++) {
+			char pic[LIB_PATH * 2 + 8];
+
 			ml_cover_base(g_muse_root, &g_muse, i, b, sizeof b);
 			if (strcmp(b, base)) continue;
-			g_cov[i].st = fl == 0 ? COV_NONE
-			            : fl > 4 && !strcmp(file + fl - 4, ".png") ? COV_PNG : COV_JPG;
+			/* Nothing in the files: a picture in the album's folder, which
+			 * is where a book's cover usually is, before the card. */
+			g_cov[i].st = fl > 0 ? (fl > 4 && !strcmp(file + fl - 4, ".png") ? COV_PNG : COV_JPG)
+			            : ml_folder_image(g_muse_root, &g_muse, i, pic, sizeof pic)
+			            ? COV_FOLDER : COV_NONE;
 			break;
 		}
 	}
@@ -7679,7 +7877,9 @@ static void mmss(char *out, size_t n, double sec)
 {
 	int t = sec > 0 ? (int)(sec + 0.5) : 0;
 
-	snprintf(out, n, "%d:%02d", t / 60, t % 60);
+	/* Hours past the hour: a seventeen-hour book read "-1014:46" in minutes. */
+	if (t >= 3600) snprintf(out, n, "%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60);
+	else           snprintf(out, n, "%d:%02d", t / 60, t % 60);
 }
 
 /* The cover where the shelf puts the card it is looking at, in the same kind
@@ -7717,9 +7917,14 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	SDL_Color acc = { (Uint8)(rgb >> 16), (Uint8)(rgb >> 8), (Uint8)rgb, 255 };
 	const char *state = mn->state == MU_PLAYING ? NULL
 	                  : mn->state == MU_PAUSED  ? "Paused" : "Stopped";
+	int book = musec_is_book() ? ml_album_of(&g_muse, musec_track(mn->index)) : -1;
 	double k = mn->len > 0 ? mn->at / mn->len : 0;
 	char t0[16], t1[16], line[200], fit[200];
-	int y, bar, fill;
+	int y, bar, fill, left, right;
+
+	/* A book played to its end says so, rather than that it stopped. */
+	if (mn->state == MU_STOPPED && book >= 0 && g_book_done && g_book_done[book])
+		state = "Finished";
 
 	SDL_SetRenderDrawColor(r, UI_BG_R, UI_BG_G, UI_BG_B, 255);
 	SDL_RenderClear(r);
@@ -7748,7 +7953,8 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		 * sat the mark 3.5px low on the device. Cap height from 'H', as the
 		 * Wi-Fi panel does. */
 		int th = ui_font_height(UI_F_META), gs = th * 3 / 2, gx = NP_TX;
-		int g = MUSE_MODES[musec_mode()].glyph;
+		/* No mark on a book: it plays in order, whatever the mode. */
+		int g = musec_is_book() ? -1 : MUSE_MODES[musec_mode()].glyph;
 		int asc = fs ? ui_font_ascent(fs) : th;
 		int cap = fs ? ui_font_cap(fs) : asc;
 		if (mn->count > 1) {
@@ -7784,12 +7990,17 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		              state ? ui_fade(acc, 0.45f) : acc);
 	mmss(t0, sizeof t0, mn->at);
 	ui_text(r, fs, t0, NP_TX, bar + 16, -1, UI_TEXT_SOFT);
+	left = NP_TX + ui_text_width(fs, t0);
+	right = NP_TX + NP_TW;
 	if (mn->len > 0) {
 		mmss(t1, sizeof t1, mn->len > mn->at ? mn->len - mn->at : 0);
 		snprintf(line, sizeof line, "-%s", t1);
 		ui_text(r, fs, line, NP_TX + NP_TW, bar + 16, 1, UI_TEXT_SOFT);
+		right -= ui_text_width(fs, line);
 	}
-	if (state) ui_text(r, fs, state, NP_TX + NP_TW / 2, bar + 16, 0, acc);
+	/* Between the two times rather than on the column's middle, which a book's
+	 * hours pushed them into: "16:54:47Stopped". */
+	if (state) ui_text(r, fs, state, (left + right) / 2, bar + 16, 0, acc);
 
 	if (next && next[0]) {
 		snprintf(line, sizeof line, "Next: %s", next);
@@ -7798,8 +8009,11 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		        UI_TEXT_DIM);
 	}
 
-	ui_text(r, fs, state ? "A: play    L1/R1: track    Left/Right: seek    Y: mode"
-	                     : "A: pause    L1/R1: track    Left/Right: seek    Y: mode",
+	ui_text(r, fs, musec_is_book()
+	        ? (state ? "A: play    L1/R1: file    Left/Right: seek"
+	                 : "A: pause    L1/R1: file    Left/Right: seek")
+	        : (state ? "A: play    L1/R1: track    Left/Right: seek    Y: mode"
+	                 : "A: pause    L1/R1: track    Left/Right: seek    Y: mode"),
 	        TORTOS_SCREEN_W / 2, TORTOS_SCREEN_H - 72, 0, UI_TEXT_DIM);
 	if (battery_low()) draw_low_battery_dot(r);
 	return wait;
@@ -7877,7 +8091,8 @@ static muse_exit muse_now_screen(app *a)
 		 * which made one button mean two things a screen apart; it is left
 		 * free in Muse for something that needs it. Eric's call, 2026-09-19. */
 		if (a->in.pressed[IN_ACCEPT])       musec_toggle();
-		if (a->in.pressed[IN_Y])            muse_cycle_mode();
+		/* Not on a book, which plays in order whatever the mode says. */
+		if (a->in.pressed[IN_Y] && !musec_is_book()) muse_cycle_mode();
 		if (in_repeat(&a->in, IN_L1))       musec_prev();
 		if (in_repeat(&a->in, IN_R1))       musec_next();
 		if (in_repeat(&a->in, IN_LEFT))     musec_seek_by(-10);
@@ -7892,7 +8107,7 @@ static muse_exit muse_now_screen(app *a)
 		np_cover(a, ml_album_of(&g_muse, musec_track(mn->index)));
 		/* What the mode will actually play next. Repeat one says so with
 		 * its mark, and "Next:" naming the same song reads as a mistake. */
-		if (musec_mode() != MUQ_REPEAT_ONE && (nt = musec_upcoming()))
+		if ((musec_is_book() || musec_mode() != MUQ_REPEAT_ONE) && (nt = musec_upcoming()))
 			ml_track_name(strrchr(nt, '/') ? strrchr(nt, '/') + 1 : nt,
 			              next, sizeof next);
 
@@ -7910,7 +8125,7 @@ static muse_exit muse_now_screen(app *a)
 		memcpy(shown.artist, mn->artist, sizeof shown.artist);
 		memcpy(shown.album, mn->album, sizeof shown.album);
 		shown.tex = g_np.tex;
-		shown.mode = (int)musec_mode();
+		shown.mode = musec_is_book() ? -1 : (int)musec_mode();
 		shown.lock = plat_hold_switch();
 		for (b = 0; b < IN_COUNT && !touched; b++)
 			touched = a->in.pressed[b] || a->in.down[b];
@@ -8073,8 +8288,10 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 				if (paths) {
 					for (i = 0; i < al->n; i++)
 						paths[i] = g_muse.tracks[al->first + i].path;
-					musec_play(paths, al->n, sel, g_muse.artists[art].name,
-					           al->name);
+					/* A book's file from its start: choosing one is choosing
+					 * where to listen from, and the place moves with it. */
+					muse_play(paths, al->n, sel, 0, al->book,
+					          g_muse.artists[art].name, al->name);
 					free(paths);
 				}
 			}
@@ -8140,11 +8357,37 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 	return g_muse_gone;
 }
 
-/* A on card `k` of Muse's shelf: its album's tracks, over the shelf. */
+/* A on a book: where it was left, straight onto Now Playing with its files
+ * underneath. The beginning for a book never started or finished; nothing new
+ * for the book already playing or paused, which A only opens. */
+static muse_exit muse_book(app *a, int al)
+{
+	const mu_now *mn = musec_now();
+	bool loaded = mn->state == MU_PLAYING || mn->state == MU_PAUSED;
+
+	if (!loaded || muse_playing_album(NULL) != al) {
+		const ml_album *b = &g_muse.albums[al];
+		const char **paths = calloc((size_t)b->n, sizeof *paths);
+		double at;
+		int i, start = book_place(al, &at);
+
+		if (!paths) return MUSE_BACK;
+		for (i = 0; i < b->n; i++) paths[i] = g_muse.tracks[b->first + i].path;
+		fprintf(stderr, "muse: %s from file %d at %.1f\n", b->name, start + 1, at);
+		muse_play(paths, b->n, start, at, true,
+		          g_muse.artists[muse_artist_of(al)].name, b->name);
+		free(paths);
+	}
+	return muse_tracks(a, al, true);
+}
+
+/* A on card `k` of Muse's shelf: its album's tracks, over the shelf, or a
+ * book where it was left. */
 static muse_exit muse_album(app *a, const sysview *v, int k)
 {
-	if (v->album && k >= 0 && k < v->list.count) return muse_tracks(a, v->album[k], false);
-	return MUSE_BACK;
+	if (!v->album || k < 0 || k >= v->list.count) return MUSE_BACK;
+	if (g_muse.albums[v->album[k]].book) return muse_book(a, v->album[k]);
+	return muse_tracks(a, v->album[k], false);
 }
 
 /* Muse's shelf again after its menu, whose Rescan Folder rebuilds every view
@@ -8211,8 +8454,11 @@ static void muse_shelf_screen(app *a, bool now)
 	enter_system(a);                      /* the screen, the coverflow, the window */
 	v = &a->view[muse];
 
-	/* On the album that is playing, so SELECT lands where the music is. */
+	/* On the album that is playing, so SELECT lands where the music is - on
+	 * the books when it is a book. */
 	playing = muse_playing_album(NULL);
+	if (playing >= 0 && g_muse.albums[playing].book != muse_books_shown())
+		muse_show(v, g_muse.albums[playing].book);
 	if (playing >= 0) {
 		int k = muse_card_of(v, playing);
 
@@ -8331,7 +8577,9 @@ static int museart_jobs(museart_job *jobs, int max)
 		int w = 0, h = 0;
 		bool have;
 
-		if (g_muse.albums[i].n <= 0) continue;
+		/* Not a book: MusicBrainz knows records, and a book's cover is its
+		 * own file or the picture in its folder. */
+		if (g_muse.albums[i].n <= 0 || g_muse.albums[i].book) continue;
 		muse_album_dir(i, dir, sizeof dir);
 		snprintf(key, sizeof key, "museart.%s", dir);
 		if (db_has(db_lib(), key)) continue;
@@ -10252,8 +10500,10 @@ static void muse_order_view(sysview *v)
 {
 	int k;
 
-	if (!v->album || v->list.count != g_muse.nalbums) return;
-	ml_shelf_order(&g_muse, (ml_order)v->sort, v->album);
+	/* The arrays hold every album; the shelf is the kind it shows. */
+	if (!v->album) return;
+	v->list.count = ml_shelf_order(&g_muse, (ml_order)v->sort, muse_books_shown(),
+	                               v->album);
 	for (k = 0; k < v->list.count; k++) {
 		game_entry *e = &v->list.items[k];
 		int al = v->album[k];
@@ -10287,13 +10537,31 @@ static void build_muse_shelf(app *a)
 	ml_free(&g_muse);
 	free(g_cov);
 	g_cov = NULL;
+	free(g_book_done);
+	g_book_done = NULL;
 	np_forget();
-	snprintf(g_muse_root, sizeof g_muse_root, "%s/Music", P_CARD);
-	if (!ml_scan(g_muse_root, &g_muse) || g_muse.ntracks == 0) {
-		fprintf(stderr, "scan: %-16s no music in %s\n", "Muse", g_muse_root);
+	snprintf(g_muse_root, sizeof g_muse_root, "%s", P_CARD);
+	if (!ml_scan_card(g_muse_root, &g_muse) || g_muse.ntracks == 0) {
+		fprintf(stderr, "scan: %-16s no music or books in %s\n", "Muse", g_muse_root);
 		return;
 	}
 	g_cov = calloc((size_t)g_muse.nalbums, sizeof *g_cov);
+	g_book_done = calloc((size_t)g_muse.nalbums, sizeof *g_book_done);
+	if (!g_book_done) { ml_free(&g_muse); return; }
+	for (i = 0; i < g_muse.nalbums; i++) {
+		char key[LIB_PATH + 8], val[16];
+
+		if (!g_muse.albums[i].book) continue;
+		book_key(i, key, sizeof key);
+		db_get_str(db_dev(), key, val, sizeof val, "");
+		g_book_done[i] = !strcmp(val, "finished");
+	}
+	{
+		char show[16];
+
+		db_get_str(db_dev(), "muse.show", show, sizeof show, "music");
+		g_muse_books = !strcmp(show, "books");
+	}
 	if (a->sys.count >= CFG_MAX_SYSTEMS) return;
 	i = a->sys.count;
 	s = &a->sys.systems[i];
@@ -10308,8 +10576,9 @@ static void build_muse_shelf(app *a)
 	a->sys_w[i] = a->sys_h[i] = 0;
 	a->sys_cb[i] = 0;
 	a->sys.count++;
-	fprintf(stderr, "scan: %-16s %d artists, %d albums, %d tracks\n", "Muse",
-	        g_muse.nartists, g_muse.nalbums, g_muse.ntracks);
+	fprintf(stderr, "scan: %-16s %d artists, %d albums, %d books, %d tracks\n", "Muse",
+	        g_muse.nartists, ml_count(&g_muse, false), ml_count(&g_muse, true),
+	        g_muse.ntracks);
 }
 
 static void scan_all(app *a)
@@ -10562,7 +10831,10 @@ static void np_shot(app *a)
 		snprintf(path, sizeof path, "%s.jpg", base);
 		if (!file_nonempty(path)) {
 			snprintf(path, sizeof path, "%s.png", base);
-			if (!file_nonempty(path) && g_cov) g_cov[shot_np].st = COV_NONE;
+			if (!file_nonempty(path) && g_cov)
+				g_cov[shot_np].st = ml_folder_image(g_muse_root, &g_muse, shot_np,
+				                                    path, sizeof path)
+				                  ? COV_FOLDER : COV_NONE;
 		}
 	}
 	np_cover(a, shot_np);
@@ -10582,7 +10854,9 @@ static void muse_covers_settle(void)
 		snprintf(p, sizeof p, "%s.jpg", base);
 		if (file_nonempty(p)) continue;
 		snprintf(p, sizeof p, "%s.png", base);
-		if (!file_nonempty(p)) g_cov[i].st = COV_NONE;
+		if (!file_nonempty(p))
+			g_cov[i].st = ml_folder_image(g_muse_root, &g_muse, i, p, sizeof p)
+			            ? COV_FOLDER : COV_NONE;
 	}
 }
 
@@ -11211,7 +11485,7 @@ int main(int argc, char *argv[])
 			char bin[CFG_STR * 2], music[CFG_STR * 2];
 
 			snprintf(bin, sizeof bin, "%s/muse", P_ROOT);
-			snprintf(music, sizeof music, "%s/Music", P_CARD);
+			snprintf(music, sizeof music, "%s", P_CARD);
 			/* A shot starts no daemon: it draws one frame and exits, and a
 			 * cover it would ask for is drawn as missing instead - see
 			 * muse_covers_settle. */
@@ -11463,7 +11737,7 @@ int main(int argc, char *argv[])
 		 * the next track of an album starts while nobody is on its screen -
 		 * and the covers it was asked for by Muse's shelf, which that shelf
 		 * has to be drawn again to ask the worker for. */
-		musec_poll();
+		muse_poll();
 		if (cover_answers()) redraw_now();
 
 		/* Auto Off is the same line as the power button, on every screen

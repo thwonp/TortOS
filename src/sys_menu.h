@@ -71,13 +71,25 @@ typedef enum {
  * it gets. Eric's call, 2026-09-17. */
 #define SM_FAV_ROWS 2
 
-/* What Muse's shelf menu is: how many albums, Sort By - by artist or by album,
- * its own two orders, where a console's shelf has four - Album Art to fetch
- * covers for the albums that have none or only a small one, and Rescan Folder
- * for music copied onto the card while the Brick was on - and Muse Settings,
- * Muse's own options (TortOS-28l). Muse has no core, no ROM folder and no
- * display mode. Album order was Eric's, 2026-09-19. */
-#define SM_MUSE_ROWS 5
+/* What Muse's shelf menu is: how many albums, Show - music or audiobooks,
+ * the two kinds its one shelf holds - Sort By - by artist or by album, its own
+ * two orders, where a console's shelf has four - Album Art to fetch covers for
+ * the albums that have none or only a small one, and Rescan Folder for music
+ * copied onto the card while the Brick was on - and Muse Settings, Muse's own
+ * options (TortOS-28l). Muse has no core, no ROM folder and no display mode. Album order was Eric's, 2026-09-19; Show, 2026-09-27.
+ *
+ * On books the count is Books, Sort By is by author or title, and Album Art is
+ * not there: MusicBrainz knows records. Show is there only when the card has
+ * both kinds, since with one there is nothing to choose between. So the rows
+ * move, and which one is where is sys_menu_muse_rows's to say. */
+typedef enum { SMM_COUNT, SMM_SHOW, SMM_SORT, SMM_ART, SMM_RESCAN,
+               SMM_SETTINGS } sm_muse_row;
+#define SM_MUSE_ROWS 6
+
+/* Muse's rows in order, for the kind its shelf shows and whether the card has
+ * both. Returns how many. The build and the key handler both ask this, so the
+ * two cannot disagree about what row 2 is. */
+int sys_menu_muse_rows(bool books, bool both, sm_muse_row *out);
 
 #define MENU_MAX_ROWS 17
 
@@ -113,6 +125,8 @@ typedef struct {
 	bool games;              /* the system menu, rather than TortOS's own */
 	bool fav;                /* and that shelf is Favorites; see SM_FAV_ROWS */
 	bool muse;               /* or Muse's; see SM_MUSE_ROWS */
+	bool muse_books;         /* and it shows books rather than music */
+	bool muse_both;          /* and the card has both kinds */
 
 	wifi_state  wifi;        /* already cached by the caller; see menu_wifi */
 	const char *ssid;        /* the network's name when connected, else NULL */

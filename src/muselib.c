@@ -165,7 +165,7 @@ static bool grow(void **v, int n, int *cap, size_t sz)
 }
 
 /* One album: `rel` is its folder relative to the root. */
-static void add_album(ml_lib *l, int *acap, int *tcap, const char *root,
+static void add_album(ml_lib *l, int *acap, int *tcap, bool book,
                       const char *rel, const char *name, const names *files)
 {
 	ml_album *al;
@@ -175,6 +175,7 @@ static void add_album(ml_lib *l, int *acap, int *tcap, const char *root,
 	if (!grow((void **)&l->albums, l->nalbums, acap, sizeof *l->albums)) return;
 	al = &l->albums[l->nalbums++];
 	snprintf(al->name, sizeof al->name, "%s", name);
+	al->book = book;
 	al->first = l->ntracks;
 	al->n = 0;
 	for (i = 0; i < files->n; i++) {
@@ -189,16 +190,20 @@ static void add_album(ml_lib *l, int *acap, int *tcap, const char *root,
 		l->ntracks++;
 		al->n++;
 	}
-	(void)root;
 }
 
-bool ml_scan(const char *root, ml_lib *out)
+/* How far each array has grown, across the folders one library is read from. */
+typedef struct { int a, t, r; } caps;
+
+/* `root` into `out`, after whatever is there already. Paths are `prefix/` and
+ * then relative to `root`, or relative to it when `prefix` is empty. */
+static bool scan_into(ml_lib *out, caps *c, const char *root, const char *prefix,
+                      bool book)
 {
 	names top = { 0 };
-	int acap = 0, tcap = 0, rcap = 0, i;
+	int i;
 	struct stat st;
 
-	memset(out, 0, sizeof *out);
 	if (stat(root, &st) != 0 || !S_ISDIR(st.st_mode)) return false;
 
 	list_dir(root, &top, NULL);
@@ -208,34 +213,103 @@ bool ml_scan(const char *root, ml_lib *out)
 		ml_artist *ar;
 		int j, before = out->nalbums;
 
+		char top_rel[LIB_PATH];
+
 		snprintf(dir, sizeof dir, "%s/%s", root, top.v[i]);
 		list_dir(dir, &sub, &files);
+		if (prefix[0]) snprintf(top_rel, sizeof top_rel, "%s/%s", prefix, top.v[i]);
+		else           snprintf(top_rel, sizeof top_rel, "%s", top.v[i]);
 
 		/* Music/<name>/<tracks>: its own artist, one album of the same name. */
-		add_album(out, &acap, &tcap, root, top.v[i], top.v[i], &files);
+		add_album(out, &c->a, &c->t, book, top_rel, top.v[i], &files);
 		for (j = 0; j < sub.n; j++) {
 			char adir[LIB_PATH * 2], rel[LIB_PATH];
 			names tracks = { 0 };
 
 			snprintf(adir, sizeof adir, "%s/%s", dir, sub.v[j]);
-			snprintf(rel, sizeof rel, "%s/%s", top.v[i], sub.v[j]);
+			snprintf(rel, sizeof rel, "%s/%s", top_rel, sub.v[j]);
 			list_dir(adir, NULL, &tracks);
-			add_album(out, &acap, &tcap, root, rel, sub.v[j], &tracks);
+			add_album(out, &c->a, &c->t, book, rel, sub.v[j], &tracks);
 			names_free(&tracks);
 		}
 		names_free(&sub);
 		names_free(&files);
 
 		if (out->nalbums == before) continue;          /* nothing to play */
-		if (!grow((void **)&out->artists, out->nartists, &rcap, sizeof *out->artists))
+		if (!grow((void **)&out->artists, out->nartists, &c->r, sizeof *out->artists))
 			break;
 		ar = &out->artists[out->nartists++];
 		snprintf(ar->name, sizeof ar->name, "%s", top.v[i]);
 		ar->first = before;
 		ar->n = out->nalbums - before;
+		ar->book = book;
 	}
 	names_free(&top);
 	return true;
+}
+
+bool ml_scan(const char *root, ml_lib *out)
+{
+	caps c = { 0 };
+
+	memset(out, 0, sizeof *out);
+	return scan_into(out, &c, root, "", false);
+}
+
+bool ml_scan_card(const char *card, ml_lib *out)
+{
+	char dir[LIB_PATH * 2];
+	caps c = { 0 };
+	bool music, books;
+
+	memset(out, 0, sizeof *out);
+	snprintf(dir, sizeof dir, "%s/Music", card);
+	music = scan_into(out, &c, dir, "Music", false);
+	snprintf(dir, sizeof dir, "%s/Audiobooks", card);
+	books = scan_into(out, &c, dir, "Audiobooks", true);
+	return music || books;
+}
+
+int ml_count(const ml_lib *l, bool books)
+{
+	int i, n = 0;
+
+	for (i = 0; i < l->nalbums; i++)
+		if (l->albums[i].book == books) n++;
+	return n;
+}
+
+bool ml_folder_image(const char *root, const ml_lib *l, int al, char *out, size_t n)
+{
+	static const char *const NAMED[] = { "cover", "folder", NULL };
+	char dir[LIB_PATH * 2], only[256] = "";
+	const char *p;
+	DIR *d;
+	struct dirent *e;
+	int pictures = 0, k;
+	bool found = false;
+
+	if (al < 0 || al >= l->nalbums || l->albums[al].n <= 0) return false;
+	p = l->tracks[l->albums[al].first].path;
+	snprintf(dir, sizeof dir, "%s/%.*s", root, (int)dir_len(p), p);
+	if (!(d = opendir(dir))) return false;
+	while ((e = readdir(d)) && !found) {
+		const char *dot = strrchr(e->d_name, '.');
+
+		if (e->d_name[0] == '.' || !dot) continue;
+		if (strcasecmp(dot, ".jpg") && strcasecmp(dot, ".jpeg") &&
+		    strcasecmp(dot, ".png"))
+			continue;
+		for (k = 0; NAMED[k]; k++)
+			if ((size_t)(dot - e->d_name) == strlen(NAMED[k]) &&
+			    !strncasecmp(e->d_name, NAMED[k], strlen(NAMED[k])))
+				found = true;
+		if (found || pictures++ == 0)
+			snprintf(only, sizeof only, "%s", e->d_name);
+	}
+	closedir(d);
+	if (!found && pictures != 1) return false;
+	return snprintf(out, n, "%s/%s", dir, only) < (int)n;
 }
 
 void ml_free(ml_lib *lib)
@@ -248,9 +322,9 @@ void ml_free(ml_lib *lib)
 
 /* ---- the shelf's orders ----------------------------------------------------- */
 
-static const struct { const char *name, *label; } ORDERS[ML_ORDERS] = {
-	[ML_BY_ARTIST] = { "artist", "Artist" },
-	[ML_BY_ALBUM]  = { "album",  "Album"  },
+static const struct { const char *name, *label, *book; } ORDERS[ML_ORDERS] = {
+	[ML_BY_ARTIST] = { "artist", "Artist", "Author" },
+	[ML_BY_ALBUM]  = { "album",  "Album",  "Title"  },
 };
 
 const char *ml_order_name(ml_order o)
@@ -258,9 +332,10 @@ const char *ml_order_name(ml_order o)
 	return ORDERS[(unsigned)o < ML_ORDERS ? o : ML_BY_ARTIST].name;
 }
 
-const char *ml_order_label(ml_order o)
+const char *ml_order_label(ml_order o, bool books)
 {
-	return ORDERS[(unsigned)o < ML_ORDERS ? o : ML_BY_ARTIST].label;
+	o = (unsigned)o < ML_ORDERS ? o : ML_BY_ARTIST;
+	return books ? ORDERS[o].book : ORDERS[o].label;
 }
 
 ml_order ml_order_index(const char *name)
@@ -287,20 +362,22 @@ static int by_album(const void *a, const void *b)
 	return c ? c : x->al - y->al;
 }
 
-void ml_shelf_order(const ml_lib *l, ml_order by, int *out)
+int ml_shelf_order(const ml_lib *l, ml_order by, bool books, int *out)
 {
 	shelf_key *k;
-	int i;
+	int i, n = 0;
 
-	for (i = 0; i < l->nalbums; i++) out[i] = i;      /* the scan's, by artist */
-	if (by != ML_BY_ALBUM || l->nalbums < 2) return;
-	k = malloc(sizeof *k * (size_t)l->nalbums);
-	if (!k) return;
-	for (i = 0; i < l->nalbums; i++) {
-		k[i].album = l->albums[i].name;
-		k[i].al    = i;
+	for (i = 0; i < l->nalbums; i++)                  /* the scan's, by artist */
+		if (l->albums[i].book == books) out[n++] = i;
+	if (by != ML_BY_ALBUM || n < 2) return n;
+	k = malloc(sizeof *k * (size_t)n);
+	if (!k) return n;
+	for (i = 0; i < n; i++) {
+		k[i].album = l->albums[out[i]].name;
+		k[i].al    = out[i];
 	}
-	qsort(k, (size_t)l->nalbums, sizeof *k, by_album);
-	for (i = 0; i < l->nalbums; i++) out[i] = k[i].al;
+	qsort(k, (size_t)n, sizeof *k, by_album);
+	for (i = 0; i < n; i++) out[i] = k[i].al;
 	free(k);
+	return n;
 }

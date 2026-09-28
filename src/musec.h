@@ -32,16 +32,28 @@ typedef struct {
 	int      index, count;
 } mu_now;
 
-/* Where the daemon lives, and the folder paths are relative to. Starting it
- * is lazy: the first call that wants it spawns it if it is not answering. */
-void musec_init(const char *muse_bin, const char *music_root);
+/* Where the daemon lives, and the folder paths are relative to: the card,
+ * since tracks come from Music and books from Audiobooks. Starting it is lazy:
+ * the first call that wants it spawns it if it is not answering. */
+void musec_init(const char *muse_bin, const char *root);
 
 void musec_poll(void);
 
-/* Queue `n` tracks - paths relative to the music root - and play from
- * `start`. The launcher's copies; the caller's array may go away. */
-void musec_play(const char *const *paths, int n, int start,
+/* Queue `n` tracks - paths relative to the root - and play from `start`,
+ * `at` seconds into it. The launcher's copies; the caller's array may go away.
+ *
+ * A `book` queue plays in order whatever the play mode is: a book shuffled or
+ * on repeat is not a way anyone listens to one. The mode is left as it was
+ * set, for the music after it. */
+void musec_play(const char *const *paths, int n, int start, double at, bool book,
                 const char *artist, const char *album);
+
+/* Whether the queue is a book. */
+bool musec_is_book(void);
+
+/* True once each time a queue plays out to its end - the last track ended by
+ * itself, not stopped or replaced. A book that does has been finished. */
+bool musec_take_ran_out(void);
 
 void musec_toggle(void);       /* pause or resume */
 void musec_next(void);

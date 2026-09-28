@@ -30,7 +30,7 @@ DIATOM_ELF=${DIATOM_ELF:-$ROOT/../diatom/build/brick/diatom}
 rm -rf "$OUT"
 mkdir -p "$P/cards" "$P/cores" "$P/res/web" \
          "$OUT/.tmp_update" "$OUT/trimui/app" \
-         "$OUT/Roms" "$OUT/Music" "$OUT/Bios" "$OUT/Saves"
+         "$OUT/Roms" "$OUT/Music" "$OUT/Audiobooks" "$OUT/Bios" "$OUT/Saves"
 
 cp "$ROOT/build/tortos.elf" "$P/"
 cp "$ROOT/build/setbright" "$P/"          # brightness before the boot animation

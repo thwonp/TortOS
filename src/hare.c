@@ -220,7 +220,7 @@ static void note(const char *fmt, ...)
 
 /* Did that write land somewhere the shelf reads?
  *
- * Only the ROM and Music roots count; Muse is a shelf too. A save state, a
+ * Only the ROM, Music and Audiobooks roots count; Muse is a shelf too. A save state, a
  * BIOS image or a renamed folder under Saves changes nothing the launcher
  * displays, and making those trigger a rescan would mean pulling a hundred
  * games off the card to react to a file nobody is looking at. Prefix match on
@@ -235,7 +235,8 @@ static void note_write(const char *abs)
 		const xfer_root *rt = xfer_root_at(i);
 		size_t n;
 
-		if (strcmp(rt->name, "roms") != 0 && strcmp(rt->name, "music") != 0)
+		if (strcmp(rt->name, "roms") != 0 && strcmp(rt->name, "music") != 0 &&
+		    strcmp(rt->name, "books") != 0)
 			continue;
 		n = strlen(rt->path);
 		if (!strncmp(abs, rt->path, n) && (abs[n] == '/' || abs[n] == '\0'))
