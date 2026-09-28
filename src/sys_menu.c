@@ -18,6 +18,19 @@ void sys_menu_auto_off_label(int seconds, char *out, size_t n)
  * cannot be used teaches nobody why. */
 #define NEEDS_WIFI(on) ((on) ? NULL : "needs Wi-Fi")
 
+int sys_menu_muse_rows(bool books, bool both, sm_muse_row *out)
+{
+	int n = 0;
+
+	out[n++] = SMM_COUNT;
+	if (both) out[n++] = SMM_SHOW;
+	out[n++] = SMM_SORT;
+	if (!books) out[n++] = SMM_ART;
+	out[n++] = SMM_RESCAN;
+	out[n++] = SMM_SETTINGS;
+	return n;
+}
+
 int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
                    const char **heading)
 {
@@ -36,13 +49,34 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 			return SM_FAV_ROWS;
 		}
 		if (u->muse) {
-			out[0] = (menu_row){ "Albums",        b->a,            false };
-			out[1] = (menu_row){ "Sort By",
-			                     u->sort ? u->sort : "Artist",     true  };
-			out[2] = (menu_row){ "Album Art",     NEEDS_WIFI(net), net   };
-			out[3] = (menu_row){ "Rescan Folder", NULL,            true  };
-			out[4] = (menu_row){ "Muse Settings", NULL,            true  };
-			return SM_MUSE_ROWS;
+			sm_muse_row ids[SM_MUSE_ROWS];
+			int k, n = sys_menu_muse_rows(u->muse_books, u->muse_both, ids);
+
+			for (k = 0; k < n; k++)
+				switch (ids[k]) {
+				case SMM_COUNT:
+					out[k] = (menu_row){ u->muse_books ? "Books" : "Albums",
+					                     b->a, false };
+					break;
+				case SMM_SHOW:
+					out[k] = (menu_row){ "Show",
+					                     u->muse_books ? "Audiobooks" : "Music", true };
+					break;
+				case SMM_SORT:
+					out[k] = (menu_row){ "Sort By", u->sort ? u->sort
+					                     : u->muse_books ? "Author" : "Artist", true };
+					break;
+				case SMM_ART:
+					out[k] = (menu_row){ "Album Art", NEEDS_WIFI(net), net };
+					break;
+				case SMM_RESCAN:
+					out[k] = (menu_row){ "Rescan Folder", NULL, true };
+					break;
+				case SMM_SETTINGS:
+					out[k] = (menu_row){ "Muse Settings", NULL, true };
+					break;
+				}
+			return n;
 		}
 		out[SM_GAMES]   = (menu_row){ "Games",         b->a,        false };
 		out[SM_CORE]    = (menu_row){ "Core",          b->b,        false };

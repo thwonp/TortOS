@@ -5,7 +5,7 @@
 
 #include "xfer.h"
 
-static xfer_root g_roots[5];
+static xfer_root g_roots[6];
 static int       g_nroots;
 
 static void add_root(const char *name, const char *label, const char *fmt,
@@ -35,10 +35,11 @@ void xfer_init(const char *roms_dir, const char *card_dir,
 	 * a launcher that does not start, and the way to recover it is the card
 	 * reader this feature exists to avoid needing. */
 	add_root("roms",  "ROMs",  "%s", roms_dir, false);
-	/* Muse reads nothing but this folder, and the card's top level is not a
-	 * root, so without it music was the one thing on the card that still
-	 * needed the card pulled. */
+	/* Muse reads nothing but these two folders, and the card's top level is
+	 * not a root, so without them music and books were the one thing on the
+	 * card that still needed the card pulled. */
 	add_root("music", "Music", "%s/Music", card_dir, false);
+	add_root("books", "Audiobooks", "%s/Audiobooks", card_dir, false);
 	add_root("bios",  "BIOS",  "%s/Bios",  card_dir, false);
 	/* Two different things, both called saves in conversation.
 	 *

@@ -41,6 +41,9 @@ static bool    g_advanced;          /* the next track is asked for; see event() 
 static int     g_skips;             /* consecutive tracks that would not open */
 static char    g_artist[128], g_album[128];
 static mu_now  g_now;
+static bool    g_book;              /* the queue is a book: in order, always */
+static double  g_start_at;          /* where the first PLAY of a queue starts */
+static bool    g_ran_out;           /* see musec_take_ran_out */
 
 /* The output, which Muse holds for its whole life and has to be HANDED a
  * headset: see musec_sink in musec.h. */
@@ -51,10 +54,10 @@ static bool     g_sink_waiting;     /* asked, and no answer yet */
 static bool     g_asked;            /* PLAY or RESUME sent, not yet answered */
 static void   (*g_before_heard)(void);
 
-void musec_init(const char *muse_bin, const char *music_root)
+void musec_init(const char *muse_bin, const char *root)
 {
 	snprintf(g_bin, sizeof g_bin, "%s", muse_bin);
-	snprintf(g_root, sizeof g_root, "%s", music_root);
+	snprintf(g_root, sizeof g_root, "%s", root);
 }
 
 /* `why` is logged when a live connection ends: it is when "Muse vanished"
@@ -151,13 +154,17 @@ static void play_current(void)
 	 * daemon runs its commands in order, so a SINK sent now lands first. */
 	g_asked = true;
 	if (g_before_heard) g_before_heard();
-	sendf("PLAY\tpath=%s/%s", g_root, q);
+	/* Only the queue's first PLAY starts part way: every track after it is
+	 * one the queue moved on to, from its beginning. */
+	if (g_start_at > 0) sendf("PLAY\tpath=%s/%s\tat=%.1f", g_root, q, g_start_at);
+	else                sendf("PLAY\tpath=%s/%s", g_root, q);
 	/* Until META says otherwise, the name the file has. */
 	ml_track_name(strrchr(q, '/') ? strrchr(q, '/') + 1 : q,
 	              g_now.title, sizeof g_now.title);
 	snprintf(g_now.artist, sizeof g_now.artist, "%s", g_artist);
 	snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
-	g_now.at = 0;
+	g_now.at = g_start_at;
+	g_start_at = 0;
 	g_now.len = 0;
 	g_now.index = g_order.pos;
 	g_now.count = g_qn;
@@ -172,6 +179,7 @@ static void advance(bool failed)
 		g_advanced = true;
 	} else {
 		g_now.state = MU_STOPPED;
+		if (!failed) g_ran_out = true;
 	}
 }
 
@@ -339,7 +347,7 @@ void musec_poll(void)
 	}
 }
 
-void musec_play(const char *const *paths, int n, int start,
+void musec_play(const char *const *paths, int n, int start, double at, bool book,
                 const char *artist, const char *album)
 {
 	int i, k = 0;
@@ -359,9 +367,12 @@ void musec_play(const char *const *paths, int n, int start,
 	}
 	g_qn = k;
 	muq_free(&g_order);
-	muq_init(&g_order, k, start >= 0 && start < k ? start : 0, g_mode,
-	         plat_now_ms() * 2654435761u + 1);
+	g_book = book;
+	muq_init(&g_order, k, start >= 0 && start < k ? start : 0,
+	         book ? MUQ_IN_ORDER : g_mode, plat_now_ms() * 2654435761u + 1);
 	g_skips = 0;
+	g_start_at = at > 0 ? at : 0;
+	g_ran_out = false;
 	snprintf(g_artist, sizeof g_artist, "%s", artist ? artist : "");
 	snprintf(g_album, sizeof g_album, "%s", album ? album : "");
 	play_current();
@@ -482,8 +493,19 @@ void musec_set_mode(muq_mode m)
 {
 	if ((int)m < 0 || m >= MUQ_MODES) m = MUQ_IN_ORDER;
 	g_mode = m;
+	if (g_book) return;                  /* see musec_play */
 	muq_set_mode(&g_order, m);
 	g_now.index = g_order.pos;
+}
+
+bool musec_is_book(void) { return g_book; }
+
+bool musec_take_ran_out(void)
+{
+	bool r = g_ran_out;
+
+	g_ran_out = false;
+	return r;
 }
 
 muq_mode musec_mode(void) { return g_mode; }

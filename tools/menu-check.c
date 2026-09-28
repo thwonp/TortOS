@@ -434,7 +434,7 @@ static void system_menu(void)
 		m.wifi = WIFI_CONNECTED;     /* the case above left the radio down */
 		mn = sys_menu_build(&m, mrows, &mb, &mhead);
 		printf("Muse's shelf menu:\n");
-		ck(mn == SM_MUSE_ROWS, "five rows, not six");
+		ck(mn == 5, "five rows with only music, not seven");
 		ck(!strcmp(mrows[0].label, "Albums") && !strcmp(val(&mrows[0]), "7"),
 		   "how many albums");
 		ck(!strcmp(mrows[1].label, "Sort By") && mrows[1].live &&
@@ -457,6 +457,36 @@ static void system_menu(void)
 		for (k = 0; k < mn; k++) {
 			ck(strcmp(mrows[k].label, "Core") != 0, "no Core: it has none");
 			ck(strcmp(mrows[k].label, "Display Mode") != 0, "no Display Mode");
+		}
+
+		/* Music and books on one card: Show, between the count and the
+		 * order, and on books no Album Art and the orders a book goes by. */
+		m.sort = NULL;
+		m.wifi = WIFI_CONNECTED;
+		m.muse_both = true;
+		mn = sys_menu_build(&m, mrows, &mb, &mhead);
+		ck(mn == SM_MUSE_ROWS, "six rows with both kinds");
+		ck(!strcmp(mrows[1].label, "Show") && mrows[1].live &&
+		   !strcmp(val(&mrows[1]), "Music"), "Show, on music");
+		ck(!strcmp(mrows[2].label, "Sort By") && !strcmp(mrows[3].label, "Album Art"),
+		   "Sort By and Album Art after it");
+		m.muse_books = true;
+		m.game_count = 2;
+		mn = sys_menu_build(&m, mrows, &mb, &mhead);
+		ck(mn == 5, "five rows on books");
+		ck(!strcmp(mrows[0].label, "Books") && !strcmp(val(&mrows[0]), "2"),
+		   "how many books");
+		ck(!strcmp(val(&mrows[1]), "Audiobooks"), "Show, on books");
+		ck(!strcmp(val(&mrows[2]), "Author"), "by author when nothing says otherwise");
+		for (k = 0; k < mn; k++)
+			ck(strcmp(mrows[k].label, "Album Art") != 0,
+			   "no Album Art on books: MusicBrainz knows records");
+		{
+			sm_muse_row ids[SM_MUSE_ROWS];
+
+			ck(sys_menu_muse_rows(true, false, ids) == 4 && ids[1] == SMM_SORT &&
+			   ids[3] == SMM_SETTINGS,
+			   "books alone: the count, Sort By, Rescan Folder and Muse Settings");
 		}
 	}
 }
