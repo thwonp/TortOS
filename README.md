@@ -188,7 +188,7 @@ None of them is a driver, and none replaces anything the system needs to run.
 
 **In Muse,** A opens an album, plays a track or pauses it, L1 and R1 change track, left and right skip ten seconds, and B goes back. On Now Playing, Y changes the play mode: in order, repeat all, repeat one or shuffle.
 
-The volume buttons and F1/F2 (brightness) work everywhere. On the Brick Pro the brightness keys are FN1/FN2, the left stick works as the d-pad in menus and games, and the stick clicks do nothing.
+The volume buttons and F1/F2 (brightness) work everywhere. On the Brick Pro the brightness keys are FN1/FN2, the left stick works as the d-pad in menus and games, and the right stick and both stick clicks do nothing. That is deliberate for now: every bundled core is digital-only, so there is nothing yet for analog input to drive.
 
 **The Brick lists all of this itself,** under **MENU > Controls**: five pages, stepped through with left and right, so you never need this page to look a button up.
 

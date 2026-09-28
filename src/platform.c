@@ -1479,6 +1479,17 @@ static void write_str(const char *path, const char *val)
 	if (write(fd, val, strlen(val)) < 0) { /* best effort */ }
 	close(fd);
 }
+
+/* True when a sysfs attribute reads 0. */
+static bool reads_zero(const char *path)
+{
+	char c;
+	int fd = open(path, O_RDONLY);
+	if (fd < 0) return false;
+	ssize_t n = read(fd, &c, 1);
+	close(fd);
+	return n == 1 && c == '0';	/* sysfs prints plain decimal */
+}
 #endif
 
 void plat_leds_off(void)
@@ -1486,7 +1497,11 @@ void plat_leds_off(void)
 #ifdef __linux__
 	/* Stop the animation engine, scale every group to zero, then zero all 23
 	 * raw channels (both models have 23) directly -- so it holds whatever state the stock input
-	 * daemon left the engine in. */
+	 * daemon left the engine in. Only channels that are lit get written: each
+	 * raw write is a transfer on the LED controller, and 69 of them in a row
+	 * overflow its FIFO. On the Brick Pro that interrupt storm starves the
+	 * stick chip's i2c bus, and the stock kernel panics on the resulting
+	 * timeout (TortOS-pky.9). Reads cost the controller nothing. */
 	write_str("/sys/class/led_anim/effect_enable", "0");
 	static const char *groups[] = { "l", "r", "lr", "m", "f1", "f2", "rear" };
 	char path[96];
@@ -1504,7 +1519,7 @@ void plat_leds_off(void)
 		for (const char *c = "rgb"; *c; c++) {
 			snprintf(path, sizeof path,
 			         "/sys/class/leds/sunxi_led%d%c/brightness", n, *c);
-			write_str(path, "0");
+			if (!reads_zero(path)) write_str(path, "0");
 		}
 	}
 #endif
