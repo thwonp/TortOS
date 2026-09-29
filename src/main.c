@@ -2570,6 +2570,11 @@ static unsigned rail_sys_hue(void *ctx, int i)
 	return a->sys.systems[i].accent;
 }
 
+/* How far the shelf's stage sits below the top of a screen taller than the one
+ * it was tuned on (see CF_STAGE_H): the cards are placed on it, so whatever is
+ * placed against the cards moves with them. 0 on the Brick. */
+#define STAGE_Y ((TORTOS_SCREEN_H - CF_STAGE_H) / 2)
+
 static void draw_both(app *a)
 {
 	sysview *v = &a->view[a->sys_cursor];
@@ -2704,7 +2709,7 @@ furniture:
 		int w;
 
 		snprintf(cnt, sizeof cnt, "%d / %d", ng > 0 ? v->cursor + 1 : 0, ng);
-		ui_text(a->r, ui_font(UI_F_META), cnt, 24, 700, -1, UI_TEXT_DIM);
+		ui_text(a->r, ui_font(UI_F_META), cnt, 24, STAGE_Y + 700, -1, UI_TEXT_DIM);
 
 		/* THE NAME GETS WHAT THE COUNT LEAVES, rather than a constant 360.
 		 * This is the only place Cubic says which system you are on - no face
@@ -2725,7 +2730,7 @@ furniture:
 		}
 		w = ui_text_width(ui_font(UI_F_META), nfit);
 		ui_text(a->r, ui_font(UI_F_META), nfit,
-		        TORTOS_SCREEN_W - 24 - w, 700, -1, UI_TEXT_DIM);
+		        TORTOS_SCREEN_W - 24 - w, STAGE_Y + 700, -1, UI_TEXT_DIM);
 	}
 }
 
@@ -2786,7 +2791,7 @@ static void draw_systems(app *a)
 		 * 670 and leaves 20px before the count at 690. The card is sized to
 		 * fit ABOVE this rather than this being pushed down to suit the
 		 * card. */
-		ui_text(a->r, ui_font(UI_F_TITLE), nfit, TORTOS_SCREEN_W / 2, 618, 0,
+		ui_text(a->r, ui_font(UI_F_TITLE), nfit, TORTOS_SCREEN_W / 2, STAGE_Y + 618, 0,
 		        ui_fade(UI_TEXT, label_a));
 	}
 
@@ -2811,7 +2816,7 @@ static void draw_systems(app *a)
 			 * that says so - clang does not. */
 			snprintf(line, sizeof line, "no games in Roms/%.96s", label->folder);
 	}
-	ui_text(a->r, ui_font(UI_F_META), line, TORTOS_SCREEN_W / 2, 690, 0,
+	ui_text(a->r, ui_font(UI_F_META), line, TORTOS_SCREEN_W / 2, STAGE_Y + 690, 0,
 	        ui_fade(UI_TEXT_DIM, label_a));
 	(CARD_DIRS[g_dir].vertical ? ui_rail_v : ui_rail)
 		(a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->cf_sys.pos, a->sys.count,
@@ -3043,11 +3048,11 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 		if (!CARD_DIRS[g_dir].both) {
 			snprintf(count, sizeof count, "%d / %d", idx + 1, v->list.count);
 			if (CARD_DIRS[g_dir].vertical)
-				ui_text(a->r, ui_font(UI_F_META), count, 24, 700,
+				ui_text(a->r, ui_font(UI_F_META), count, 24, STAGE_Y + 700,
 				        -1, UI_TEXT_DIM);
 			else
 				ui_text(a->r, ui_font(UI_F_META), count,
-				        TORTOS_SCREEN_W / 2, 690, 0, UI_TEXT_DIM);
+				        TORTOS_SCREEN_W / 2, STAGE_Y + 690, 0, UI_TEXT_DIM);
 		}
 	} else {
 		char nfit[192];
@@ -6903,7 +6908,7 @@ static void slot_draw(app *a, const slot_view *sv, int sel)
 	 * drawn to it. The border is the picture's own edge in the system's
 	 * color - a 240x160 GBA frame and a 256x224 NES frame are different
 	 * shapes, and neither should be padded out into the same rectangle. */
-	const SDL_Rect area = { (TORTOS_SCREEN_W - 700) / 2, 129, 700, 451 };
+	const SDL_Rect area = { (TORTOS_SCREEN_W - 700) / 2, STAGE_Y + 129, 700, 451 };
 	const int bw = 12;
 	SDL_Rect img = area, frame;
 	char slotname[16];
@@ -8251,7 +8256,7 @@ static void muse_album_dir(int al, char *out, size_t n)
  * the same one; an album it could not find is asked about on every run. */
 static int museart_jobs(museart_job *jobs, int max)
 {
-	int crisp = (int)(TORTOS_SCREEN_H * CF_LAYOUT_ALBUMS.size + 0.5f);
+	int crisp = (int)(CF_STAGE_H * CF_LAYOUT_ALBUMS.size + 0.5f);
 	int i, n = 0;
 
 	for (i = 0; i < g_muse.nalbums && n < max; i++) {
@@ -10531,13 +10536,20 @@ static void take_shot(app *a)
 					0, nw, nh, 32, SDL_PIXELFORMAT_ARGB8888);
 				if (ns && fread(ns->pixels, 4, (size_t)nw * nh, nf)
 				          == (size_t)nw * nh) {
+					/* The buffer is panel pixels, so it is drawn at 1/s
+					 * units: the size Diatom puts it on the glass. */
+					float ps = plat_scale();
 					SDL_Rect at = { (TORTOS_SCREEN_W - nw) / 2,
 					                TORTOS_SCREEN_H - nh - TORTOS_SCREEN_H / 24,
 					                nw, nh };
+					SDL_FRect atf = { (TORTOS_SCREEN_W - nw / ps) / 2,
+					                  TORTOS_SCREEN_H - nh / ps - TORTOS_SCREEN_H / 24,
+					                  nw / ps, nh / ps };
 					SDL_Texture *nt = SDL_CreateTextureFromSurface(a->r, ns);
 					if (nt) {
 						SDL_SetTextureBlendMode(nt, SDL_BLENDMODE_BLEND);
-						SDL_RenderCopy(a->r, nt, NULL, &at);
+						if (ps == 1.0f) SDL_RenderCopy(a->r, nt, NULL, &at);
+						else SDL_RenderCopyF(a->r, nt, NULL, &atf);
 						SDL_DestroyTexture(nt);
 					}
 				}

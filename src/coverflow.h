@@ -39,6 +39,11 @@
  * the middle of it. */
 #define CF_WIDE_ART 1.2f
 
+/* The height the layouts were tuned on. A taller screen gets the same stage,
+ * centred, rather than bigger cards: size and center_y are fractions of this,
+ * and whatever the screen has beyond it is split above and below. */
+#define CF_STAGE_H 768
+
 /* How much of a move the label's crossfade uses at each end, leaving the
  * middle empty. See cf_label: the card crosses where the text is, so the text
  * has to be gone before it gets there. */

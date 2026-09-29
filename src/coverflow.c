@@ -148,12 +148,13 @@ const cf_layout CF_LAYOUT_ALBUM_FACE = {
 
 void cf_focus_rect(const cf_layout *lay, int screen_w, int screen_h, SDL_Rect *out)
 {
-	float ch = screen_h * lay->size;
+	int top = (screen_h - CF_STAGE_H) / 2;
+	float ch = CF_STAGE_H * lay->size;
 	float cw = ch * lay->aspect;
 	out->w = (int)cw;
 	out->h = (int)ch;
 	out->x = (int)(screen_w * 0.5f - cw * 0.5f);
-	out->y = (int)(screen_h * lay->center_y - ch * 0.5f);
+	out->y = (int)(top + CF_STAGE_H * lay->center_y - ch * 0.5f);
 }
 
 /* Every move takes this long, whatever its distance. Crossing the shelf is not
@@ -638,12 +639,13 @@ bool cf_draw(coverflow *cf, SDL_Renderer *r, int screen_w, int screen_h,
 
 	bool loops = cf_loops(count);
 	int half = cf_half(count);
-	float ch = screen_h * lay->size;
+	int top = (screen_h - CF_STAGE_H) / 2;
+	float ch = CF_STAGE_H * lay->size;
 	float cw = ch * lay->aspect;
 	/* Spacing counts the card's extent along the axis it is stacked on. */
 	float step = (lay->vertical ? ch : cw) * lay->step;
 	float cx = screen_w * 0.5f;
-	float cy = screen_h * lay->center_y;
+	float cy = top + CF_STAGE_H * lay->center_y;
 
 	int base = (int)floorf(cf->pos + 0.5f);
 
