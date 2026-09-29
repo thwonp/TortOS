@@ -7898,6 +7898,8 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		}
 		if (mn->count > 1) {
 			snprintf(line, sizeof line, "%d of %d", mn->index + 1, mn->count);
+			/* Not tabular: it changes with the track, not every second,
+			 * and a 1 in a fixed-width cell read as "1 of  14". */
 			gx += ui_text(r, fs, line, NP_TX, y, -1, UI_TEXT_DIM) + 18;
 		}
 		if (g >= 0) {
@@ -7927,15 +7929,14 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	if (fill > 0)
 		ui_round_rect(r, &(SDL_Rect){ NP_TX, bar, fill, UI_BAR_H }, UI_BAR_H / 2,
 		              state ? ui_fade(acc, 0.45f) : acc);
+	/* Tabular, so the clock ticking does not move what sits beside it. */
 	mmss(t0, sizeof t0, mn->at);
-	ui_text(r, fs, t0, NP_TX, bar + 16, -1, UI_TEXT_SOFT);
-	left = NP_TX + ui_text_width(fs, t0);
+	left = NP_TX + ui_text_tabular(r, fs, t0, NP_TX, bar + 16, -1, UI_TEXT_SOFT);
 	right = NP_TX + NP_TW;
 	if (mn->len > 0) {
 		mmss(t1, sizeof t1, mn->len > mn->at ? mn->len - mn->at : 0);
 		snprintf(line, sizeof line, "-%s", t1);
-		ui_text(r, fs, line, NP_TX + NP_TW, bar + 16, 1, UI_TEXT_SOFT);
-		right -= ui_text_width(fs, line);
+		right -= ui_text_tabular(r, fs, line, NP_TX + NP_TW, bar + 16, 1, UI_TEXT_SOFT);
 	}
 	/* Between the two times rather than on the column's middle, which a book's
 	 * hours pushed them into: "16:54:47Stopped". */

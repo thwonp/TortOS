@@ -102,6 +102,16 @@ static inline SDL_Color ui_fade(SDL_Color c, float k)
 }
 int ui_text_width(TTF_Font *f, const char *s);
 
+/* ui_text with every digit the same width, the way tabular figures are: for a
+ * number that changes while it is on screen, so a clock ticking from 1:19 to
+ * 1:20 does not shift what is beside it. Josefin Sans has proportional digits
+ * and no tnum feature to turn on - measured 2026-09-28, a 1 is 329 units wide
+ * and a 0 is 623 - so each digit is drawn centered in a cell as wide as the
+ * widest one, and everything else in the string as it always is. */
+int ui_text_tabular(SDL_Renderer *r, TTF_Font *f, const char *s, int x, int y,
+                    int anchor, SDL_Color col);
+int ui_text_tabular_width(TTF_Font *f, const char *s);
+
 /* The ping-pong offset a marquee is at, in pixels, for `phase` ms into it.
  * Exposed so a panel that scrolls itself vertically keeps the same timing as
  * a title that scrolls sideways. */
