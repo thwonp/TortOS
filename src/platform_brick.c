@@ -1421,35 +1421,5 @@ pwr_action plat_power_tap_or_hold(bool down)
 
 bool plat_battery(int *pct, bool *charging)
 {
-	const char *fake = getenv("TORTOS_FAKE_BATT");
-	if (fake && *fake) {
-		if (pct) *pct = atoi(fake);
-		if (charging) *charging = false;
-		return true;
-	}
-#ifdef __linux__
-	FILE *f = fopen("/sys/class/power_supply/axp2202-battery/capacity", "r");
-	if (!f) return false;
-	int v = -1;
-	if (fscanf(f, "%d", &v) != 1) v = -1;
-	fclose(f);
-	if (v < 0) return false;
-	if (pct) *pct = v;
-	if (charging) {
-		*charging = false;
-		FILE *s = fopen("/sys/class/power_supply/axp2202-battery/status", "r");
-		if (s) {
-			char st[32] = { 0 };
-			if (fgets(st, sizeof st, s) &&
-			    (strncmp(st, "Charging", 8) == 0 || strncmp(st, "Full", 4) == 0))
-				*charging = true;
-			fclose(s);
-		}
-	}
-	return true;
-#else
-	(void)pct;
-	(void)charging;
-	return false;
-#endif
+	return battery_read("/sys/class/power_supply/axp2202-battery", pct, charging);
 }

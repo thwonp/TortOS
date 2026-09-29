@@ -1233,3 +1233,47 @@ void plat_brightness_set(int level)
 	apply_brightness(clampi(level, 0, BRIGHT_MAX));
 	levels_save();
 }
+
+/* ---- battery ---- */
+
+/* A power_supply node's gauge, which each device file points at. Percent is the
+ * kernel's, so a bigger cell needs nothing here: it only means more minutes
+ * per percent. */
+bool battery_read(const char *dir, int *pct, bool *charging)
+{
+	const char *fake = getenv("TORTOS_FAKE_BATT");
+	if (fake && *fake) {
+		if (pct) *pct = atoi(fake);
+		if (charging) *charging = false;
+		return true;
+	}
+#ifdef __linux__
+	char path[128];
+	snprintf(path, sizeof path, "%s/capacity", dir);
+	FILE *f = fopen(path, "r");
+	if (!f) return false;
+	int v = -1;
+	if (fscanf(f, "%d", &v) != 1) v = -1;
+	fclose(f);
+	if (v < 0) return false;
+	if (pct) *pct = v;
+	if (charging) {
+		*charging = false;
+		snprintf(path, sizeof path, "%s/status", dir);
+		FILE *s = fopen(path, "r");
+		if (s) {
+			char st[32] = { 0 };
+			if (fgets(st, sizeof st, s) &&
+			    (strncmp(st, "Charging", 8) == 0 || strncmp(st, "Full", 4) == 0))
+				*charging = true;
+			fclose(s);
+		}
+	}
+	return true;
+#else
+	(void)dir;
+	(void)pct;
+	(void)charging;
+	return false;
+#endif
+}

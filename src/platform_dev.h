@@ -36,5 +36,7 @@ void backlight_off(void);
  * input ownership comes back from a game (plat_resident_wait). */
 void jack_forget(void);
 void mute_forget(void);
+/* capacity + status from a /sys/class/power_supply/<node> directory. */
+bool battery_read(const char *dir, int *pct, bool *charging);
 
 #endif

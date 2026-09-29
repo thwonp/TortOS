@@ -2,20 +2,24 @@
 /* The GKD 350H Ultra on vendor ROCKNIX, under sway: the device file for
  * PLATFORM=gkd, as platform_brick.c is for the Brick.
  *
- * Video, input and paths are real (plorpos-gkd.3.3). The rest are stubs
- * answering "not here" until their tasks: levels and battery (gkd.3.4), power
- * and sleep later. diatom's port/gkd.c is the reference for all of it - same
+ * Video, input and paths are real (plorpos-gkd.3.3), levels and battery too
+ * (gkd.3.4). The rest are stubs answering "not here" until their tasks:
+ * power and sleep later. diatom's port/gkd.c is the reference for all of it - same
  * window setup, same buttons - so the launcher and a game agree on the
  * device. */
+#include "db.h"
 #include "platform.h"
 #include "platform_dev.h"
 
 #include <fcntl.h>
 #include <linux/input.h>
+#include <pthread.h>
+#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 /* Where everything is, unless TORTOS_* says otherwise - see paths_init(). The
@@ -259,18 +263,146 @@ void plat_input_poll(in_state *st)
 
 void plat_leds_off(void) { }
 
-/* No levels yet: -1 reads as "no mixer, no display", so the nudges do
- * nothing rather than moving a number that controls nothing. */
+/* ---- levels ---- */
+
+/* diatom's ladder (port/gkd.c), so a level means the same panel on both
+ * sides of a handover: this backlight is non-linear already, raw 40 is the
+ * first step that reads as distinct, and above it every 8 units are visible -
+ * so twelve rungs evenly spaced from 40 to 255. */
+static const unsigned char bright_ladder[] = {
+	40, 60, 79, 99, 118, 138, 157, 177, 196, 216, 235, 255
+};
+#define BRIGHT_MAX ((int)(sizeof bright_ladder / sizeof bright_ladder[0]) - 1)
+_Static_assert(BRIGHT_MAX == PLAT_BRIGHT_MAX, "ladder and platform.h disagree");
+#define VOL_MAX PLAT_VOL_MAX
+#define BACKLIGHT "/sys/class/backlight/backlight/brightness"
+
+/* disp_fd is the backlight's brightness file, kept open. There is no mixer
+ * device - volume is PipeWire's - so mixer_fd is 0 once the worker below is
+ * running: "present", so the nudges run. */
 int mixer_fd = -1, disp_fd = -1;
 int cur_vol = -1, cur_bright = -1;
 int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
-void levels_save(void) { }
-void apply_volume(int v) { (void)v; }
-void apply_brightness(int b) { (void)b; }
-void backlight_off(void) { }
+
+/* As on the Brick: the player's levels in the device db, and boot.env
+ * following them so a launch script can light the panel before we run. */
+void levels_save(void)
+{
+	db_set_int(db_dev(), "volume", cur_vol);
+	db_set_int(db_dev(), "brightness", cur_bright);
+	db_write_boot_env();
+}
+
+/* wpctl is a process, tens of ms - far too slow for the frame loop, and a
+ * nudge lands in the frame loop - so sets go to a worker. Latest wins: a held
+ * rocker is one write of where it ended, not a queue of stale ones. Same as
+ * diatom's vol_worker. */
+static pthread_mutex_t vol_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  vol_cv = PTHREAD_COND_INITIALIZER;
+static int             vol_want = -1;
+
+static void *vol_worker(void *arg)
+{
+	extern char **environ;
+	(void)arg;
+	for (;;) {
+		char pct[16];
+		char *argv[] = { "wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", pct, NULL };
+		pid_t pid;
+		int st, want;
+
+		pthread_mutex_lock(&vol_mu);
+		while (vol_want < 0) pthread_cond_wait(&vol_cv, &vol_mu);
+		want = vol_want;
+		vol_want = -1;
+		pthread_mutex_unlock(&vol_mu);
+
+		snprintf(pct, sizeof pct, "%d%%", want * 100 / VOL_MAX);
+		if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) == 0)
+			waitpid(pid, &st, 0);
+	}
+	return NULL;
+}
+
+void apply_volume(int v)
+{
+	cur_vol = v;
+	if (mixer_fd < 0) return;
+	pthread_mutex_lock(&vol_mu);
+	vol_want = v;
+	pthread_cond_signal(&vol_cv);
+	pthread_mutex_unlock(&vol_mu);
+}
+
+static void backlight_write(int raw)
+{
+	char s[8];
+	int n = snprintf(s, sizeof s, "%d\n", raw);
+
+	if (disp_fd >= 0 && pwrite(disp_fd, s, n, 0) != n)
+		fprintf(stderr, "settings: backlight write %d failed\n", raw);
+}
+
+void apply_brightness(int b)
+{
+	cur_bright = b;
+	backlight_write(bright_ladder[b]);
+}
+
+/* Dark, not rung 0 (raw 40 is a dim screen); cur_bright is kept so
+ * apply_brightness(cur_bright) brings the player's level back. */
+void backlight_off(void) { backlight_write(0); }
+
 void jack_forget(void) { }
 void mute_forget(void) { }
-void plat_settings_init(void) { }
+
+/* What PipeWire is at now, in rungs - once, at start, where the one wpctl run
+ * is not in a frame. -1 if it cannot say. */
+static int wpctl_level(void)
+{
+	FILE *f = popen("wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null", "r");
+	float v;
+	int lv = -1;
+
+	if (!f) return -1;
+	if (fscanf(f, "Volume: %f", &v) == 1)
+		lv = clampi((int)(v * VOL_MAX + 0.5f), 0, VOL_MAX);
+	pclose(f);
+	return lv;
+}
+
+void plat_settings_init(void)
+{
+	pthread_t t;
+	int v, b;
+
+	disp_fd = open(BACKLIGHT, O_RDWR | O_CLOEXEC);
+	if (disp_fd < 0) fprintf(stderr, "settings: no %s\n", BACKLIGHT);
+	if (pthread_create(&t, NULL, vol_worker, NULL) == 0) {
+		pthread_detach(t);
+		mixer_fd = 0;
+	} else
+		fprintf(stderr, "settings: no volume worker\n");
+
+	/* The player's last choice wins; failing that, whatever the device is at
+	 * already, so the first OSD tells the truth. */
+	v = db_get_int(db_dev(), "volume", -1);
+	b = db_get_int(db_dev(), "brightness", -1);
+	if (v < 0) v = wpctl_level();
+	if (b < 0 && disp_fd >= 0) {
+		char s[16] = { 0 };
+		int raw, i;
+		if (pread(disp_fd, s, sizeof s - 1, 0) > 0 && (raw = atoi(s)) >= 0) {
+			b = 0;
+			for (i = 1; i <= BRIGHT_MAX; i++)
+				if (abs(bright_ladder[i] - raw) < abs(bright_ladder[b] - raw)) b = i;
+		}
+	}
+	cur_vol    = v >= 0 ? clampi(v, 0, VOL_MAX)    : -1;
+	cur_bright = b >= 0 ? clampi(b, 0, BRIGHT_MAX) : BRIGHT_MAX / 2;
+	if (cur_vol >= 0) apply_volume(cur_vol);
+	apply_brightness(cur_bright);
+}
 
 void plat_audio_jack_poll(void) { }
 bool plat_headphones_present(void) { return false; }
@@ -292,6 +424,5 @@ pwr_action plat_power_tap_or_hold(bool down) { (void)down; return PWR_NONE; }
 
 bool plat_battery(int *pct, bool *charging)
 {
-	(void)pct; (void)charging;
-	return false;
+	return battery_read("/sys/class/power_supply/battery", pct, charging);
 }
