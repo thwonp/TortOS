@@ -190,7 +190,7 @@ None of them is a driver, and none replaces anything the system needs to run.
 
 **On the cube,** up and down change console, left and right move through its games, and B opens that console's menu.
 
-**In Muse,** A opens an album, plays a track or pauses it, L1 and R1 change track, left and right skip ten seconds, and B goes back. A on a book carries on where you left it. On Now Playing, Y changes the play mode for music: in order, repeat all, repeat one or shuffle. Books always play in order.
+**In Muse,** A opens an album, plays a track or pauses it, L1 and R1 change track, left and right skip ten seconds (hold them to go faster: a minute a step after a second, five after three), and B goes back. A on a book carries on where you left it. On Now Playing, Y changes the play mode for music: in order, repeat all, repeat one or shuffle. Books always play in order.
 
 The volume buttons and F1/F2 (brightness) work everywhere. On the Brick Pro the brightness keys are FN1/FN2, the left stick works as the d-pad in menus and games, and the right stick and both stick clicks do nothing. That is deliberate for now: every bundled core is digital-only, so there is nothing yet for analog input to drive.
 

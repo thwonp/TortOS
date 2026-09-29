@@ -7873,6 +7873,20 @@ static void muse_power(app *a)
 
 /* ---- Muse: Now Playing ---------------------------------------------------- */
 
+/* How far one step of left or right seeks: ten seconds a tap, and further the
+ * longer it is held - a minute a step after a second, five after three.
+ * Eric's, 2026-09-29, for books: at ten seconds a step, eleven steps a second,
+ * crossing a seventeen-hour book took nine minutes of holding the d-pad, and
+ * now takes about twenty seconds. A song is over long before the steps grow,
+ * so music is as it was. */
+static double seek_step(const in_state *in, in_button b)
+{
+	Uint32 held = SDL_GetTicks() - in->down_since[b];
+
+	if (in->pressed[b] || held < 1000) return 10;
+	return held < 3000 ? 60 : 300;
+}
+
 static void mmss(char *out, size_t n, double sec)
 {
 	int t = sec > 0 ? (int)(sec + 0.5) : 0;
@@ -8096,8 +8110,8 @@ static muse_exit muse_now_screen(app *a)
 		if (a->in.pressed[IN_Y] && !musec_is_book()) muse_cycle_mode();
 		if (in_repeat(&a->in, IN_L1))       musec_prev();
 		if (in_repeat(&a->in, IN_R1))       musec_next();
-		if (in_repeat(&a->in, IN_LEFT))     musec_seek_by(-10);
-		if (in_repeat(&a->in, IN_RIGHT))    musec_seek_by(+10);
+		if (in_repeat(&a->in, IN_LEFT))     musec_seek_by(-seek_step(&a->in, IN_LEFT));
+		if (in_repeat(&a->in, IN_RIGHT))    musec_seek_by(+seek_step(&a->in, IN_RIGHT));
 		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
 		if (in_repeat(&a->in, IN_VOLDN))    plat_volume_nudge(-1);
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
@@ -8271,8 +8285,8 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 			if (in_repeat(&a->in, IN_UP))   sel = (sel + items - 1) % items;
 			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % items;
 		}
-		if (in_repeat(&a->in, IN_LEFT))     musec_seek_by(-10);
-		if (in_repeat(&a->in, IN_RIGHT))    musec_seek_by(+10);
+		if (in_repeat(&a->in, IN_LEFT))     musec_seek_by(-seek_step(&a->in, IN_LEFT));
+		if (in_repeat(&a->in, IN_RIGHT))    musec_seek_by(+seek_step(&a->in, IN_RIGHT));
 		if (in_repeat(&a->in, IN_L1))       musec_prev();
 		if (in_repeat(&a->in, IN_R1))       musec_next();
 		if (in_repeat(&a->in, IN_VOLUP))    plat_volume_nudge(+1);
