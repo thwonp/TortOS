@@ -119,6 +119,8 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 
 You need a TrimUI Brick, Brick Hammer or Brick Pro, a microSD card and, just this once, a computer.
 
+On the GKD 350H Ultra, see [Installing on the GKD](docs/install-gkd.md) instead.
+
 1. **Format the card as exFAT,** with a Master Boot Record partition scheme. On a Mac, open Disk Utility, choose *View > Show All Devices*, and erase the card itself rather than its volume.
 2. **Download `TortOS-v1.0.zip`** from [Releases](https://github.com/ericreinsmidt/TortOS/releases/latest) and unzip it.
 3. **Copy everything inside it to the root of the card:** `TortOS/`, `.tmp_update/`, `trimui/`, `Roms/`, `Bios/` and `Saves/`.
