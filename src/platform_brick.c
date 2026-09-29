@@ -177,6 +177,17 @@ void plat_video_quit(void)
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
+/* The launcher's logical size is the panel's, so Diatom's rect needs nothing. */
+void plat_draw_paused(SDL_Renderer *r, SDL_Texture *bg)
+{
+	SDL_Rect d;
+
+	SDL_RenderCopy(r, bg, NULL, plat_resident_rect(&d) ? &d : NULL);
+}
+
+/* One display, no compositor: whoever presents last is on glass. */
+void screen_yield(bool to_game) { (void)to_game; }
+
 static void open_joystick(void)
 {
 	for (int i = 0; i < SDL_NumJoysticks(); i++) {

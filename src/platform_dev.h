@@ -37,6 +37,9 @@ void backlight_off(void);
 void jack_forget(void);
 void mute_forget(void);
 /* capacity + status from a /sys/class/power_supply/<node> directory. */
+/* true: a resident game is about to own the screen; false: it handed it back.
+ * Under a compositor the launcher's window has to get out of its way. */
+void screen_yield(bool to_game);
 bool battery_read(const char *dir, int *pct, bool *charging);
 
 #endif

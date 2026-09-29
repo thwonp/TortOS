@@ -181,6 +181,10 @@ void        plat_hotkey_set(const char *tag, const char *spec);
  * its mode or rect can change, settling included (its ADR-0022), so the last
  * one heard is current. */
 bool plat_resident_rect(SDL_Rect *out);
+/* Draw the paused game's preview where Diatom is drawing the game, or over the
+ * whole screen until it has said. Per device: Diatom's rect is in the panel's
+ * own pixels, which on the GKD are not the launcher's logical ones. */
+void plat_draw_paused(SDL_Renderer *r, SDL_Texture *bg);
 /* Read replies for up to timeout_ms, stopping as soon as a DISPLAY arrives.
  * For changing the mode from the in-game menu: Diatom answers a SETDISPLAY with
  * the new rect, and the menu wants it now so its backdrop can redraw where the

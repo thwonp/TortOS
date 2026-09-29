@@ -1113,7 +1113,11 @@ static int diatom_wait(void)
 
 int plat_resident_wait(void)
 {
-	int r = diatom_wait();
+	int r;
+
+	screen_yield(true);
+	r = diatom_wait();
+	screen_yield(false);
 
 	/* Input ownership just came back to this process, so anything remembered
 	 * about the jack was formed while something else was driving.

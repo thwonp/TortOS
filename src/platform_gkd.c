@@ -122,6 +122,32 @@ void plat_video_quit(void)
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
+/* Diatom's rect is in the window's 1600x1440 pixels, so logical scaling is
+ * switched off for this one copy: the frame lands where the game is, at the
+ * game's size, with no second resample. Interim - gkd.11 drops the logical
+ * size altogether, and with it this, leaving the Brick's version. */
+void plat_draw_paused(SDL_Renderer *r, SDL_Texture *bg)
+{
+	SDL_Rect d;
+
+	if (!plat_resident_rect(&d)) { SDL_RenderCopy(r, bg, NULL, NULL); return; }
+	SDL_RenderSetLogicalSize(r, 0, 0);
+	SDL_RenderCopy(r, bg, NULL, &d);
+	SDL_RenderSetLogicalSize(r, TORTOS_SCREEN_W, TORTOS_SCREEN_H);
+}
+
+/* Two fullscreen windows under sway, and sway does not reliably show the one
+ * that drew last: a game started under the shelf played unseen (2026-09-29).
+ * So only one is ever mapped - Diatom hides its own at every handover, and
+ * this hides the shelf's while a game runs. Pumping flushes the unmap to sway
+ * before Diatom's first frame, as Diatom does. */
+void screen_yield(bool to_game)
+{
+	if (!win) return;
+	if (to_game) { SDL_HideWindow(win); SDL_PumpEvents(); }
+	else SDL_ShowWindow(win);
+}
+
 /* ---- input ------------------------------------------------------------
  *
  * Straight from evdev, found by name: the pad (gkd_atom_joypad) and the

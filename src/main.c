@@ -6842,11 +6842,7 @@ static void build_child_env(void)
  * path, and the first moments of a launch. */
 static void draw_paused_frame(app *a, SDL_Texture *bg)
 {
-	SDL_Rect r;
-
-	if (!bg) return;
-	if (plat_resident_rect(&r)) SDL_RenderCopy(a->r, bg, NULL, &r);
-	else                        SDL_RenderCopy(a->r, bg, NULL, NULL);
+	if (bg) plat_draw_paused(a->r, bg);
 }
 
 /* Copy the paused frame's preview beside a manual save, so the slot strip can
