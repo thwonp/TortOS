@@ -3,6 +3,12 @@
 # TrimUI's SDK. Build it once with `make toolchain`, and the sysroot once with
 # `mk/fetch-sysroot.sh` (needs the device on adb).
 IMAGE := tortos-toolchain
+# Which device: brick (the Brick and Brick Pro, the default) or gkd (the GKD
+# 350H Ultra, into build/gkd/ against sysroot-gkd/ - see mk/fetch-gkd-sysroot.sh).
+# Each build compiles one device file, src/platform_$(PLATFORM).c.
+PLATFORM ?= brick
+# The GKD, over ssh with its key. ROCKNIX, so no password to leak.
+GKD ?= root@192.168.0.55
 # The Brick is .100. The .101 this used to say is the address in the global
 # notes, and it is wrong - every SSH target needed BRICK= on the command line
 # to work at all.
@@ -22,7 +28,11 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
         check-db check-stats check-sort check-bt check-backlog check-ss check-hkbind \
         hooks storeprobe deploy restart logs
 
+ifeq ($(PLATFORM),gkd)
+all: build/gkd/tortos.elf
+else
 all: build/tortos.elf
+endif
 
 # Everything offline, in one command. There was no umbrella target: every check
 # had to be remembered by name, which is a suite in the same sense that a list
@@ -61,7 +71,12 @@ export SS_DEVID SS_DEVPASS
 build/ss_creds.h: FORCE
 	@$(MAKE) --no-print-directory -f mk/cross.mk creds
 
-build/tortos.elf: $(wildcard src/*.c) $(wildcard src/*.h) tools/setbright.c mk/cross.mk \
+# Each device's sources: everything but the other device's file, so that editing
+# platform_gkd.c does not make the Brick build look stale (and the reverse).
+SRC_BRICK := $(filter-out src/platform_gkd.c,$(wildcard src/*.c))
+SRC_GKD   := $(filter-out src/platform_brick.c,$(wildcard src/*.c))
+
+build/tortos.elf: $(SRC_BRICK) $(wildcard src/*.h) tools/setbright.c mk/cross.mk \
                   $(wildcard src/muse/*.c) $(wildcard src/muse/*.h) tools/musectl.c \
                   tools/btplayer.c \
                   build/ss_creds.h
@@ -86,7 +101,7 @@ build/tortos.elf: $(wildcard src/*.c) $(wildcard src/*.h) tools/setbright.c mk/c
 	@# Diatom's tools/brick-make.sh has carried this check since 2026-08-25,
 	@# where the same thing cost an hour twice. A comment here used to claim
 	@# mk/cross.mk carried one too. It did not.
-	@for src in $(wildcard src/*.c) $(wildcard src/*.h) mk/cross.mk build/ss_creds.h; do \
+	@for src in $(SRC_BRICK) $(wildcard src/*.h) mk/cross.mk build/ss_creds.h; do \
 		if [ "$$src" -nt build/tortos.elf ]; then \
 			echo "STALE: build/tortos.elf is older than $$src" >&2; \
 			echo "  the container did not rebuild. rm build/tortos.elf and try again." >&2; \
@@ -112,6 +127,29 @@ build/tortos.elf: $(wildcard src/*.c) $(wildcard src/*.h) tools/setbright.c mk/c
 		if [ "$$src" -nt "$$bin" ]; then \
 			echo "STALE: $$bin is older than $$src" >&2; \
 			echo "  the container did not rebuild. rm $$bin and try again." >&2; \
+			exit 1; \
+		fi; \
+	done
+
+# The GKD: the launcher alone. No setbright (it serves the Brick's boot
+# animation), no Muse yet (gkd.25), no btplayer (gkd.9). Same toolchain: its
+# glibc is older than the device's 2.40, which is the direction that works.
+build/gkd/ss_creds.h: FORCE
+	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/gkd creds
+
+build/gkd/tortos.elf: $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk build/gkd/ss_creds.h
+	@docker image inspect $(IMAGE) > /dev/null 2>&1 || { \
+		echo "toolchain image missing; run: make toolchain" >&2; exit 1; }
+	@[ -d sysroot-gkd/usr/include/SDL2 ] || { \
+		echo "no GKD sysroot; run: mk/fetch-gkd-sysroot.sh (needs the GKD over ssh)" >&2; exit 1; }
+	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work -w /work $(IMAGE) \
+		make -f mk/cross.mk PLATFORM=gkd BUILD=build/gkd SYSROOT=/work/sysroot-gkd \
+		VERSION=$(VERSION) creds build/gkd/tortos.elf
+	@# The same staleness check as the Brick's, for the same reason.
+	@for src in $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk build/gkd/ss_creds.h; do \
+		if [ "$$src" -nt build/gkd/tortos.elf ]; then \
+			echo "STALE: build/gkd/tortos.elf is older than $$src" >&2; \
+			echo "  the container did not rebuild. rm build/gkd/tortos.elf and try again." >&2; \
 			exit 1; \
 		fi; \
 	done
@@ -554,6 +592,15 @@ adb-log:
 # Those change rarely and two of them are applied once and guarded by markers;
 # this target is for the loop you are actually in, which is the launcher and
 # what it draws.
+ifeq ($(PLATFORM),gkd)
+# The GKD: over ssh with its key. mk/gkd-deploy.sh has the other modes.
+# No restart: nothing supervises the launcher there until gkd.4.
+deploy: all
+	GKD=$(GKD) mk/gkd-deploy.sh elf
+
+logs:
+	@ssh $(GKD) 'tail -60 /storage/games-external/.userdata/gkd/logs/tortos.log 2>/dev/null'
+else
 deploy: all
 	@# Silent, every line that carries $(SSH): it expands to the password, and
 	@# make echoes a recipe before running it - into a terminal, a CI log, or a
@@ -569,6 +616,7 @@ restart:
 
 logs:
 	@$(SSH) 'tail -60 /mnt/SDCARD/.userdata/tg3040/logs/tortos.log 2>/dev/null'
+endif
 
 clean:
 	rm -rf build build-native out

@@ -6797,16 +6797,9 @@ static const char *child_env[24];
 
 static void build_child_env(void)
 {
-	static const char *fixed[] = {
-		"PLATFORM=tg3040", "DEVICE=brick",
-		"SDCARD_PATH=/mnt/SDCARD",
-		"BIOS_PATH=/mnt/SDCARD/Bios",
-		"CHEATS_PATH=/mnt/SDCARD/Cheats",
-		"SAVES_PATH=/mnt/SDCARD/Saves",
-	};
 	size_t i;
 	int n = 0;
-	for (i = 0; i < sizeof fixed / sizeof *fixed; i++) child_env[n++] = fixed[i];
+	for (i = 0; plat_child_env[i]; i++) child_env[n++] = plat_child_env[i];
 	snprintf(env_buf[0], sizeof env_buf[0], "ROMS_PATH=%s", P_ROMS);
 	snprintf(env_buf[1], sizeof env_buf[1], "SYSTEM_PATH=%s", P_ROOT);
 	snprintf(env_buf[2], sizeof env_buf[2], "CORES_PATH=%s/cores", P_ROOT);
@@ -6814,7 +6807,8 @@ static void build_child_env(void)
 	snprintf(env_buf[4], sizeof env_buf[4], "SHARED_USERDATA_PATH=%s", P_SHARED);
 	snprintf(env_buf[5], sizeof env_buf[5], "LOGS_PATH=%s/logs", P_USERDATA);
 	snprintf(env_buf[6], sizeof env_buf[6], "HOME=%s", P_USERDATA);
-	snprintf(env_buf[7], sizeof env_buf[7], "LD_LIBRARY_PATH=%s/lib:/usr/trimui/lib", P_ROOT);
+	snprintf(env_buf[7], sizeof env_buf[7], "LD_LIBRARY_PATH=%s/lib%s", P_ROOT,
+	         plat_child_libpath);
 	for (i = 0; i <= 7; i++) child_env[n++] = env_buf[i];
 	child_env[n] = NULL;
 }

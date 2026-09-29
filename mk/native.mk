@@ -5,7 +5,8 @@
 # There is no emulator on the host, so launching a game does nothing useful --
 # this build is for looking at the shelf while changing how it looks.
 BUILD := build-native
-SRC := $(wildcard src/*.c)
+# The Brick's device file: its not-__linux__ branches are the host stubs.
+SRC := $(filter-out src/platform_%.c,$(wildcard src/*.c)) src/platform_brick.c
 
 PKGS := sdl2 SDL2_image SDL2_ttf
 VERSION ?= 0.0

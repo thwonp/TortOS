@@ -26,7 +26,9 @@
 
 #include "wifi.h"
 
-#ifdef __linux__
+/* The TrimUI radio. The GKD takes the host stubs until gkd.10 gives it its
+ * own. */
+#if defined(__linux__) && !defined(PLATFORM_GKD)
 
 #include <fcntl.h>
 #include <sys/wait.h>

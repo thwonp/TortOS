@@ -4,7 +4,8 @@
  * and forking amixer out of this process is what menu_wifi exists to avoid. */
 #include "btvol.h"
 
-#ifdef __linux__
+/* bluealsa on the TrimUI. The GKD takes the host stubs until gkd.9. */
+#if defined(__linux__) && !defined(PLATFORM_GKD)
 #include <dlfcn.h>
 #include <stdio.h>
 #include <string.h>

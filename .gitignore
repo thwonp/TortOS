@@ -38,6 +38,7 @@ MGBA-MBC2-issue.md
 MGBA-MBC2-body.md
 
 sysroot/
+sysroot-gkd/
 
 # Local ROM/BIOS test set. 889 MB of content that must never enter history.
 /TortOS-Test-Set/

@@ -2,12 +2,21 @@
 # is passed in and holds the device's own SDL2 libraries, so what links is
 # byte-identical to what runs.
 BUILD := build
-SRC := $(wildcard src/*.c)
+# One device file per build: src/platform_brick.c or src/platform_gkd.c, never
+# both - they define the same functions. The Makefile passes PLATFORM and, for
+# the GKD, BUILD=build/gkd.
+PLATFORM ?= brick
+SRC := $(filter-out src/platform_%.c,$(wildcard src/*.c)) src/platform_$(PLATFORM).c
 CC ?= aarch64-linux-gnu-gcc
 
 VERSION ?= 0.0
 CFLAGS := -DTORTOS_VERSION='"$(VERSION)"' -O2 -mcpu=cortex-a53 -Wall -Wextra -Wno-unused-parameter -std=gnu11 \
           -I$(SYSROOT)/usr/include/SDL2 -D_GNU_SOURCE
+ifeq ($(PLATFORM),gkd)
+# The one use outside the device files: bt.c, wifi.c and btvol.c keep their
+# host stubs on the GKD until it has radio code of its own (gkd.9, gkd.10).
+CFLAGS += -DPLATFORM_GKD
+endif
 # --allow-shlib-undefined: the device's SDL2_ttf pulls FT_* out of freetype,
 # and SDL2/SDL2_image reach for more of the firmware besides. Those resolve on
 # the device at runtime, where they exist. The flag permits undefined symbols

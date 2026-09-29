@@ -45,6 +45,17 @@
 #define CODE_PRO_FN_LEFT  KEY_F1
 #define CODE_PRO_FN_RIGHT KEY_F2
 
+/* What a game's process is told about the device - see build_child_env(). */
+const char *const plat_child_env[] = {
+	"PLATFORM=tg3040", "DEVICE=brick",
+	"SDCARD_PATH=/mnt/SDCARD",
+	"BIOS_PATH=/mnt/SDCARD/Bios",
+	"CHEATS_PATH=/mnt/SDCARD/Cheats",
+	"SAVES_PATH=/mnt/SDCARD/Saves",
+	NULL
+};
+const char plat_child_libpath[] = ":/usr/trimui/lib";
+
 /* Which of the two, from the line the boot script already trusts: cpuinfo's
  * hwserial names the model and nothing else on the device does. */
 bool plat_is_brick_pro(void)

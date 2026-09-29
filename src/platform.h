@@ -30,6 +30,13 @@ void paths_init(void);
  * differences are its sticks, its buttons and one more ring of LEDs. */
 bool plat_is_brick_pro(void);
 
+/* What a game's process is told about the device, which the launcher cannot
+ * derive from its own paths: NULL-terminated "KEY=VALUE" pairs, and the
+ * library directories searched after $P_ROOT/lib (":dir..." or empty). Both
+ * from the device file; main.c's build_child_env() adds the rest. */
+extern const char *const plat_child_env[];
+extern const char plat_child_libpath[];
+
 typedef enum {
 	IN_LEFT, IN_RIGHT, IN_UP, IN_DOWN,
 	IN_ACCEPT, IN_BACK, IN_X, IN_Y,
