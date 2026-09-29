@@ -122,10 +122,12 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 }
 
 static void glyphs_free(void);
+static void digits_free(void);
 
 void ui_quit(void)
 {
 	glyphs_free();
+	digits_free();
 	for (int i = 0; i < TEXT_CACHE; i++)
 		if (cache[i].tex) { SDL_DestroyTexture(cache[i].tex); cache[i].tex = NULL; }
 	if (glow_tex) { SDL_DestroyTexture(glow_tex); glow_tex = NULL; }
@@ -235,6 +237,134 @@ int ui_text_width(TTF_Font *f, const char *s)
 	int w = 0;
 	if (f && s) TTF_SizeUTF8(f, s, &w, NULL);
 	return units_up(w);
+}
+
+/* ---- tabular digits ---------------------------------------------------------
+ *
+ * The ten digits of a font, rendered once in white and tinted as they are
+ * drawn, apart from the string cache: a clock would otherwise put a string a
+ * second into a cache of twelve and push out the title it sits under. One slot
+ * per font, and Now Playing uses one font. */
+#define DIGIT_FONTS 3
+static struct {
+	TTF_Font    *f;
+	SDL_Texture *tex[10];
+	int          w[10], h;
+} digits[DIGIT_FONTS];
+
+static void digits_free(void)
+{
+	int i, d;
+
+	for (i = 0; i < DIGIT_FONTS; i++) {
+		for (d = 0; d < 10; d++)
+			if (digits[i].tex[d]) SDL_DestroyTexture(digits[i].tex[d]);
+		memset(&digits[i], 0, sizeof digits[i]);
+	}
+}
+
+/* The width every digit is given: the widest one's advance. */
+static int digit_cell(TTF_Font *f)
+{
+	int d, cell = 0, minx, maxx, miny, maxy, adv;
+
+	for (d = 0; d < 10; d++)
+		if (TTF_GlyphMetrics(f, (Uint16)('0' + d), &minx, &maxx, &miny, &maxy, &adv) == 0 &&
+		    adv > cell)
+			cell = adv;
+	return cell;
+}
+
+static int digits_for(SDL_Renderer *r, TTF_Font *f)
+{
+	static const SDL_Color white = { 255, 255, 255, 255 };
+	int i, d, slot = -1;
+
+	for (i = 0; i < DIGIT_FONTS; i++) {
+		if (digits[i].f == f) return i;
+		if (!digits[i].f && slot < 0) slot = i;
+	}
+	if (slot < 0) {                      /* all taken: the first makes room */
+		for (d = 0; d < 10; d++)
+			if (digits[0].tex[d]) SDL_DestroyTexture(digits[0].tex[d]);
+		memset(&digits[0], 0, sizeof digits[0]);
+		slot = 0;
+	}
+	for (d = 0; d < 10; d++) {
+		SDL_Surface *s = TTF_RenderGlyph_Blended(f, (Uint16)('0' + d), white);
+
+		if (!s) continue;
+		digits[slot].tex[d] = SDL_CreateTextureFromSurface(r, s);
+		digits[slot].w[d] = s->w;
+		digits[slot].h = s->h;
+		SDL_FreeSurface(s);
+	}
+	digits[slot].f = f;
+	return slot;
+}
+
+/* The next run of `s`: digits one at a time, anything else up to the next
+ * digit. Returns its length, and the run in `out`. */
+static size_t tab_run(const char *s, char *out, size_t n)
+{
+	size_t len = 1;
+
+	if (!(*s >= '0' && *s <= '9'))
+		while (s[len] && !(s[len] >= '0' && s[len] <= '9')) len++;
+	if (len >= n) len = n - 1;
+	memcpy(out, s, len);
+	out[len] = '\0';
+	return len;
+}
+
+int ui_text_tabular_width(TTF_Font *f, const char *s)
+{
+	char run[128];
+	int w = 0, cell;
+
+	if (!f || !s) return 0;
+	cell = digit_cell(f);
+	while (*s) {
+		s += tab_run(s, run, sizeof run);
+		w += run[0] >= '0' && run[0] <= '9' ? cell : ui_text_width(f, run);
+	}
+	return w;
+}
+
+int ui_text_tabular(SDL_Renderer *r, TTF_Font *f, const char *s, int x, int y,
+                    int anchor, SDL_Color col)
+{
+	char run[128];
+	int w, cell, at, k;
+
+	if (!f || !s || !*s) return 0;
+	w = ui_text_tabular_width(f, s);
+	cell = digit_cell(f);
+	k = digits_for(r, f);
+	at = anchor == 0 ? x - w / 2 : (anchor > 0 ? x - w : x);
+	while (*s) {
+		s += tab_run(s, run, sizeof run);
+		if (run[0] >= '0' && run[0] <= '9') {
+			int d = run[0] - '0';
+			SDL_Texture *t = digits[k].tex[d];
+
+			if (t) {
+				/* Centered. At the cell's right edge, tried 2026-09-29, a
+				 * thin digit closed up on the digit after it and opened a
+				 * gap on the other side instead: "- 1:00: 10". */
+				SDL_Rect dst = { at + (cell - digits[k].w[d]) / 2, y,
+				                 digits[k].w[d], digits[k].h };
+
+				SDL_SetTextureColorMod(t, col.r, col.g, col.b);
+				SDL_SetTextureAlphaMod(t, col.a);
+				SDL_RenderCopy(r, t, NULL, &dst);
+			}
+			at += cell;
+		} else {
+			at += ui_text(r, f, run, at, y, -1, col);
+		}
+	}
+	return w;
 }
 
 /* Tuned by eye, and the first is the one that matters - see ui.h.
