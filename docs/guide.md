@@ -363,7 +363,7 @@ cover, the track, where in it you are, and what comes next.
 |---|---|
 | **A** | pause, or play |
 | **L1/R1** | previous / next track. More than three seconds in, L1 starts the track over |
-| **Left/Right** | back or ahead ten seconds |
+| **Left/Right** | back or ahead ten seconds; held, a minute a step after a second and five minutes after three |
 | **Y** | the play mode |
 | **B** | the album's tracks |
 | **MENU** | Muse's menu |
