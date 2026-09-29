@@ -45,6 +45,18 @@
 #define CODE_PRO_FN_LEFT  KEY_F1
 #define CODE_PRO_FN_RIGHT KEY_F2
 
+/* Where everything is, unless TORTOS_* says otherwise - see paths_init(). */
+const char *P_ROOT = "/mnt/SDCARD/TortOS";
+const char *P_CARD = "/mnt/SDCARD";
+const char *P_ROMS = "/mnt/SDCARD/Roms";
+const char *P_USERDATA = "/mnt/SDCARD/.userdata/tg3040";
+const char *P_SHARED = "/mnt/SDCARD/.userdata/shared";
+/* Over The Hare's page. On the card rather than in the binary so it can be
+ * restyled with a text editor and a reload, which is the whole argument for
+ * a file-transfer feature existing at all. */
+const char *P_WEB = "/mnt/SDCARD/TortOS/res/web";
+const char *P_FONT = "/mnt/SDCARD/TortOS/menu.ttf";
+
 /* What a game's process is told about the device - see build_child_env(). */
 const char *const plat_child_env[] = {
 	"PLATFORM=tg3040", "DEVICE=brick",
@@ -55,6 +67,9 @@ const char *const plat_child_env[] = {
 	NULL
 };
 const char plat_child_libpath[] = ":/usr/trimui/lib";
+
+/* The brightness keys, as the Controls page names them. */
+const char *plat_bright_keys(void) { return plat_is_brick_pro() ? "FN1/FN2" : "F1/F2"; }
 
 /* Which of the two, from the line the boot script already trusts: cpuinfo's
  * hwserial names the model and nothing else on the device does. */
@@ -221,17 +236,6 @@ void plat_input_quit(void)
 	if (joy) { SDL_JoystickClose(joy); joy = NULL; }
 	SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
 	/* keep the raw descriptors; they are display-independent */
-}
-
-static void set_btn(in_state *st, in_button b, bool down)
-{
-	if (b == IN_NONE) return;
-	if (down && !st->down[b]) {
-		st->pressed[b] = true;
-		st->down_since[b] = SDL_GetTicks();
-		st->last_repeat[b] = 0;
-	}
-	st->down[b] = down;
 }
 
 static in_button map_joy_button(int jb)

@@ -36,16 +36,6 @@
 
 int fd_power = -1; /* axp2202-pek: KEY_POWER */
 
-const char *P_ROOT = "/mnt/SDCARD/TortOS";
-const char *P_CARD = "/mnt/SDCARD";
-const char *P_ROMS = "/mnt/SDCARD/Roms";
-const char *P_USERDATA = "/mnt/SDCARD/.userdata/tg3040";
-const char *P_SHARED = "/mnt/SDCARD/.userdata/shared";
-/* Over The Hare's page. On the card rather than in the binary so it can be
- * restyled with a text editor and a reload, which is the whole argument for
- * a file-transfer feature existing at all. */
-const char *P_WEB = "/mnt/SDCARD/TortOS/res/web";
-
 /* ---- core options, read once from the library database ------------------- */
 /* Lines before any [SECTION] apply to every game; a [TAG] section applies only
  * to that system, keyed on the same tag systems.cfg uses for saves and states.
@@ -250,7 +240,6 @@ void plat_hotkey_set(const char *tag, const char *spec)
 		snprintf(hotkeys[i].map, sizeof hotkeys[0].map, "%s", spec ? spec : "");
 	}
 }
-const char *P_FONT = "/mnt/SDCARD/TortOS/menu.ttf";
 
 void paths_init(void)
 {
@@ -276,6 +265,17 @@ unsigned plat_now_ms(void) { return SDL_GetTicks(); }
 volatile sig_atomic_t g_terminating;
 
 void plat_terminate(void) { g_terminating = 1; }
+
+void set_btn(in_state *st, in_button b, bool down)
+{
+	if (b == IN_NONE) return;
+	if (down && !st->down[b]) {
+		st->pressed[b] = true;
+		st->down_since[b] = SDL_GetTicks();
+		st->last_repeat[b] = 0;
+	}
+	st->down[b] = down;
+}
 
 bool in_repeat(in_state *st, in_button b)
 {

@@ -11081,7 +11081,7 @@ int main(int argc, char *argv[])
 	if (!shot_path) texload_start();
 	a.r = plat_renderer();
 	plat_input_init();
-	if (plat_is_brick_pro()) ctl_bright_keys = "FN1/FN2";
+	ctl_bright_keys = plat_bright_keys();
 	/* Nothing is handed in any more. The two-tier lookup this replaces - a
 	 * shipped default and the player's saved level - is one key each in the
 	 * database, seeded once and overwritten by a nudge. That is also the end

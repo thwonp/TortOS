@@ -30,6 +30,9 @@ void paths_init(void);
  * differences are its sticks, its buttons and one more ring of LEDs. */
 bool plat_is_brick_pro(void);
 
+/* The keys that change brightness, as the Controls page names them. */
+const char *plat_bright_keys(void);
+
 /* What a game's process is told about the device, which the launcher cannot
  * derive from its own paths: NULL-terminated "KEY=VALUE" pairs, and the
  * library directories searched after $P_ROOT/lib (":dir..." or empty). Both

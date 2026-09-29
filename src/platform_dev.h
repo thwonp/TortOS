@@ -12,11 +12,16 @@
 #include <signal.h>
 #include <stdbool.h>
 
+#include "platform.h"
+
 /* Defined in platform.c, opened and read by the device file too. */
 extern int fd_power;                         /* -1 when the device has none */
 extern volatile sig_atomic_t g_terminating;
 /* One line to the resident emulator; false when it is not connected. */
 bool dsend(const char *fmt, ...);
+
+/* Press or release one button: `pressed` on the edge, `down` while held. */
+void set_btn(in_state *st, in_button b, bool down);
 
 /* The level state and its hardware, defined by the device file. mixer_fd and
  * disp_fd read >= 0 when the levels can be changed at all. */
