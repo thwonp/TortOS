@@ -84,6 +84,16 @@ int ui_font_line(ui_font_role role);
  * has to ask the same question the same way. */
 int ui_font_height(ui_font_role role);
 
+/* A font's own metrics, in layout units like everything else here. Fonts
+ * are opened at the panel's pixel size (see plat_scale), so SDL_ttf's answers
+ * are in pixels; these are what to ask instead. Descent is negative, as
+ * SDL_ttf's is. Cap is the height of 'H' above the baseline - the top of the
+ * ink - or the ascent if the font has no 'H'. */
+int ui_font_box(TTF_Font *f);
+int ui_font_ascent(TTF_Font *f);
+int ui_font_descent(TTF_Font *f);
+int ui_font_cap(TTF_Font *f);
+
 /* Draw text with its top-left at (x,y). anchor: -1 left, 0 center, 1 right,
  * applied to x. Returns the drawn width. Rendering is cached per (font,
  * string), so redrawing the same title every frame costs one blit. */

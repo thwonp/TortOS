@@ -32,6 +32,21 @@ static void blend(uint8_t *dst, unsigned b, unsigned g, unsigned r, unsigned a)
 	dst[3] = (uint8_t)(a + dst[3] * (255 - a) / 255);
 }
 
+/* Diatom composites this buffer in the panel's own pixels, so everything here
+ * is in pixels - the size SDL_ttf renders at - not the launcher's units. */
+static int line_px(ui_font_role role)
+{
+	TTF_Font *f = ui_font(role);
+	return f ? TTF_FontLineSkip(f) : 0;
+}
+
+static int width_px(TTF_Font *f, const char *s)
+{
+	int w = 0;
+	if (f && s) TTF_SizeUTF8(f, s, &w, NULL);
+	return w;
+}
+
 static void draw_text(uint8_t *out, int ow, int oh, TTF_Font *f,
                       const char *s, int x, int y, SDL_Color col)
 {
@@ -92,13 +107,13 @@ bool notice_render(const char *heading, const char *body, const char *path)
 	 * outright: TTF_FontDescent is negative, and without this the gap under
 	 * the last line is a descender deep even when nothing descends. The same
 	 * trick menu_draw uses to stop its rows riding high. */
-	padx = ui_font_line(UI_F_MENU) / 3;
-	pady = ui_font_line(UI_F_MENU) / 6;
+	padx = line_px(UI_F_MENU) / 3;
+	pady = line_px(UI_F_MENU) / 6;
 
 	/* A margin off the panel edge as well as off Diatom's hard limit: a
 	 * notice that runs the full width of the screen stops reading as a thing
 	 * laid over the game and starts reading as part of it. */
-	maxw = TORTOS_SCREEN_W * 5 / 6;
+	maxw = (int)(TORTOS_SCREEN_W * plat_scale()) * 5 / 6;
 	if (maxw > NOTICE_MAX_W) maxw = NOTICE_MAX_W;
 	maxw -= padx * 2;
 	/* Not optional. Diatom REFUSES an overlay wider than the panel rather than
@@ -107,16 +122,18 @@ bool notice_render(const char *heading, const char *body, const char *path)
 	 * titles in the 180-ROM test library are over 40 characters and the
 	 * longest is 64 - "From Johnny, Harris, Brooklyn Bob, and Reggie! Yeah
 	 * Even Reggie!" - so this is the common case, not the edge. */
-	ui_fit_text(fb, body, bodyfit, sizeof bodyfit, maxw);
-	ui_fit_text(fh, heading, headfit, sizeof headfit, maxw);
+	/* ui_fit_text measures in units, which round up: what fits maxw/scale
+	 * units fits maxw pixels. */
+	ui_fit_text(fb, body, bodyfit, sizeof bodyfit, (int)(maxw / plat_scale()));
+	ui_fit_text(fh, heading, headfit, sizeof headfit, (int)(maxw / plat_scale()));
 	body = bodyfit;
 	heading = headfit;
 
-	w = ui_text_width(fb, body);
-	x = ui_text_width(fh, heading);
+	w = width_px(fb, body);
+	x = width_px(fh, heading);
 	if (x > w) w = x;
 	w += padx * 2;
-	h = ui_font_line(UI_F_MENU) + ui_font_line(UI_F_LABEL) + pady * 2
+	h = line_px(UI_F_MENU) + line_px(UI_F_LABEL) + pady * 2
 	    + TTF_FontDescent(fb) / 3;
 	if (w > NOTICE_MAX_W) w = NOTICE_MAX_W;
 	if (h > NOTICE_MAX_H) h = NOTICE_MAX_H;
@@ -155,10 +172,10 @@ bool notice_render(const char *heading, const char *body, const char *path)
 	 * which reads as text that failed to fill rather than as a caption. It is
 	 * also what menu_draw does with a heading, so the two agree. */
 	draw_text(px, w, h, fh, heading,
-	          (w - ui_text_width(fh, heading)) / 2, pady, DIM);
+	          (w - width_px(fh, heading)) / 2, pady, DIM);
 	draw_text(px, w, h, fb, body,
-	          (w - ui_text_width(fb, body)) / 2,
-	          pady + ui_font_line(UI_F_MENU), WHITE);
+	          (w - width_px(fb, body)) / 2,
+	          pady + line_px(UI_F_MENU), WHITE);
 
 	f = fopen(path, "wb");
 	if (!f) { free(px); return false; }

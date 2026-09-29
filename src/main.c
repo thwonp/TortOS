@@ -498,13 +498,25 @@ static SDL_Texture *g_face[2];
 static SDL_Texture *face_tex(app *a, int i)
 {
 	if (!g_face[i]) {
+		/* At the panel's pixels, so a face at rest is as sharp as the
+		 * screen it stands in for. */
+		int w = TORTOS_SCREEN_W, h = TORTOS_SCREEN_H;
+
+		SDL_GetRendererOutputSize(a->r, &w, &h);
 		g_face[i] = SDL_CreateTexture(a->r, SDL_PIXELFORMAT_RGBA8888,
-		                              SDL_TEXTUREACCESS_TARGET,
-		                              TORTOS_SCREEN_W, TORTOS_SCREEN_H);
+		                              SDL_TEXTUREACCESS_TARGET, w, h);
 		if (!g_face[i])
 			fprintf(stderr, "cube: face %d not created: %s\n", i, SDL_GetError());
 	}
 	return g_face[i];
+}
+
+/* Draw into a face in layout units. SDL resets the scale to 1 on every
+ * switch to a texture, and restores the screen's own on the switch back. */
+static void face_target(app *a, SDL_Texture *face)
+{
+	SDL_SetRenderTarget(a->r, face);
+	if (plat_scale() != 1.0f) SDL_RenderSetScale(a->r, plat_scale(), plat_scale());
 }
 
 static SDL_Texture *sys_get_tex(void *ctx, int i, int *w, int *h, float *cb)
@@ -2613,12 +2625,12 @@ static void draw_both(app *a)
 		if (plan == FACES_NEAR_ONLY || plan == FACES_FAR_ONLY)
 			faces_swap(&fa, &fb);
 		if (plan == FACES_BOTH || plan == FACES_NEAR_ONLY) {
-			SDL_SetRenderTarget(a->r, fa);
+			face_target(a, fa);
 			draw_face_for(a, s0);
 			SDL_RenderFlush(a->r);
 		}
 		if (plan == FACES_BOTH || plan == FACES_FAR_ONLY) {
-			SDL_SetRenderTarget(a->r, fb);
+			face_target(a, fb);
 			draw_face_for(a, s1);
 			SDL_RenderFlush(a->r);
 		}
@@ -2652,12 +2664,12 @@ static void draw_both(app *a)
 			if (plan == FACES_NEAR_ONLY || plan == FACES_FAR_ONLY)
 				faces_swap(&fa, &fb);
 			if (plan == FACES_BOTH || plan == FACES_NEAR_ONLY) {
-				SDL_SetRenderTarget(a->r, fa);
+				face_target(a, fa);
 				draw_games_face(a, v, s, g0);
 				SDL_RenderFlush(a->r);
 			}
 			if (plan == FACES_BOTH || plan == FACES_FAR_ONLY) {
-				SDL_SetRenderTarget(a->r, fb);
+				face_target(a, fb);
 				draw_games_face(a, v, s, g1);
 				SDL_RenderFlush(a->r);
 			}
@@ -2968,7 +2980,7 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 			 * descender's depth most titles never use, so a mark placed at
 			 * the box's middle sits visibly below the letters. Descent is
 			 * negative, so half of it lifts. */
-			int dy = 40 + line / 2 + (ft2 ? TTF_FontDescent(ft2) / 2 : 0);
+			int dy = 40 + line / 2 + (ft2 ? ui_font_descent(ft2) / 2 : 0);
 			SDL_Color c = { (Uint8)(gs->accent >> 16), (Uint8)(gs->accent >> 8),
 			                (Uint8)gs->accent, 255 };
 
@@ -3442,7 +3454,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	 * bottom border. */
 	int rule_h = pad / 2 + 2;
 	int gap = row_h;                 /* between the label and value columns */
-	int text_h = fm ? TTF_FontHeight(fm) : row_h;
+	int text_h = fm ? ui_font_box(fm) : row_h;
 	int note_h = text_h + pad / 3;
 #define ROW_H(r) (!(r).label ? rule_h : (ROW_IS_NOTE(r) ? note_h : row_h))
 	/* Center the ink, not the em box. The box reserves a descender's depth
@@ -3450,7 +3462,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	 * so centering the box leaves the visible line riding high in its row and
 	 * reads as a highlight sitting too low. Descent is negative, so half of it
 	 * subtracted moves the line down onto the middle of the plate. */
-	int ink_off = fm ? -TTF_FontDescent(fm) / 2 : 0;
+	int ink_off = fm ? -ui_font_descent(fm) / 2 : 0;
 	/* The heading band runs from the panel's top edge down to the rule, and
 	 * the heading is centered inside it rather than hung a fixed distance from
 	 * the top - otherwise retuning the heading's size moves it off center,
@@ -3675,16 +3687,10 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 		 * high on the scanning screen.
 		 *
 		 * cap comes from 'H': maxy is its height above the baseline. */
-		int asc = fh ? TTF_FontAscent(fh) : line_head;
-		int cap = asc;
+		int asc = fh ? ui_font_ascent(fh) : line_head;
+		int cap = fh ? ui_font_cap(fh) : asc;
 		int block, hy;
 
-		if (fh) {
-			int mnx, mxx, mny, mxy, adv;
-
-			if (TTF_GlyphMetrics(fh, 'H', &mnx, &mxx, &mny, &mxy, &adv) == 0)
-				cap = mxy;
-		}
 		/* cap-to-baseline for the first line, plus a whole line for a second */
 		block = cap + (head_lines - 1) * line_head;
 		/* From the panel's INNER edge, not panel.y. The border is a visible
@@ -7672,14 +7678,8 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 		 * Wi-Fi panel does. */
 		int th = ui_font_height(UI_F_META), gs = th * 3 / 2, gx = NP_TX;
 		int g = MUSE_MODES[musec_mode()].glyph;
-		int asc = fs ? TTF_FontAscent(fs) : th, cap = asc;
-
-		if (fs) {
-			int mnx, mxx, mny, mxy, adv;
-
-			if (TTF_GlyphMetrics(fs, 'H', &mnx, &mxx, &mny, &mxy, &adv) == 0)
-				cap = mxy;
-		}
+		int asc = fs ? ui_font_ascent(fs) : th;
+		int cap = fs ? ui_font_cap(fs) : asc;
 		if (mn->count > 1) {
 			snprintf(line, sizeof line, "%d of %d", mn->index + 1, mn->count);
 			gx += ui_text(r, fs, line, NP_TX, y, -1, UI_TEXT_DIM) + 18;

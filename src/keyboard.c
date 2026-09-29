@@ -103,8 +103,8 @@ static void draw_hint(SDL_Renderer *r, int x, int y, const char *btn,
 	 * Height from the em box, and the ink centered in it the way menu_draw
 	 * centers its rows. Descent is negative, so half of it subtracted moves
 	 * the line down onto the middle of the chip. */
-	int fh = fm ? TTF_FontHeight(fm) : ui_font_line(UI_F_META);
-	int ink = fm ? -TTF_FontDescent(fm) / 2 : 0;
+	int fh = fm ? ui_font_box(fm) : ui_font_line(UI_F_META);
+	int ink = fm ? -ui_font_descent(fm) / 2 : 0;
 	int padv = 3;
 	SDL_Rect chip = { x, y - padv, bw + 14, fh + padv * 2 };
 
@@ -150,7 +150,7 @@ static void kb_draw(SDL_Renderer *r, const kb_state *k, const char *title,
 	 * largest of the six text sizes, where the font is 64 tall. */
 	fieldy = panel.y + 74;
 	{
-		int fh = fk ? TTF_FontHeight(fk) : ui_font_line(UI_F_MENU);
+		int fh = fk ? ui_font_box(fk) : ui_font_line(UI_F_MENU);
 		int fpad = 5;
 		SDL_Rect f = { panel.x + 28, fieldy, PANEL_W - 56, fh + fpad * 2 };
 		SDL_Rect clip = { f.x + 6, f.y, f.w - 12, f.h };

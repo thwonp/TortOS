@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
 #include "ui.h"
+#include "platform.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -43,6 +44,20 @@ static const float font_mul[UI_F_COUNT] = {
 
 static TTF_Font *fonts[UI_F_COUNT];
 static TTF_Font *f_mark;
+
+/* Panel pixels to the layout unit, from plat_scale() at ui_init. Text, marks
+ * and cards are rasterized in pixels, so they are sharp on the panel, and
+ * placed in units like everything else. At 1 the two are the same number and
+ * every path below is the integer one it always was - the Brick draws exactly
+ * what it drew before there was a scale. */
+static float ts = 1.0f;
+
+static int px(int v) { return ts == 1.0f ? v : (int)(v * ts + 0.5f); }
+static int units(int v) { return ts == 1.0f ? v : (int)lroundf(v / ts); }
+/* Widths round up, so whatever fits in units fits in pixels too. */
+static int units_up(int v) { return ts == 1.0f ? v : (int)ceilf(v / ts); }
+/* To the nearest panel pixel, so a texture drawn at 1/ts lands 1:1. */
+static float snap(float v) { return roundf(v * ts) / ts; }
 static char font_path_kept[512];
 static SDL_Texture *glow_tex;
 
@@ -95,8 +110,9 @@ bool ui_init(SDL_Renderer *r, const char *font_path)
 		return false;
 	}
 	snprintf(font_path_kept, sizeof font_path_kept, "%s", font_path);
+	ts = plat_scale();
 	for (i = 0; i < UI_F_COUNT; i++) {
-		int pt = (int)(FONT_BASE * font_mul[i] + 0.5f);
+		int pt = (int)(FONT_BASE * font_mul[i] * ts + 0.5f);
 		fonts[i] = TTF_OpenFont(font_path, pt);
 		if (!fonts[i])
 			fprintf(stderr, "font %s @%d: %s\n", font_path, pt, TTF_GetError());
@@ -128,13 +144,26 @@ TTF_Font *ui_font(ui_font_role role)
 int ui_font_line(ui_font_role role)
 {
 	TTF_Font *f = ui_font(role);
-	return f ? TTF_FontLineSkip(f) : 0;
+	return f ? units(TTF_FontLineSkip(f)) : 0;
 }
 
 int ui_font_height(ui_font_role role)
 {
-	TTF_Font *f = ui_font(role);
-	return f ? TTF_FontHeight(f) : 0;
+	return ui_font_box(ui_font(role));
+}
+
+int ui_font_box(TTF_Font *f) { return f ? units(TTF_FontHeight(f)) : 0; }
+int ui_font_ascent(TTF_Font *f) { return f ? units(TTF_FontAscent(f)) : 0; }
+int ui_font_descent(TTF_Font *f) { return f ? units(TTF_FontDescent(f)) : 0; }
+
+int ui_font_cap(TTF_Font *f)
+{
+	int mnx, mxx, mny, mxy, adv;
+
+	if (!f) return 0;
+	if (TTF_GlyphMetrics(f, 'H', &mnx, &mxx, &mny, &mxy, &adv) == 0)
+		return units(mxy);
+	return ui_font_ascent(f);
 }
 
 static struct text_entry *text_get(SDL_Renderer *r, TTF_Font *f, const char *s,
@@ -160,6 +189,8 @@ fill:
 		SDL_Surface *surf = TTF_RenderUTF8_Blended(f, s, col);
 		if (!surf) return NULL;
 		cache[oldest].tex = SDL_CreateTextureFromSurface(r, surf);
+		if (cache[oldest].tex && ts != 1.0f)
+			SDL_SetTextureScaleMode(cache[oldest].tex, SDL_ScaleModeNearest);
 		cache[oldest].w = surf->w;
 		cache[oldest].h = surf->h;
 		SDL_FreeSurface(surf);
@@ -172,26 +203,38 @@ fill:
 	return &cache[oldest];
 }
 
+/* A cached line with its top-left at (x,y) in units, at its pixel size. */
+static void text_copy(SDL_Renderer *r, const struct text_entry *e, float x, int y)
+{
+	if (ts == 1.0f) {
+		SDL_RenderCopy(r, e->tex, NULL, &(SDL_Rect){ (int)x, y, e->w, e->h });
+		return;
+	}
+	SDL_RenderCopyF(r, e->tex, NULL, &(SDL_FRect){
+		snap(x), snap((float)y), e->w / ts, e->h / ts });
+}
+
 int ui_text(SDL_Renderer *r, TTF_Font *f, const char *s, int x, int y,
             int anchor, SDL_Color col)
 {
 	struct text_entry *e = text_get(r, f, s, col);
-	SDL_Rect dst;
+	float w;
 	if (!e) return 0;
-	dst.w = e->w;
-	dst.h = e->h;
-	dst.x = anchor == 0 ? x - e->w / 2 : (anchor > 0 ? x - e->w : x);
-	dst.y = y;
 	SDL_SetTextureAlphaMod(e->tex, col.a);
-	SDL_RenderCopy(r, e->tex, NULL, &dst);
-	return e->w;
+	if (ts == 1.0f) {
+		text_copy(r, e, anchor == 0 ? x - e->w / 2 : (anchor > 0 ? x - e->w : x), y);
+		return e->w;
+	}
+	w = e->w / ts;
+	text_copy(r, e, anchor == 0 ? x - w / 2 : (anchor > 0 ? x - w : x), y);
+	return units_up(e->w);
 }
 
 int ui_text_width(TTF_Font *f, const char *s)
 {
 	int w = 0;
 	if (f && s) TTF_SizeUTF8(f, s, &w, NULL);
-	return w;
+	return units_up(w);
 }
 
 /* Tuned by eye, and the first is the one that matters - see ui.h.
@@ -282,7 +325,7 @@ void ui_text_marquee(SDL_Renderer *r, TTF_Font *f, const char *s,
 	had = SDL_RenderIsClipEnabled(r);
 	if (had) SDL_RenderGetClipRect(r, &was);
 	clip.x = x; clip.y = y;
-	clip.w = w; clip.h = TTF_FontHeight(f);
+	clip.w = w; clip.h = ui_font_box(f);
 	SDL_RenderSetClipRect(r, &clip);
 
 	/* Faded at both edges, and faded in the TEXT rather than by laying a
@@ -302,10 +345,8 @@ void ui_text_marquee(SDL_Renderer *r, TTF_Font *f, const char *s,
 	 * white blocks where the fades should have been. */
 	{
 		struct text_entry *e = text_get(r, f, s, col);
-		SDL_Rect dst;
 
 		if (!e) { SDL_RenderSetClipRect(r, had ? &was : NULL); return; }
-		dst.x = x - off; dst.y = y; dst.w = e->w; dst.h = e->h;
 
 		/* A FADE MEANS "MORE TEXT THIS WAY", so each side only fades when
 		 * there is something hidden on it. Both faded unconditionally at
@@ -324,7 +365,7 @@ void ui_text_marquee(SDL_Renderer *r, TTF_Font *f, const char *s,
 		if (clip.w > 0) {
 			SDL_RenderSetClipRect(r, &clip);
 			SDL_SetTextureAlphaMod(e->tex, col.a);
-			SDL_RenderCopy(r, e->tex, NULL, &dst);
+			text_copy(r, e, (float)(x - off), y);
 		}
 
 		for (i = 0; i < lf; i += MQ_FADE_STEP) {
@@ -332,7 +373,7 @@ void ui_text_marquee(SDL_Renderer *r, TTF_Font *f, const char *s,
 			clip.x = x + i;
 			clip.w = lf - i < MQ_FADE_STEP ? lf - i : MQ_FADE_STEP;
 			SDL_RenderSetClipRect(r, &clip);
-			SDL_RenderCopy(r, e->tex, NULL, &dst);
+			text_copy(r, e, (float)(x - off), y);
 		}
 		for (i = 0; i < rf; i += MQ_FADE_STEP) {
 			int sw = rf - i < MQ_FADE_STEP ? rf - i : MQ_FADE_STEP;
@@ -341,7 +382,7 @@ void ui_text_marquee(SDL_Renderer *r, TTF_Font *f, const char *s,
 			clip.x = x + w - sw - i;
 			clip.w = sw;
 			SDL_RenderSetClipRect(r, &clip);
-			SDL_RenderCopy(r, e->tex, NULL, &dst);
+			text_copy(r, e, (float)(x - off), y);
 		}
 		SDL_SetTextureAlphaMod(e->tex, 255);
 	}
@@ -717,7 +758,7 @@ static void blit_line(SDL_Surface *dst, TTF_Font *f, const char *line, int *y,
 	if (!t) return;
 	SDL_BlitSurface(t, NULL, dst,
 	                &(SDL_Rect){ x < 0 ? (dst->w - t->w) / 2 : x, *y, 0, 0 });
-	*y += t->h + 4;
+	*y += t->h + px(4);
 	SDL_FreeSurface(t);
 }
 
@@ -794,7 +835,7 @@ static void draw_watermark(SDL_Surface *dst, const char *title, unsigned rgb)
 	if ((unsigned char)ch[0] > 127) return;   /* one glyph, and an ASCII one */
 
 	if (!f_mark && font_path_kept[0])
-		f_mark = TTF_OpenFont(font_path_kept, 560);
+		f_mark = TTF_OpenFont(font_path_kept, px(560));
 	if (!f_mark) return;
 
 	t = TTF_RenderUTF8_Blended(f_mark, ch, (SDL_Color){
@@ -815,8 +856,10 @@ static void draw_watermark(SDL_Surface *dst, const char *title, unsigned rgb)
 static SDL_Texture *make_card(SDL_Renderer *r, const char *title, unsigned rgb,
                               int cw, int ch, bool round, int *w, int *h)
 {
-	SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, cw, ch, 32,
-	                                                SDL_PIXELFORMAT_ARGB8888);
+	/* Baked at the panel's pixels, and every size in here with it: callers
+	 * take the card's size as its shape, the same as for box art. */
+	SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, cw = px(cw), ch = px(ch),
+	                                                32, SDL_PIXELFORMAT_ARGB8888);
 	SDL_Texture *t;
 	int y;
 	if (!s) return NULL;
@@ -835,7 +878,7 @@ static SDL_Texture *make_card(SDL_Renderer *r, const char *title, unsigned rgb,
 
 	/* The system's color as a band rather than a wash: a generated card
 	 * should read as "this system, no art" at a glance in the row. */
-	SDL_FillRect(s, &(SDL_Rect){ 0, 0, cw, 6 },
+	SDL_FillRect(s, &(SDL_Rect){ 0, 0, cw, px(6) },
 	             SDL_MapRGBA(s->format, (Uint8)(rgb >> 16), (Uint8)(rgb >> 8),
 	                         (Uint8)rgb, 255));
 
@@ -847,15 +890,15 @@ static SDL_Texture *make_card(SDL_Renderer *r, const char *title, unsigned rgb,
 		 * card empty for the one-line titles that are most of a shelf, and the
 		 * bleed does not fill it - the face darkens toward the foot and takes
 		 * the letter's tail with it. Four lines still fit below this. */
-		int y = draw_wrapped(s, fonts[UI_F_CARD], title, cw - 96,
-		                     (int)(ch * 0.38f), 48);
+		int y = draw_wrapped(s, fonts[UI_F_CARD], title, cw - px(96),
+		                     (int)(ch * 0.38f), px(48));
 
-		SDL_FillRect(s, &(SDL_Rect){ 48, y + 12, 90, 3 },
+		SDL_FillRect(s, &(SDL_Rect){ px(48), y + px(12), px(90), px(3) },
 		             SDL_MapRGBA(s->format, (Uint8)(rgb >> 16),
 		                         (Uint8)(rgb >> 8), (Uint8)rgb, 220));
 	}
 
-	if (round) round_corners(s, CARD_RADIUS);
+	if (round) round_corners(s, px(CARD_RADIUS));
 	t = SDL_CreateTextureFromSurface(r, s);
 	SDL_FreeSurface(s);
 	if (t) { *w = cw; *h = ch; SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND); }
@@ -1049,9 +1092,10 @@ void ui_glyph_draw(SDL_Renderer *r, ui_glyph g, int cx, int cy, int size,
                    SDL_Color col)
 {
 	SDL_Texture *t = NULL;
-	int i, free_slot = -1;
+	int i, free_slot = -1, unit = size;
 
 	if (g < 0 || g >= UI_GLYPH_COUNT || size <= 0) return;
+	size = px(size);   /* the cache and the raster are in pixels */
 	for (i = 0; i < 8; i++) {
 		if (g_cache[i].tex && g_cache[i].g == g && g_cache[i].size == size) {
 			t = g_cache[i].tex;
@@ -1063,11 +1107,17 @@ void ui_glyph_draw(SDL_Renderer *r, ui_glyph g, int cx, int cy, int size,
 		if (free_slot < 0) { glyphs_free(); free_slot = 0; }
 		t = g_render(r, g, size);
 		if (!t) return;
+		if (ts != 1.0f) SDL_SetTextureScaleMode(t, SDL_ScaleModeNearest);
 		g_cache[free_slot].g = g;
 		g_cache[free_slot].size = size;
 		g_cache[free_slot].tex = t;
 	}
 	SDL_SetTextureColorMod(t, col.r, col.g, col.b);
 	SDL_SetTextureAlphaMod(t, col.a);
-	SDL_RenderCopy(r, t, NULL, &(SDL_Rect){ cx - size / 2, cy - size / 2, size, size });
+	if (ts == 1.0f) {
+		SDL_RenderCopy(r, t, NULL, &(SDL_Rect){ cx - size / 2, cy - size / 2, size, size });
+		return;
+	}
+	SDL_RenderCopyF(r, t, NULL, &(SDL_FRect){ snap(cx - unit / 2.0f),
+		snap(cy - unit / 2.0f), size / ts, size / ts });
 }
