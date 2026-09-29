@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
 #ifndef TORTOS_BTVOL_H
 #define TORTOS_BTVOL_H
 #include <stdbool.h>

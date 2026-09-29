@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
 /* See rahash.h. Three pieces: MD5, enough zip to reach the ROM, and
  * RetroAchievements' per-console rule about how much of it counts. */
 #include <dlfcn.h>

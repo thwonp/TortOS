@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT
+/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
  *
  * Set the LCD backlight on the TrimUI Brick (tg3040) straight through the
  * display-engine ioctl, so the boot animation is at the configured brightness

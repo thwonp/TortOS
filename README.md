@@ -18,7 +18,9 @@
 
 ## This fork
 
-What this fork does differently from upstream TortOS. Details are in
+This fork is **plorpOS** (working name), its own project now rather than a
+branch of TortOS, under a non-commercial license (see [License](#license)).
+What it does differently from upstream TortOS. Details are in
 [the guide](docs/guide.md).
 
 - **Music keeps playing through sleep.** A tap of POWER, or the idle timer,
@@ -270,4 +272,4 @@ TortOS is C and SDL2. Games run in [diatom](https://github.com/ericreinsmidt/dia
 
 ## License
 
-TortOS is MIT, and so is diatom. The cores keep their own licenses, two of them non-commercial. Full notices are in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
+plorpOS is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE), and so is its fork of diatom: free to use, change and share, but not for commercial use. It is built on Eric Reinsmidt's TortOS and diatom, whose MIT notice is kept in [NOTICE](NOTICE). The cores keep their own licenses, two of them non-commercial. Full notices are in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).

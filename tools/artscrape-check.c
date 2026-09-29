@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
 /* Does the device's title matcher agree with the host tool's?
  *
  *     make check-artscrape

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
 /* See hare.h for what this is and what the PIN is worth. */
 #include <dirent.h>
 #include <stdarg.h>

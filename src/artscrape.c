@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
 /* See artscrape.h for where the rules came from and why they are these. */
 #include <ctype.h>
 #include <dirent.h>

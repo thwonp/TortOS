@@ -1,8 +1,9 @@
 # Third-party notices
 
-TortOS itself - everything under `src/`, `tools/`, `mk/`, and the configs,
-scripts and generated art written for this project - is licensed **MIT**; see
-`LICENSE`.
+plorpOS (working name) itself - everything under `src/`, `tools/`, `mk/`, and
+the configs, scripts and generated art written for this project - is licensed
+**PolyForm Noncommercial 1.0.0**; see `LICENSE`. It is a fork of Eric
+Reinsmidt's TortOS, whose MIT notice is kept in `NOTICE`.
 
 A built TortOS card (`out/sd/`) also redistributes third-party software that
 keeps its own license. This file lists those components and their terms, and is
@@ -13,9 +14,11 @@ copied onto the card as `TortOS/THIRD-PARTY-LICENSES.md` by `mk/payload.sh`.
 ## diatom (the in-game libretro host)
 
 - **Origin:** an independent frontend, built in its own repository and shipped
-  as `TortOS/diatom`. https://github.com/ericreinsmidt/diatom
-- **License:** **MIT.** Its vendored `libretro.h` is MIT under the RetroArch
-  team's own scoped notice.
+  as `TortOS/diatom`. This fork's copy: https://github.com/thwonp/diatom
+  (upstream: https://github.com/ericreinsmidt/diatom)
+- **License:** **PolyForm Noncommercial 1.0.0**, like plorpOS; Eric
+  Reinsmidt's original is MIT, and his notice is in `NOTICE`. Its vendored
+  `libretro.h` and `rcheevos` stay MIT under their own notices.
 - TortOS's launcher runs it as a resident process and talks to it over a Unix
   socket; it does not link against it. Diatom ships no cores of its own.
 
@@ -84,9 +87,9 @@ left with it.
   repo, sharing a card image with other hobbyists) is what PolyForm
   Noncommercial's license is for and is what this fork relies on, the same
   way the two non-commercial cores already do.
-- The rest of this fork - everything not covered by one of the three bd
-  issues above - remains **MIT** under the root `LICENSE`, unchanged from
-  upstream TortOS.
+- Since 2026-09-28 the whole fork is PolyForm Noncommercial 1.0.0 (root
+  `LICENSE`), so this carve-out no longer marks the only noncommercial code;
+  it is kept as the record of which features came from NextUI.
 
 ## Fonts
 

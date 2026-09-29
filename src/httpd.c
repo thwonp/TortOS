@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
 /* See httpd.h for why none of this is allowed to block. */
 #include <errno.h>
 #include <fcntl.h>

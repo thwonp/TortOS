@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
 /* See bt.h. fork/execv rather than popen, for the reason wifi.c gives at
  * length: a device NAME is arbitrary bytes chosen by whoever owns the headset
  * and it arrives here over the air, into a process running as root. execv

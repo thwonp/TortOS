@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
 /* WiFi over the stock wpa_supplicant. See wifi.h for the position: none of
  * this is TortOS's own networking, it is a client of firmware that already
  * works.

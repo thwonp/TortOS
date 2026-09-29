@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
 /* Does Muse pick the right record, and ask for it the way MusicBrainz asks?
  *
  *     make check-museart

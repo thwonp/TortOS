@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
 /* Percent-encoding, declared in net.h and implemented HERE.
  *
  * Apart from net.c on purpose. It is a pure string function with no socket in

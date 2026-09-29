@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
 /* The in-game Hotkeys screen's binding parser/serializer, split out of
  * main.c under ADR-0001 so a check can drive the real thing with no SDL -
  * tools/hkbind-check.c links it without one. Not NextUI-derived: unlike

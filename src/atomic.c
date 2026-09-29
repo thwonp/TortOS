@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
 /* See atomic.h. No SDL and no platform header, deliberately: the two files
  * that most need this are cheevos.c, which is kept SDL-free so its checks can
  * link without a window, and rafetch.c, which is checked the same way. */

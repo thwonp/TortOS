@@ -66,6 +66,7 @@ cp "$ROOT/res/boot/splash.png" "$P/"      # the pic2fb loading splash, likewise
 # Without this, every HTTPS request fails verification and achievements never
 # arrive, with an error that reads like the network being down.
 cp "$ROOT/res/ssl/cacert.pem" "$P/"
+cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$P/"  # plorpOS terms + Eric Reinsmidt's MIT notice
 cp "$ROOT/THIRD-PARTY-LICENSES.md" "$P/"  # notices for the redistributed software
 cp "$DIATOM_ELF" "$P/diatom"
 cp "$ROOT/vendor/cores/"*.so "$P/cores/"
