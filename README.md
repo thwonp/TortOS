@@ -181,7 +181,7 @@ None of them is a driver, and none replaces anything the system needs to run.
 | **Y** | Favorite |
 | **L1/R1** | Jump a screenful |
 | **MENU** | Settings for the Brick, or for the shelf you're in |
-| **SELECT** | Muse, the music player. Press it again to close |
+| **SELECT** | Muse, the music and audiobook player. Press it again to close |
 | **POWER** | Turn off |
 
 **In a game,** MENU opens Continue, Save, Load, Display, Cheevos, Reset and Quit, and SELECT in that menu opens Muse. While music plays the game is silent, and pausing the music brings its sound back. X and Y are turbo A and B, except on Genesis and SNES, where they're the controller's own buttons. POWER saves the game and turns the Brick off.

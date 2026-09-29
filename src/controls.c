@@ -93,12 +93,15 @@ static int muse(menu_row *out)
 	 * These are the player's own buttons, the ones a shelf does not have. */
 	out[n++] = (menu_row){ "A",          "Play or pause", false };
 	out[n++] = (menu_row){ "L1/R1",      "Track",         false };
-	out[n++] = (menu_row){ "Left/Right", "Ten seconds",   false };
+	/* Ten seconds a tap and further held - see seek_step in main.c. Said as
+	 * what it does, since the numbers do not fit in a value. */
+	out[n++] = (menu_row){ "Left/Right", "Seek, faster held", false };
 	/* "Mode" rather than "Mode, on Now Playing": you press it on Now Playing,
 	 * where the mark beside the track count changes in front of you. Eric's,
 	 * 2026-09-20 - the rest of that sentence was saying what the screen was
-	 * about to show anyway. */
-	out[n++] = (menu_row){ "Y",          "Mode",          false };
+	 * about to show anyway. "Music" since audiobooks, 2026-09-29: a book
+	 * plays in order and Y does nothing there. */
+	out[n++] = (menu_row){ "Y",          "Mode, music",   false };
 	/* B is not here. It goes back in Muse exactly as it does everywhere else,
 	 * and the shelf's page already says so - and with the rule above the
 	 * footer this page has room for five, not six. */
