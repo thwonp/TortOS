@@ -40,6 +40,12 @@ bool hare_start(const char *roms_dir, const char *card_dir,
                 const char *shared_dir, const char *web_dir);
 void hare_stop(void);
 
+/* Download logs: how the launcher packs them, which this file cannot do by
+ * itself - the masking needs names only the launcher knows (see logpack.h).
+ * The hook writes a .tar.gz somewhere temporary and says where, and what the
+ * download should be called. Unset, the route answers that there are none. */
+void hare_set_logs(bool (*pack)(char *path, size_t pn, char *name, size_t nn));
+
 /* What the screen puts on the panel. `ip` is the LAN address, from wifi. */
 const char *hare_pin(void);
 int         hare_port(void);

@@ -315,7 +315,18 @@ leds_off
 
 # One log per boot, carrying the launcher AND everything it starts. Without
 # this a failure inside a game goes to a console nobody reads.
+#
+# Ten boots kept: this one and tortos.log.1 to .9, newest first. One was not
+# enough - on the first fresh-card test the boots that mattered were gone
+# before anyone read the log, and a player's report can come several reboots
+# after the fault. Measured on the device 2026-09-29, a boot's log runs 3 to
+# 30 KB, so ten is 300 KB at most.
 LOG=$LOGS_PATH/tortos.log
+i=9
+while [ $i -gt 1 ]; do
+	[ -f "$LOG.$((i - 1))" ] && mv -f "$LOG.$((i - 1))" "$LOG.$i"
+	i=$((i - 1))
+done
 [ -f "$LOG" ] && mv -f "$LOG" "$LOG.1"
 : > "$LOG"
 

@@ -35,6 +35,7 @@
 #include "rahash.h"
 #include "net.h"
 #include "keyboard.h"
+#include "logpack.h"
 #include "wifi.h"
 #include "audioout.h"
 #include "menu.h"
@@ -60,6 +61,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -5166,6 +5168,77 @@ void hare_preview(app *a, const char *addr, const char *pin, const char *who,
 	menu_draw(a, head, rows, n, -1, menu_std_width(a), MENU_ACCENT);
 }
 
+/* Download logs, from Over The Hare: see logpack.h. The names to hide are
+ * gathered here, at the moment of the download, because only the launcher
+ * knows them - every saved network rather than just the one it is on, since
+ * an older boot's log can name another; every paired headset; both account
+ * names. about.txt carries the first questions asked about any report. */
+static app *g_logs_app;
+
+static bool pack_logs(char *path, size_t pn, char *name, size_t nn)
+{
+	wifi_net   nets[WIFI_MAX_NETS];
+	bt_device  bt[BT_MAX];
+	const char *secrets[WIFI_MAX_NETS + BT_MAX + 4];
+	char       now_ssid[WIFI_SSID_MAX] = "", ip[64], logs[CFG_STR * 2];
+	char       folder[64], about[4096], err[128], stamp[32];
+	int        n = 0, saved, nb, i;
+	size_t     at = 0;
+	time_t     t = time(NULL);
+	struct tm  tm;
+	struct statvfs vf;
+	double     up = 0;
+	FILE      *f;
+
+	saved = wifi_known(nets, WIFI_MAX_NETS);
+	for (i = 0; i < saved; i++) secrets[n++] = nets[i].ssid;
+	if (wifi_status(now_ssid, sizeof now_ssid, ip, sizeof ip) != WIFI_OFF && now_ssid[0])
+		secrets[n++] = now_ssid;
+	nb = bt_bonded(bt, BT_MAX);
+	for (i = 0; i < nb; i++) secrets[n++] = bt[i].name;
+	if (ra_signed_in() && ra_user()) secrets[n++] = ra_user();
+	if (ss_signed_in() && ss_user()) secrets[n++] = ss_user();
+
+	localtime_r(&t, &tm);
+	strftime(stamp, sizeof stamp, "%Y-%m-%d %H:%M", &tm);
+	strftime(folder, sizeof folder, "tortos-logs-%Y-%m-%d-%H%M", &tm);
+	if ((f = fopen("/proc/uptime", "r"))) { if (fscanf(f, "%lf", &up) != 1) up = 0; fclose(f); }
+
+#define ABOUT(...) do { \
+		int k_ = snprintf(about + at, sizeof about - at, __VA_ARGS__); \
+		if (k_ > 0 && (size_t)k_ < sizeof about - at) at += (size_t)k_; \
+	} while (0)
+	ABOUT("TortOS %s\n", TORTOS_VERSION);
+	ABOUT("Packed %s, up %.0f minutes\n", stamp, up / 60);
+	if (statvfs(P_CARD, &vf) == 0)
+		ABOUT("Card: %.1f GB free of %.1f GB\n",
+		      (double)vf.f_bavail * vf.f_frsize / 1e9, (double)vf.f_blocks * vf.f_frsize / 1e9);
+	ABOUT("Auto Off: %d s\n", g_logs_app ? g_logs_app->auto_off : -1);
+	ABOUT("Wi-Fi: %s\n", now_ssid[0] ? now_ssid : "not connected");
+	ABOUT("Paired headsets: %d\n", nb);
+	ABOUT("\nShelves:\n");
+	for (i = 0; g_logs_app && i < g_logs_app->sys.count; i++) {
+		const system_cfg *sc = &g_logs_app->sys.systems[i];
+
+		if (is_muse(sc))
+			ABOUT("  %-22s %d albums, %d books, %d tracks\n", sc->name,
+			      ml_count(&g_muse, false), ml_count(&g_muse, true), g_muse.ntracks);
+		else
+			ABOUT("  %-22s %d\n", sc->name, g_logs_app->view[i].list.count);
+	}
+#undef ABOUT
+
+	snprintf(logs, sizeof logs, "%s/logs", P_USERDATA);
+	snprintf(name, nn, "%s.tar.gz", folder);
+	snprintf(path, pn, "/tmp/%s", name);
+	if (!logpack_build(logs, about, secrets, n, folder, path, err, sizeof err)) {
+		fprintf(stderr, "logs: could not pack them: %s\n", err);
+		return false;
+	}
+	fprintf(stderr, "logs: packed %s, %d names masked\n", name, n);
+	return true;
+}
+
 static void xfer_screen(app *a)
 {
 	char       ssid[WIFI_SSID_MAX], ip[64];
@@ -5175,6 +5248,8 @@ static void xfer_screen(app *a)
 	unsigned long long total_in = 0, total_out = 0;
 	bool       done = false;
 
+	g_logs_app = a;
+	hare_set_logs(pack_logs);
 	if (!hare_start(P_ROMS, P_CARD, P_SHARED, P_WEB)) {
 		menu_row row = { "Could not start", NULL, false };
 
@@ -10519,6 +10594,24 @@ static void scan_all(app *a)
 		}
 		fprintf(stderr, "scan: %-16s %d game%s\n", a->sys.systems[i].folder,
 		        v->list.count, v->list.count == 1 ? "" : "s");
+		/* What was left out, and what the folder takes, so a game that is
+		 * on the card and not on the shelf has its reason in the log. */
+		if (v->list.skipped) {
+			char names[LIB_SKIPS_SHOWN * (LIB_NAME + 4)] = "";
+			int k, shown = v->list.skipped < LIB_SKIPS_SHOWN ? v->list.skipped
+			                                                 : LIB_SKIPS_SHOWN;
+
+			for (k = 0; k < shown; k++) {
+				size_t at = strlen(names);
+
+				snprintf(names + at, sizeof names - at, "%s\"%s\"", k ? ", " : "",
+				         v->list.skipped_eg[k]);
+			}
+			fprintf(stderr, "scan: %-16s left out %d (it takes %s): %s%s\n",
+			        a->sys.systems[i].folder, v->list.skipped,
+			        a->sys.systems[i].exts[0] ? a->sys.systems[i].exts : "anything",
+			        names, v->list.skipped > shown ? ", and more" : "");
+		}
 	}
 	hide_empty_systems(a);
 	build_favorites_shelf(a);

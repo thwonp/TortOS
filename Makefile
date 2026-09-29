@@ -32,7 +32,7 @@ CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
          check-db check-stats check-sort check-bt check-backlog check-ss \
          check-muselib check-musequeue check-museart check-controls check-hkbind \
-         check-gamelist
+         check-gamelist check-logpack
 
 check:
 	@fail=0; for c in $(CHECKS); do \
@@ -457,6 +457,16 @@ build-native/muselib-check: tools/muselib-check.c src/muselib.c src/muselib.h FO
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
 	      -o $@ tools/muselib-check.c src/muselib.c
+
+# The logs pack: names and Bluetooth addresses masked, and a whole pack
+# unpacked with the same tar and read back.
+check-logpack: build-native/logpack-check
+	@./build-native/logpack-check
+
+build-native/logpack-check: tools/logpack-check.c src/logpack.c src/logpack.h FORCE
+	@mkdir -p build-native
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
+	      -o $@ tools/logpack-check.c src/logpack.c
 
 # The play modes: the last track, the first, a shuffle running out, a track
 # that will not open, and a mode changed under a playing track.

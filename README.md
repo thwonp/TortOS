@@ -216,7 +216,7 @@ Every control, menu row and setting, in detail: [the guide](docs/guide.md).
 <details>
 <summary><b>My games don't show up.</b></summary>
 
-Check the folder name against the table above, spelled exactly, and that the file type is listed for that console. A console with nothing in its folder is hidden. Games sent over Over The Hare appear when you leave its screen. Games copied any other way while the Brick is on appear after **Rescan Folder** in that console's menu, or after a restart.
+Check the folder name against the table above, spelled exactly, and that the file type is listed for that console. A console with nothing in its folder is hidden. Games sent over Over The Hare appear when you leave its screen. Games copied any other way while the Brick is on appear after **Rescan Folder** in that console's menu, or after a restart. The log names every file a console's folder left out, and the file types it takes.
 
 </details>
 
@@ -265,6 +265,13 @@ Put each book in its own folder in `Audiobooks/`, with an author's folder above 
 <summary><b>Where are my saves?</b></summary>
 
 Battery saves are `.srm` files in `Saves/`, named after the game. Save states, the autosave included, are in `.userdata/shared/.tortos/`, one folder per console. Neo Geo Pocket Color games write no `.srm`, so their progress lives in the autosave.
+
+</details>
+
+<details>
+<summary><b>Something went wrong. How do I send the logs?</b></summary>
+
+Open **MENU > Over The Hare**, open its address in a browser, and click **Download logs** at the bottom of the first page. You get one `.tar.gz` file holding the last ten boots' logs and a short summary of the Brick, ready to send to whoever is helping you. Wi-Fi network, headset and account names are masked in it, and the logs on the card are left as they are. The logs themselves are in `.userdata/tg3040/logs/` on the card.
 
 </details>
 

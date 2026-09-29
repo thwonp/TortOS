@@ -54,6 +54,14 @@
   <ul id="list" class="list"></ul>
   <p id="empty" class="empty" hidden>Nothing here yet.</p>
 
+  <!-- Download logs, on the first page only: a bug report as one file, packed
+       by the device when asked. The server names the download. -->
+  <p id="logs" class="logs" hidden>
+    <a class="ghost" href="/api/logs" download>Download logs</a>
+    <span>For whoever is helping you with a problem. Network, headset and
+    account names are masked.</span>
+  </p>
+
   <!-- The frame only. The words live in the header, where they cover nothing. -->
   <div id="drop" class="drop" hidden></div>
 
