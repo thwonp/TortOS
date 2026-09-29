@@ -44,6 +44,10 @@ static mu_now  g_now;
 static bool    g_book;              /* the queue is a book: in order, always */
 static double  g_start_at;          /* where the first PLAY of a queue starts */
 static bool    g_ran_out;           /* see musec_take_ran_out */
+/* A seek on its way: where to, and when it was asked for. See seek_to. */
+static bool    g_seeking;
+static double  g_seek_to;
+static unsigned g_seek_ms;
 
 /* The output, which Muse holds for its whole life and has to be HANDED a
  * headset: see musec_sink in musec.h. */
@@ -165,6 +169,7 @@ static void play_current(void)
 	snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
 	g_now.at = g_start_at;
 	g_start_at = 0;
+	g_seeking = false;
 	g_now.len = 0;
 	g_now.index = g_order.pos;
 	g_now.count = g_qn;
@@ -235,8 +240,30 @@ static void event(const char *line)
 		field(line, "len", v, sizeof v);
 		g_now.len = atof(v);
 	} else if (!strncmp(line, "POS", 3)) {
-		field(line, "at", v, sizeof v);  g_now.at = atof(v);
+		double at;
+
 		field(line, "len", v, sizeof v); if (atof(v) > 0) g_now.len = atof(v);
+		field(line, "at", v, sizeof v);  at = atof(v);
+		/* While a seek is on its way, a position that is not the seek's is
+		 * from before it: the once-a-second report sent as the SEEK went
+		 * out, or an earlier seek of a held d-pad landing. Taken at its
+		 * word it pulled the clock back and then forward again - measured
+		 * 2026-09-28, a 635.8 between seeks to 630 and 640, and an M4B,
+		 * whose seeks take 700 ms, showing 1010 after 1050 was asked for.
+		 * And the next press counts from the shown position, so a held
+		 * d-pad also lost ground. Three seconds at most, for a seek that
+		 * never lands; speed goes up to 2x, so that is the slack. */
+		if (g_seeking) {
+			double since = (plat_now_ms() - g_seek_ms) / 1000.0;
+
+			if (at >= g_seek_to - 0.5 && at <= g_seek_to + since * 2 + 1.5)
+				g_seeking = false;                          /* it landed */
+			else if (since < 3.0)
+				return;
+			else
+				g_seeking = false;
+		}
+		g_now.at = at;
 	} else if (!strncmp(line, "END", 3)) {
 		advance(false);
 	} else if (!strncmp(line, "SINK", 4)) {
@@ -434,12 +461,23 @@ void musec_next(void)
 	if (muq_next(&g_order) >= 0) play_current();
 }
 
+/* Seek, and hold the shown position there until the daemon says it landed:
+ * see the POS case in event(). */
+static void seek_to(double t)
+{
+	g_now.at = t;                  /* shown at once, confirmed by a POS */
+	g_seeking = true;
+	g_seek_to = t;
+	g_seek_ms = plat_now_ms();
+	sendf("SEEK\tat=%.1f", t);
+}
+
 void musec_prev(void)
 {
 	/* The way every player does it: three seconds in, "back" means the start
 	 * of this track; before that it means the one before - and where there is
 	 * none before, the start of this one again. */
-	if (g_now.at > 3.0 || muq_prev(&g_order) < 0) sendf("SEEK\tat=0");
+	if (g_now.at > 3.0 || muq_prev(&g_order) < 0) seek_to(0);
 	else play_current();
 }
 
@@ -450,8 +488,7 @@ void musec_seek_by(double delta)
 	if (g_now.state != MU_PLAYING && g_now.state != MU_PAUSED) return;
 	if (t < 0) t = 0;
 	if (g_now.len > 0 && t > g_now.len - 1) t = g_now.len - 1;
-	g_now.at = t;                  /* shown at once, confirmed by the next POS */
-	sendf("SEEK\tat=%.1f", t);
+	seek_to(t);
 }
 
 void musec_stop(void)
