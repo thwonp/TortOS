@@ -880,6 +880,40 @@ bool plat_resident_rect(SDL_Rect *out)
 	return true;
 }
 
+/* ---- geometry --------------------------------------------------------- */
+
+int plat_screen_h = 768;
+static float g_scale = 1.0f;
+
+float plat_scale(void) { return g_scale; }
+
+/* At scale 1 the renderer is left exactly as SDL made it, so the Brick draws
+ * the same bytes it did before there was a scale. */
+void plat_geometry_init(SDL_Renderer *r)
+{
+	int w = 0, h = 0;
+
+	if (SDL_GetRendererOutputSize(r, &w, &h) != 0 || w <= 0 || h <= 0) return;
+	g_scale = (float)w / TORTOS_SCREEN_W;
+	plat_screen_h = (int)(h / g_scale);
+	if (g_scale != 1.0f) SDL_RenderSetScale(r, g_scale, g_scale);
+}
+
+/* Diatom's rect is in panel pixels, so this one copy is made at scale 1: the
+ * frame lands where the game is, at the game's size, with no second resample.
+ * A render scale set on the default target is not reset by switching targets,
+ * so restoring it is enough. */
+void plat_draw_paused(SDL_Renderer *r, SDL_Texture *bg)
+{
+	SDL_Rect d;
+
+	if (!plat_resident_rect(&d)) { SDL_RenderCopy(r, bg, NULL, NULL); return; }
+	if (g_scale == 1.0f) { SDL_RenderCopy(r, bg, NULL, &d); return; }
+	SDL_RenderSetScale(r, 1.0f, 1.0f);
+	SDL_RenderCopy(r, bg, NULL, &d);
+	SDL_RenderSetScale(r, g_scale, g_scale);
+}
+
 /* Only safe while Diatom is paused, which is the only place it is called from:
  * a game that is running can send EXIT, and this would eat it. Paused, the only
  * traffic is what our own SETDISPLAY provoked. */

@@ -10,8 +10,17 @@
  * backlight, the codec, the battery, and the pipe to the resident emulator.
  * The rest of TortOS talks to this file and to SDL, and to nothing else. */
 
+/* Layout is in units of a 1024-wide screen on every device; the panel is
+ * plat_scale() pixels to the unit. The height in units is whatever the
+ * panel's shape leaves - 768 on the Brick, 921 on the GKD's 1600x1440 - so it
+ * is a variable, set once by plat_video_init, that reads like a constant. */
 #define TORTOS_SCREEN_W 1024
-#define TORTOS_SCREEN_H 768
+#define TORTOS_SCREEN_H plat_screen_h
+extern int plat_screen_h;
+float plat_scale(void);
+/* For plat_video_init, once the renderer knows its output size: derives the
+ * scale and height from it and sets the renderer's scale to match. */
+void plat_geometry_init(SDL_Renderer *r);
 
 /* launch.sh polls for this and powers the device down when it appears. */
 #define TORTOS_POWEROFF_FLAG "/tmp/tortos_poweroff"
@@ -182,8 +191,8 @@ void        plat_hotkey_set(const char *tag, const char *spec);
  * one heard is current. */
 bool plat_resident_rect(SDL_Rect *out);
 /* Draw the paused game's preview where Diatom is drawing the game, or over the
- * whole screen until it has said. Per device: Diatom's rect is in the panel's
- * own pixels, which on the GKD are not the launcher's logical ones. */
+ * whole screen until it has said. Diatom's rect is in the panel's own
+ * pixels, which are layout units only where plat_scale() is 1. */
 void plat_draw_paused(SDL_Renderer *r, SDL_Texture *bg);
 /* Read replies for up to timeout_ms, stopping as soon as a DISPLAY arrives.
  * For changing the mode from the in-game menu: Diatom answers a SETDISPLAY with

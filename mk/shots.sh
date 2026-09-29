@@ -13,6 +13,9 @@
 # and every run starts from the same card.
 #
 # Usage: TORTOS_SHOT_CARD=/path/to/card mk/shots.sh <outdir>
+#
+# SHOT_WINDOW=1600x1440 renders as the GKD instead of the Brick (the host
+# build's TORTOS_WINDOW); unset, the shots are the Brick's.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:?usage: TORTOS_SHOT_CARD=/path/to/card mk/shots.sh <outdir>}
@@ -56,7 +59,7 @@ nowplaying         --nowplaying 0 1 30
 nowplaying-paused  --nowplaying 0 1 30 --paused
 EOF
 
-docker run --rm -v "$ROOT:/work" -v "$CARD:/card:O" -v "$OUT:/out" -w /work \
+docker run --rm -e TORTOS_WINDOW="${SHOT_WINDOW:-}" -v "$ROOT:/work" -v "$CARD:/card:O" -v "$OUT:/out" -w /work \
 	"$IMAGE" sh -c '
 set -e
 make -f mk/native.mk VERSION=shots > /out/.build.log 2>&1 ||

@@ -50,9 +50,8 @@ const char *plat_bright_keys(void) { return "Home+Vol"; }
 /* ---- video ------------------------------------------------------------
  *
  * A fullscreen Wayland window under sway, which rotates the portrait panel
- * (transform 270) to 1600x1440. The launcher still draws 1024x768 and SDL
- * scales it up (1.5625, letterboxed 120 px top and bottom) - interim, until
- * the layout is native (gkd.11). */
+ * (transform 270) to 1600x1440: 1.5625 panel pixels to the layout unit, and
+ * 921 units tall. */
 static SDL_Window *win;
 static SDL_Renderer *ren;
 
@@ -99,7 +98,7 @@ bool plat_video_init(void)
 		if (w > 1 && h > 1) break;
 		SDL_Delay(10);
 	}
-	SDL_RenderSetLogicalSize(ren, TORTOS_SCREEN_W, TORTOS_SCREEN_H);
+	plat_geometry_init(ren);
 	/* The same two lines as the Brick's, for the same reasons: vsync is a
 	 * request, and the cube needs render targets. */
 	SDL_RendererInfo info;
@@ -120,20 +119,6 @@ void plat_video_quit(void)
 	if (ren) { SDL_DestroyRenderer(ren); ren = NULL; }
 	if (win) { SDL_DestroyWindow(win); win = NULL; }
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
-}
-
-/* Diatom's rect is in the window's 1600x1440 pixels, so logical scaling is
- * switched off for this one copy: the frame lands where the game is, at the
- * game's size, with no second resample. Interim - gkd.11 drops the logical
- * size altogether, and with it this, leaving the Brick's version. */
-void plat_draw_paused(SDL_Renderer *r, SDL_Texture *bg)
-{
-	SDL_Rect d;
-
-	if (!plat_resident_rect(&d)) { SDL_RenderCopy(r, bg, NULL, NULL); return; }
-	SDL_RenderSetLogicalSize(r, 0, 0);
-	SDL_RenderCopy(r, bg, NULL, &d);
-	SDL_RenderSetLogicalSize(r, TORTOS_SCREEN_W, TORTOS_SCREEN_H);
 }
 
 /* Two fullscreen windows under sway, and sway does not reliably show the one

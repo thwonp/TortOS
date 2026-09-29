@@ -10410,9 +10410,13 @@ static void muse_covers_settle(void)
 
 static void take_shot(app *a)
 {
-	SDL_Surface *out = SDL_CreateRGBSurfaceWithFormat(0, TORTOS_SCREEN_W,
-	                                                  TORTOS_SCREEN_H, 32,
-	                                                  SDL_PIXELFORMAT_RGBA32);
+	/* The panel's pixels, not the layout's units: the two differ wherever
+	 * plat_scale() is not 1, and the read-back is of the panel. */
+	int ow = TORTOS_SCREEN_W, oh = TORTOS_SCREEN_H;
+	SDL_Surface *out;
+
+	SDL_GetRendererOutputSize(a->r, &ow, &oh);
+	out = SDL_CreateRGBSurfaceWithFormat(0, ow, oh, 32, SDL_PIXELFORMAT_RGBA32);
 	muse_covers_settle();
 	draw_shelf(a);
 	if (shot_menu) tortos_menu_draw(a, shot_menu_sel);

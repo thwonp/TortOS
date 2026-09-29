@@ -127,6 +127,12 @@ SDL_Renderer *plat_renderer(void) { return ren; }
 
 bool plat_video_init(void)
 {
+	/* The Brick's panel, unless a host build is told to be another device's:
+	 * TORTOS_WINDOW=1600x1440 lays out and renders as the GKD would. */
+	const char *ws = getenv("TORTOS_WINDOW");
+	int ww = TORTOS_SCREEN_W, wh = 768;
+
+	if (ws && sscanf(ws, "%dx%d", &ww, &wh) != 2) { ww = TORTOS_SCREEN_W; wh = 768; }
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
 #ifdef __linux__
 	SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
@@ -137,8 +143,7 @@ bool plat_video_init(void)
 	}
 	SDL_ShowCursor(SDL_DISABLE);
 	win = SDL_CreateWindow("TortOS", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-	                       TORTOS_SCREEN_W, TORTOS_SCREEN_H,
-	                       SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+	                       ww, wh, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
 	if (!win) {
 		fprintf(stderr, "window: %s\n", SDL_GetError());
 		return false;
@@ -149,6 +154,7 @@ bool plat_video_init(void)
 		return false;
 	}
 	SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+	plat_geometry_init(ren);
 	/* Whether vsync was GRANTED, not whether it was asked for. PRESENTVSYNC
 	 * is a request the driver may decline in silence, and the shelf loop has
 	 * no delay in it - so a declined request is not a slower animation, it is
@@ -175,14 +181,6 @@ void plat_video_quit(void)
 	if (ren) { SDL_DestroyRenderer(ren); ren = NULL; }
 	if (win) { SDL_DestroyWindow(win); win = NULL; }
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
-}
-
-/* The launcher's logical size is the panel's, so Diatom's rect needs nothing. */
-void plat_draw_paused(SDL_Renderer *r, SDL_Texture *bg)
-{
-	SDL_Rect d;
-
-	SDL_RenderCopy(r, bg, NULL, plat_resident_rect(&d) ? &d : NULL);
 }
 
 /* One display, no compositor: whoever presents last is on glass. */
