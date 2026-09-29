@@ -11148,6 +11148,7 @@ int main(int argc, char *argv[])
 		 * frame the launcher never would. Cost of finding that out: --sysmove
 		 * hardcoded Vertical's 360ms, so on a horizontal shelf it backdated the
 		 * clock against a duration the draw did not use. */
+		cf_clock_freeze();
 		if (shot_sysmove != 0.0f) {
 			shelf_pacing(&a.cf_sys);
 			cf_stage(&a.cf_sys, (float)a.sys_cursor,

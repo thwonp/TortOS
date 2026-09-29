@@ -231,6 +231,16 @@ void cf_reset(coverflow *cf, int cursor)
 	cf->primed = true;
 }
 
+/* The clock every move is measured against. A shot freezes it, because a
+ * move staged at one tick and drawn a few milliseconds later is a different
+ * picture each run, and the shots are compared byte for byte. */
+static bool   clock_frozen;
+static Uint32 clock_at;
+
+void cf_clock_freeze(void) { clock_at = SDL_GetTicks(); clock_frozen = true; }
+
+static Uint32 cf_now(void) { return clock_frozen ? clock_at : SDL_GetTicks(); }
+
 void cf_set_cursor_dir(coverflow *cf, int cursor, int count, int dir)
 {
 	if (!cf->primed) { cf_reset(cf, cursor); return; }
@@ -322,7 +332,7 @@ void cf_set_cursor_dir(coverflow *cf, int cursor, int count, int dir)
 			cf->cut_to = cf->from + (span > 0.0f ? g : -g);
 		}
 	}
-	cf->t0 = SDL_GetTicks();
+	cf->t0 = cf_now();
 	cf->active = true;
 }
 
@@ -354,7 +364,7 @@ float cf_label(const coverflow *cf, int count, int *index)
 		u = -1.0f;
 	} else {
 		ms = cf->anim_ms > 0.0f ? cf->anim_ms : ANIM_MS;
-		u = (float)(SDL_GetTicks() - cf->t0) / ms;
+		u = (float)(cf_now() - cf->t0) / ms;
 		if (u < 0.0f) u = 0.0f;
 		if (u > 1.0f) u = 1.0f;
 		/* The name swaps at the halfway mark, where it is invisible. */
@@ -396,7 +406,7 @@ void cf_stage(coverflow *cf, float from, float to, float u)
 	cf->pos = from + (to - from) * ease_apply(cf->ease, u);
 	/* Backdated, so the move is already this far along by the clock the label
 	 * and step_anim both measure against. */
-	cf->t0 = SDL_GetTicks() - (Uint32)(u * ms);
+	cf->t0 = cf_now() - (Uint32)(u * ms);
 	cf->active = true;
 	cf->cutting = false;
 	cf->primed = true;
@@ -433,7 +443,7 @@ static void step_anim(coverflow *cf, int count)
 	if (!cf->active) return;
 	{
 		float ms = cf->anim_ms > 0.0f ? cf->anim_ms : ANIM_MS;
-		float u = (float)(SDL_GetTicks() - cf->t0) / ms;
+		float u = (float)(cf_now() - cf->t0) / ms;
 		if (u >= 1.0f) {
 			/* Whether or not this was a cut, the move ends where the cursor
 			 * has been since the press. `target` was never moved. */

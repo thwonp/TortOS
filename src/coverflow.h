@@ -212,6 +212,9 @@ float cf_label(const coverflow *cf, int count, int *index);
  * smoothstep in main.c that had Vertical's duration hardcoded beside it. */
 void cf_stage(coverflow *cf, float from, float to, float u);
 
+/* Stops the shelf clock where it is, for --shot only: see cf_now. */
+void cf_clock_freeze(void);
+
 /* Whether a cut is in flight. The caller holds off evicting while it is, or it
  * would free the very cards the departure is still drawing: the cursor is
  * already at the destination and eviction is measured from the cursor. */
