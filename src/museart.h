@@ -52,9 +52,29 @@ typedef struct {
 bool museart_pick(const char *json, size_t len, int tracks, char *rg, size_t n);
 
 /* The search for an album, as a URL: the release by its title and artist, each
- * a quoted phrase, with the two characters a phrase gives meaning escaped.
- * False when it does not fit. Pure. */
+ * a quoted phrase, with the two characters a phrase gives meaning escaped. An
+ * empty artist searches the title alone. False when it does not fit. Pure. */
 bool museart_search_url(const char *artist, const char *album, char *out, size_t n);
+
+/* WHERE TO LOOK, IN ORDER, each asked only when the one before found nothing.
+ * The folder names are what a person typed, and MusicBrainz searches them as
+ * exact phrases, so a name that says more than the record's own misses it.
+ * Measured on the card 2026-09-28, three of ten albums missed that way:
+ *
+ *   Son Little (Deluxe Edition)    MusicBrainz calls every edition Son Little
+ *   Yo-Yo Ma, Stuart Duncan, ...   credited "... Edgar Meyer & Chris Thile",
+ *                                  with a different hyphen in Yo-Yo
+ *   Trompe Le Monde                a folder of tracks with no artist above it,
+ *                                  so its artist was its own title
+ *
+ * So: the names as they are; then the album without a trailing "(...)" or
+ * "[...]" and only the first of several artists; then, for a folder whose
+ * artist is its own title, the title alone. Each different from the ones
+ * before it, and the track count still decides among what comes back. Fills
+ * `artists` and `albums`; returns how many. Pure. */
+#define MUSEART_TRIES 3
+int museart_tries(const char *artist, const char *album,
+                  char artists[][128], char albums[][128]);
 
 /* A picture's size from its header, JPEG or PNG, without decoding it. Pure. */
 bool museart_image_size(const char *path, int *w, int *h);

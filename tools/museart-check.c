@@ -106,6 +106,39 @@ static void the_url(void)
 	      strstr(u, "%5C%22Band%5C%22") && strstr(u, "Back%5C%5Cslash%20%28Deluxe%29"),
 	      "quotes and backslashes escaped inside the phrase, parentheses left: %s", u);
 	CHECK(!museart_search_url("x", "y", u, 40), "a URL that does not fit is refused");
+	CHECK(museart_search_url("", "Trompe Le Monde", u, sizeof u) &&
+	      strstr(u, "query=release%3A%22Trompe%20Le%20Monde%22&") && !strstr(u, "artist"),
+	      "no artist is the title alone: %s", u);
+}
+
+/* The three albums that missed on the card, 2026-09-28, and what each is asked
+ * as after its folder names find nothing. See museart_tries. */
+static void the_tries(void)
+{
+	char ar[MUSEART_TRIES][128], al[MUSEART_TRIES][128];
+	int n;
+
+	printf("the ways of asking\n");
+	n = museart_tries("Son Little", "Son Little (Deluxe Edition)", ar, al);
+	CHECK(n == 2 && !strcmp(al[1], "Son Little") && !strcmp(ar[1], "Son Little"),
+	      "an edition dropped from the title: %d, \"%s\"", n, n > 1 ? al[1] : "");
+	n = museart_tries("Yo-Yo Ma, Stuart Duncan, Edgar Meyer, Chris Thile",
+	                  "The Goat Rodeo Sessions", ar, al);
+	CHECK(n == 2 && !strcmp(ar[1], "Yo-Yo Ma") && !strcmp(al[1], "The Goat Rodeo Sessions"),
+	      "the first of several artists: %d, \"%s\"", n, n > 1 ? ar[1] : "");
+	n = museart_tries("Trompe Le Monde", "Trompe Le Monde", ar, al);
+	CHECK(n == 2 && !ar[1][0] && !strcmp(al[1], "Trompe Le Monde"),
+	      "a folder with no artist above it: the title alone: %d", n);
+	n = museart_tries("Simon & Garfunkel", "Bookends", ar, al);
+	CHECK(n == 2 && !strcmp(ar[0], "Simon & Garfunkel") && !strcmp(ar[1], "Simon"),
+	      "the names as typed are always asked first: %d", n);
+	n = museart_tries("Radiohead", "The Bends", ar, al);
+	CHECK(n == 1, "nothing to drop, nothing asked twice: %d", n);
+	n = museart_tries("Talking Heads", "Fear Of Music [Bonus Tracks]", ar, al);
+	CHECK(n == 2 && !strcmp(al[1], "Fear Of Music"), "brackets as well: \"%s\"",
+	      n > 1 ? al[1] : "");
+	n = museart_tries("X", "(Untitled)", ar, al);
+	CHECK(n == 1, "a title that is all parentheses is left whole: %d", n);
 }
 
 static void the_sizes(void)
@@ -260,6 +293,27 @@ static void the_run(void)
 		      "written into a .media folder that did not exist before: %s", p);
 	}
 
+	/* A miss, and the next way of asking finds it: two searches a second
+	 * apart, then the cover. */
+	{
+		museart_job one = jobs[0];
+
+		snprintf(one.artist, sizeof one.artist, "Son Little");
+		snprintf(one.album, sizeof one.album, "Son Little (Deluxe Edition)");
+		g_nscript = 0;
+		g_script[g_nscript++] = (answer){ 200, "{\"releases\":[]}" };
+		g_script[g_nscript++] = (answer){ 200, ONE };
+		g_script[g_nscript++] = (answer){ 200, NULL };
+		g_at = g_nurls = 0;
+		museart_begin(&one, 1, "/tmp/museart-check.reply");
+		run(50, &st, landed, 0);
+		CHECK(st.found == 1 && st.missing == 0 && g_nurls == 3,
+		      "found on the second search: %d found, %d requests", st.found, g_nurls);
+		CHECK(g_nurls == 3 && strstr(g_urls[0], "Deluxe") && !strstr(g_urls[1], "Deluxe") &&
+		      g_when[1] - g_when[0] >= 1100,
+		      "the edition dropped, a second after the first: %s", g_urls[1]);
+	}
+
 	/* Three failures in a row is a network that has gone. */
 	g_nscript = 0;
 	for (i = 0; i < 4; i++) g_script[g_nscript++] = (answer){ 0, NULL };
@@ -282,6 +336,7 @@ int main(void)
 	printf("museart: album covers from MusicBrainz and the Cover Art Archive\n");
 	the_rule();
 	the_url();
+	the_tries();
 	the_sizes();
 	the_run();
 	if (failures) {

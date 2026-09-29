@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -78,12 +79,70 @@ bool museart_search_url(const char *artist, const char *album, char *out, size_t
 	int k;
 
 	if (!phrase(artist, a, sizeof a) || !phrase(album, b, sizeof b)) return false;
-	k = snprintf(q, sizeof q, "release:\"%s\" AND artist:\"%s\"", b, a);
+	if (a[0]) k = snprintf(q, sizeof q, "release:\"%s\" AND artist:\"%s\"", b, a);
+	else      k = snprintf(q, sizeof q, "release:\"%s\"", b);
 	if (k < 0 || k >= (int)sizeof q) return false;
 	net_urlencode(q, enc, sizeof enc);        /* at most three bytes a byte */
 	k = snprintf(out, n, "https://musicbrainz.org/ws/2/release/?query=%s"
 	             "&fmt=json&limit=25", enc);
 	return k > 0 && k < (int)n;
+}
+
+/* An album's title less one trailing "(...)" or "[...]": what an edition, a
+ * disc or a rip adds to the name a record is known by. */
+static void plain_title(const char *in, char *out, size_t n)
+{
+	size_t len;
+	char open;
+	char *at;
+
+	snprintf(out, n, "%s", in);
+	len = strlen(out);
+	while (len && out[len - 1] == ' ') out[--len] = '\0';
+	if (!len || (out[len - 1] != ')' && out[len - 1] != ']')) return;
+	open = out[len - 1] == ')' ? '(' : '[';
+	if (!(at = strrchr(out, open)) || at == out) return;
+	*at = '\0';
+	len = strlen(out);
+	while (len && out[len - 1] == ' ') out[--len] = '\0';
+}
+
+/* The first of several artists: before a comma or an ampersand. */
+static void first_artist(const char *in, char *out, size_t n)
+{
+	const char *comma = strstr(in, ", "), *amp = strstr(in, " & "), *cut = comma;
+
+	if (amp && (!cut || amp < cut)) cut = amp;
+	if (cut) snprintf(out, n, "%.*s", (int)(cut - in), in);
+	else     snprintf(out, n, "%s", in);
+}
+
+int museart_tries(const char *artist, const char *album,
+                  char artists[][128], char albums[][128])
+{
+	char ar[128], al[128];
+	int n = 0, k, i;
+
+	for (k = 0; k < MUSEART_TRIES; k++) {
+		if (k == 0) {
+			snprintf(ar, sizeof ar, "%s", artist);
+			snprintf(al, sizeof al, "%s", album);
+		} else if (k == 1) {
+			first_artist(artist, ar, sizeof ar);
+			plain_title(album, al, sizeof al);
+		} else {
+			if (strcasecmp(artist, album) != 0) break;
+			ar[0] = '\0';
+			plain_title(album, al, sizeof al);
+		}
+		for (i = 0; i < n; i++)
+			if (!strcmp(artists[i], ar) && !strcmp(albums[i], al)) break;
+		if (i < n || !al[0]) continue;
+		snprintf(artists[n], 128, "%s", ar);
+		snprintf(albums[n], 128, "%s", al);
+		n++;
+	}
+	return n;
 }
 
 static unsigned be16(const unsigned char *p) { return (unsigned)p[0] << 8 | p[1]; }
@@ -133,6 +192,8 @@ enum { S_NEXT, S_SEARCH, S_COVER, S_DONE };
 
 static museart_job   *g_jobs;
 static int            g_n, g_i, g_state = S_DONE, g_retried, g_fails;
+static int            g_try, g_ntries;       /* which search of this album's */
+static char           g_try_artist[MUSEART_TRIES][128], g_try_album[MUSEART_TRIES][128];
 static bool           g_asked;
 static unsigned       g_last_ms, g_until;
 static char           g_reply[LIB_PATH], g_rg[64], g_cover[LIB_PATH * 2 + 8];
@@ -174,6 +235,7 @@ static void next(int *outcome)
 	g_i++;
 	g_st.done = g_i;
 	g_retried = 0;
+	g_try = g_ntries = 0;
 	g_state = S_NEXT;
 	if (g_fails >= 3) {
 		snprintf(g_st.problem, sizeof g_st.problem, "The network stopped answering");
@@ -220,7 +282,10 @@ int museart_step(unsigned now)
 		if (g_asked && (int)(now - g_last_ms) < MB_GAP_MS) return 1;
 		if (g_until && (int)(now - g_until) < 0) return 1;
 		g_until = 0;
-		if (!museart_search_url(j->artist, j->album, url, sizeof url) ||
+		if (!g_ntries)
+			g_ntries = museart_tries(j->artist, j->album, g_try_artist, g_try_album);
+		if (g_try >= g_ntries ||
+		    !museart_search_url(g_try_artist[g_try], g_try_album[g_try], url, sizeof url) ||
 		    !net_get_async(url, g_reply, 20)) {
 			next(&g_st.failed);
 			return g_state != S_DONE;
@@ -247,7 +312,18 @@ int museart_step(unsigned now)
 		remove(g_reply);
 		r = museart_pick(body, len, j->tracks, g_rg, sizeof g_rg);
 		free(body);
-		if (!r) { next(&g_st.missing); return 1; }
+		if (!r) {
+			/* The next way of asking, a second on, before calling it
+			 * missing - see museart_tries. */
+			if (++g_try < g_ntries) { g_retried = 0; g_state = S_NEXT; return 1; }
+			fprintf(stderr, "album art: not found: %s - %s\n", j->album, j->artist);
+			next(&g_st.missing);
+			return 1;
+		}
+		if (g_try > 0)
+			fprintf(stderr, "album art: %s - %s found as %s%s%s\n", j->album, j->artist,
+			        g_try_album[g_try], g_try_artist[g_try][0] ? " - " : "",
+			        g_try_artist[g_try]);
 
 		/* The folder the cover goes in, which does not exist for an album
 		 * whose files never carried one - there was nothing to extract. */
