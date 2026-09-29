@@ -168,6 +168,13 @@ static bool is_file(const char *full, const struct dirent *e)
 	}
 }
 
+static void note_skip(game_list *out, const char *name)
+{
+	if (out->skipped < LIB_SKIPS_SHOWN)
+		snprintf(out->skipped_eg[out->skipped], LIB_NAME, "%s", name);
+	out->skipped++;
+}
+
 bool lib_scan(const char *roms_root, const char *folder, const char *exts,
               game_list *out)
 {
@@ -179,6 +186,7 @@ bool lib_scan(const char *roms_root, const char *folder, const char *exts,
 
 	lib_free(out);
 	out->scanned = true;
+	out->skipped = 0;
 	snprintf(dirpath, sizeof dirpath, "%s/%s", roms_root, folder);
 	d = opendir(dirpath);
 	if (!d) return false;
@@ -190,8 +198,12 @@ bool lib_scan(const char *roms_root, const char *folder, const char *exts,
 		char full[LIB_PATH * 3];
 		char *dot;
 		if (e->d_name[0] == '.') continue;
-		if (!ext_allowed(ext_of(e->d_name), exts)) continue;
 		snprintf(full, sizeof full, "%s/%s", dirpath, e->d_name);
+		if (!ext_allowed(ext_of(e->d_name), exts)) {
+			/* A folder is the second pass's to judge. */
+			if (is_file(full, e)) note_skip(out, e->d_name);
+			continue;
+		}
 		if (!is_file(full, e)) continue;
 		if (n == cap) {
 			/* Grow cap only once the memory is actually there. Doubling it
@@ -232,7 +244,13 @@ bool lib_scan(const char *roms_root, const char *folder, const char *exts,
 		for (int k = 0; k < files_n; k++)
 			if (strcasecmp(list[k].name, e->d_name) == 0) { shadowed = true; break; }
 		if (shadowed) continue;
-		if (!folder_launch_file(full, inside, sizeof inside)) continue;
+		if (!folder_launch_file(full, inside, sizeof inside)) {
+			char shown[LIB_NAME];
+
+			snprintf(shown, sizeof shown, "%.*s/", LIB_NAME - 2, e->d_name);
+			note_skip(out, shown);
+			continue;
+		}
 		if (n == cap) {
 			/* Grow cap only once the memory is actually there. Doubling it
 			 * first and then bailing would leave the second pass believing

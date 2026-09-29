@@ -35,10 +35,20 @@ typedef struct {
 	long last_played;
 } game_entry;
 
+/* How many of the left-out names a scan keeps for the log. */
+#define LIB_SKIPS_SHOWN 3
+
 typedef struct {
 	game_entry *items;
 	int count;
 	bool scanned;
+	/* What the scan left out: files of a type this system does not take, and
+	 * folders with nothing in them to launch. Counted, with the first few by
+	 * name, so the log can answer "I copied it and it is not on the shelf" -
+	 * which it could not, since a skip was silent. Dot entries and .media
+	 * are not counted: nobody put those there expecting a game. */
+	int skipped;
+	char skipped_eg[LIB_SKIPS_SHOWN][LIB_NAME];
 } game_list;
 
 /* Scan Roms/<folder> for files whose extension appears in exts (a comma or

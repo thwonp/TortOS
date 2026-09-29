@@ -186,6 +186,7 @@ function draw() {
 	const ul = $('list');
 	ul.textContent = '';
 	$('empty').hidden = entries.length > 0;
+	$('logs').hidden = cwd !== '';
 
 	for (const e of entries) {
 		const li = document.createElement('li');

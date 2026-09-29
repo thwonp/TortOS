@@ -277,6 +277,12 @@ header {
 .empty { color: var(--dim); text-align: center; padding: 48px 16px;
          margin: 0 auto; max-width: var(--wrap); }
 
+/* Download logs, under the first page's list: out of the way, and there. */
+.logs { color: var(--dim); margin: 32px auto 0; padding: 0 16px;
+        max-width: var(--wrap); display: flex; align-items: center; gap: 16px;
+        flex-wrap: wrap; }
+.logs a { text-decoration: none; }
+
 /* ---- dropping files ---------------------------------------------------- */
 
 /* Just a frame around the window, saying the page will take a drop. It holds no

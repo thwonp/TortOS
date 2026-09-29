@@ -44,6 +44,7 @@ static unsigned g_locked_until;
 static int      g_uploads;
 static bool     g_shelf_changed;  /* something the shelf would show has moved */
 static char     g_last[128];
+static bool   (*g_pack_logs)(char *path, size_t pn, char *name, size_t nn);
 static unsigned long g_in, g_out;
 
 /* ---- randomness ------------------------------------------------------ */
@@ -245,6 +246,11 @@ static void note_write(const char *abs)
 }
 
 bool hare_shelf_changed(void) { return g_shelf_changed; }
+
+void hare_set_logs(bool (*pack)(char *path, size_t pn, char *name, size_t nn))
+{
+	g_pack_logs = pack;
+}
 
 /* The name a listing shows for a path, or "" for a root. */
 static const char *base_of(const char *p)
@@ -488,6 +494,27 @@ static void on_request(httpd_req *r, bool done, void *ctx)
 	if (!strcmp(path, "/api/list")) {
 		if (!done) { httpd_want_body(r, HTTPD_BODY_NONE, NULL); }
 		if (done || httpd_content_len(r) == 0) route_list(r);
+		return;
+	}
+
+	/* Download logs: packed when asked, named for the day, and sent. The
+	 * pack is removed as soon as it is open - the stream keeps it alive - so
+	 * nothing is left in /tmp however the download ends. */
+	if (!strcmp(path, "/api/logs") && !strcmp(m, "GET")) {
+		char pack[XFER_PATH_MAX], name[128], extra[256];
+
+		if (!done) httpd_want_body(r, HTTPD_BODY_NONE, NULL);
+		if (!g_pack_logs || !g_pack_logs(pack, sizeof pack, name, sizeof name)) {
+			httpd_reply_status(r, 500, "the logs could not be packed");
+			return;
+		}
+		snprintf(extra, sizeof extra,
+		         "Content-Disposition: attachment; filename=\"%s\"\r\n", name);
+		if (httpd_reply_file(r, pack, "application/gzip", extra)) {
+			note("sending the logs");
+			httpd_set_tag(r, TAG_SENDING);
+		}
+		remove(pack);
 		return;
 	}
 
