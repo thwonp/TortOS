@@ -26,17 +26,11 @@
 
 #include "wifi.h"
 
-/* The TrimUI radio. The GKD takes the host stubs until gkd.10 gives it its
- * own. */
-#if defined(__linux__) && !defined(PLATFORM_GKD)
+#if defined(__linux__)
 
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
-#define WPA_CLI  "/usr/sbin/wpa_cli"
-#define WPA_SOCK "/etc/wifi/sockets"
-#define WLAN     "wlan0"
 
 /* Run a command, capture stdout, return its exit status (-1 if it could not
  * be run at all). `out` is always NUL-terminated. */
@@ -74,6 +68,13 @@ static int run(char *const argv[], char *out, size_t cap)
 	if (waitpid(pid, &status, 0) < 0) return -1;
 	return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
+
+/* The TrimUI radio. */
+#if !defined(PLATFORM_GKD)
+
+#define WPA_CLI  "/usr/sbin/wpa_cli"
+#define WPA_SOCK "/etc/wifi/sockets"
+#define WLAN     "wlan0"
 
 /* wpa_cli with the socket and interface always supplied, because forgetting
  * either makes it talk to a default path that does not exist here and fail in
@@ -543,6 +544,371 @@ bool wifi_forget(const char *ssid)
 	return hit;
 }
 
+#else  /* PLATFORM_GKD: ROCKNIX's ConnMan, driven the way ROCKNIX drives it */
+
+/* ROCKNIX keeps the network in system.cfg, not in ConnMan. At every boot, and
+ * after every resume, its scripts run `wifictl enable|disable` from
+ * wifi.enabled, and `wifictl enable` rewrites ConnMan's profile from wifi.ssid
+ * and wifi.key and deletes every other network ConnMan had saved. Anything
+ * set in ConnMan alone is undone by the next wake. So this writes those keys
+ * and calls wifictl, exactly as the stock menu does, and asks ConnMan only
+ * what it can see. The cost is ROCKNIX's: one remembered network.
+ *
+ * The keys are written here in C rather than through set_setting, a shell
+ * function that pushes its value through sed. An SSID comes off the air, and
+ * the file header says what that means for a shell. */
+#include <signal.h>
+
+#include "atomic.h"
+
+#define CONNMANCTL "/usr/bin/connmanctl"
+#define WIFICTL    "/usr/bin/wifictl"
+#define CFG        "/storage/.config/system/configs/system.cfg"
+#define CFG_STOCK  "/usr/config/system/configs/system.cfg"   /* before the first write */
+#define CM_PROFILE "/storage/.cache/connman/wifi.config"
+#define SYSTEMCTL  "/usr/bin/systemctl"
+#define SSHD_MARK  "/storage/.cache/services/sshd.conf"  /* sshd.service's condition */
+
+static int cm(char *out, size_t cap, const char *a, const char *b, const char *c)
+{
+	char *argv[] = { (char *)CONNMANCTL, (char *)a, (char *)b, (char *)c, NULL };
+	return run(argv, out, cap);
+}
+
+static void wifictl(const char *verb)
+{
+	char *argv[] = { (char *)WIFICTL, (char *)verb, NULL };
+	run(argv, NULL, 0);
+}
+
+/* The first `key=` line, as ROCKNIX's own get_setting reads it. */
+static bool cfg_get(const char *key, char *out, int cap)
+{
+	char line[512];
+	size_t klen = strlen(key);
+	FILE *f = fopen(CFG, "r");
+	bool hit = false;
+
+	out[0] = '\0';
+	if (!f) return false;
+	while (fgets(line, sizeof line, f)) {
+		if (strncmp(line, key, klen) || line[klen] != '=') continue;
+		line[strcspn(line, "\r\n")] = '\0';
+		snprintf(out, (size_t)cap, "%s", line + klen + 1);
+		hit = true;
+		break;
+	}
+	fclose(f);
+	return hit;
+}
+
+/* Replace the first `key=` line, or append one. A newline in the value would
+ * forge a second key, so it is refused rather than escaped: the file has no
+ * escaping. */
+static bool cfg_set(const char *key, const char *val)
+{
+	char line[512];
+	size_t klen = strlen(key);
+	bool done = false;
+	FILE *in, *out;
+
+	if (strpbrk(val, "\r\n")) return false;
+	in = fopen(CFG, "r");
+	if (!in) in = fopen(CFG_STOCK, "r");
+	out = atomic_open(CFG, 0644);
+	if (!out) { if (in) fclose(in); return false; }
+	while (in && fgets(line, sizeof line, in)) {
+		if (!done && !strncmp(line, key, klen) && line[klen] == '=') {
+			fprintf(out, "%s=%s\n", key, val);
+			done = true;
+		} else {
+			fputs(line, out);
+		}
+	}
+	if (in) fclose(in);
+	if (!done) fprintf(out, "%s=%s\n", key, val);
+	return atomic_commit(out, CFG);
+}
+
+/* The radio is on when ConnMan's wifi technology is powered. */
+static bool powered(void)
+{
+	char out[2048];
+	const char *p, *next;
+
+	if (cm(out, sizeof out, "technologies", NULL, NULL) != 0) return false;
+	p = strstr(out, "/net/connman/technology/wifi");
+	if (!p) return false;
+	next = strstr(p + 1, "/net/connman/");
+	p = strstr(p, "Powered = True");
+	return p && (!next || p < next);
+}
+
+/* One `connmanctl services` line: three state flags, a space, the name padded
+ * to a column, then the service id. The name may hold spaces, the id never
+ * does, so the id is the last word and the name is everything before it.
+ * Destroys `line`. False for anything that is not a named wifi service. */
+static bool cm_line(char *line, char *state, char **name, char **id)
+{
+	char *sp, *end;
+
+	if (strlen(line) < 5) return false;
+	sp = strrchr(line, ' ');
+	if (!sp || strncmp(sp + 1, "wifi_", 5)) return false;
+	*state = line[2];
+	*id = sp + 1;
+	for (end = sp; end > line + 4 && end[-1] == ' '; end--) ;
+	*end = '\0';
+	*name = line + 4;
+	return (*name)[0] != '\0';              /* hidden: no name to show */
+}
+
+/* One field of `connmanctl services <id>`, up to the end of its line. */
+static bool cm_field(const char *id, const char *field, char *out, int cap)
+{
+	char buf[2048];
+	const char *p, *e;
+	int n;
+
+	if (cm(buf, sizeof buf, "services", id, NULL) != 0) return false;
+	p = strstr(buf, field);
+	if (!p) return false;
+	p += strlen(field);
+	e = strchr(p, '\n');
+	n = e ? (int)(e - p) : (int)strlen(p);
+	if (n >= cap) n = cap - 1;
+	memcpy(out, p, (size_t)n);
+	out[n] = '\0';
+	return true;
+}
+
+bool wifi_up(void)
+{
+	int i;
+
+	if (powered()) return true;
+	wifictl("enable");                      /* also sets wifi.enabled=1 */
+	for (i = 0; i < 20; i++) {
+		if (powered()) return true;
+		sleep(1);
+	}
+	return false;
+}
+
+void wifi_down(void)
+{
+	wifictl("disable");                     /* also sets wifi.enabled=0 */
+}
+
+int wifi_known(wifi_net *out, int max)
+{
+	char ssid[WIFI_SSID_MAX], key[80];
+
+	if (max < 1 || !cfg_get("wifi.ssid", ssid, sizeof ssid) || !ssid[0]) return 0;
+	cfg_get("wifi.key", key, sizeof key);
+	memset(&out[0], 0, sizeof out[0]);
+	snprintf(out[0].ssid, sizeof out[0].ssid, "%s", ssid);
+	out[0].known = true;
+	out[0].secured = key[0] != '\0';
+	return 1;
+}
+
+/* `connmanctl scan wifi` returns when the scan is complete (about 2 s here),
+ * so the scan runs as a child and the poll only asks whether it has exited.
+ * The cap is for a scan that never answers. */
+static pid_t  g_scan_pid;
+static time_t g_scan_deadline;
+
+bool wifi_scan_start(void)
+{
+	pid_t pid;
+
+	if (g_scan_pid > 0) return true;        /* one already running */
+	if (!powered()) return false;
+	pid = fork();
+	if (pid < 0) return false;
+	if (pid == 0) {
+		char *argv[] = { (char *)CONNMANCTL, (char *)"scan", (char *)"wifi", NULL };
+		int null = open("/dev/null", O_RDWR);
+		if (null >= 0) { dup2(null, 1); dup2(null, 2); }
+		execv(argv[0], argv);
+		_exit(127);
+	}
+	g_scan_pid = pid;
+	g_scan_deadline = time(NULL) + 15;
+	return true;
+}
+
+int wifi_scan_poll(void)
+{
+	if (g_scan_pid <= 0) return -1;
+	if (waitpid(g_scan_pid, NULL, WNOHANG) == 0) {
+		if (time(NULL) < g_scan_deadline) return 0;
+		kill(g_scan_pid, SIGKILL);
+		waitpid(g_scan_pid, NULL, 0);
+	}
+	g_scan_pid = 0;
+	return 1;
+}
+
+int wifi_scan_take(wifi_net *out, int max)
+{
+	char buf[8192], saved[WIFI_SSID_MAX];
+	char *line, *save;
+	int n = 0, i;
+
+	if (cm(buf, sizeof buf, "services", NULL, NULL) != 0) return 0;
+	cfg_get("wifi.ssid", saved, sizeof saved);
+	for (line = strtok_r(buf, "\n", &save); line;
+	     line = strtok_r(NULL, "\n", &save)) {
+		char state, *name, *id, str[16];
+		wifi_net e;
+
+		if (!cm_line(line, &state, &name, &id)) continue;
+		memset(&e, 0, sizeof e);
+		snprintf(e.ssid, sizeof e.ssid, "%s", name);
+		/* ConnMan's Strength is 0-100, which is its own 2 x (dBm + 100). */
+		e.signal = cm_field(id, "Strength = ", str, sizeof str)
+		           ? atoi(str) / 2 - 100 : -100;
+		e.secured = !strstr(id, "_none");
+		e.known = saved[0] && !strcmp(saved, e.ssid);
+
+		/* One row per SSID, strongest wins: see the TrimUI parse_results. */
+		for (i = 0; i < n; i++)
+			if (!strcmp(out[i].ssid, e.ssid)) break;
+		if (i < n) {
+			if (e.signal > out[i].signal) out[i].signal = e.signal;
+			continue;
+		}
+		if (n < max) out[n++] = e;
+	}
+	for (i = 1; i < n; i++) {                 /* strongest first */
+		wifi_net t = out[i];
+		int j = i - 1;
+		while (j >= 0 && out[j].signal < t.signal) { out[j + 1] = out[j]; j--; }
+		out[j + 1] = t;
+	}
+	return n;
+}
+
+int wifi_scan(wifi_net *out, int max)
+{
+	if (!wifi_scan_start()) return -1;
+	while (wifi_scan_poll() == 0) sleep(1);
+	return wifi_scan_take(out, max);
+}
+
+/* ConnMan's state flag: O online and R ready have an address; a association
+ * and c configuration are on the way. */
+wifi_state wifi_status(char *ssid, int ssid_cap, char *ip, int ip_cap)
+{
+	char buf[8192];
+	char *line, *save;
+	wifi_state st = WIFI_IDLE;
+
+	if (ssid && ssid_cap) ssid[0] = '\0';
+	if (ip && ip_cap) ip[0] = '\0';
+	if (!powered()) return WIFI_OFF;
+	if (cm(buf, sizeof buf, "services", NULL, NULL) != 0) return WIFI_IDLE;
+	for (line = strtok_r(buf, "\n", &save); line;
+	     line = strtok_r(NULL, "\n", &save)) {
+		char state, *name, *id;
+
+		if (!cm_line(line, &state, &name, &id)) continue;
+		if (state == 'O' || state == 'R') {
+			if (ssid && ssid_cap) snprintf(ssid, (size_t)ssid_cap, "%s", name);
+			if (ip && ip_cap) {
+				char v4[256], *a;
+				if (cm_field(id, "IPv4 = [ ", v4, sizeof v4) &&
+				    (a = strstr(v4, "Address="))) {
+					a += 8;
+					a[strcspn(a, ", ]")] = '\0';
+					snprintf(ip, (size_t)ip_cap, "%s", a);
+				}
+			}
+			return WIFI_CONNECTED;
+		}
+		if (state == 'a' || state == 'c') st = WIFI_CONNECTING;
+	}
+	return st;
+}
+
+/* Joining is wifictl's: it writes ConnMan's profile from the keys and
+ * restarts it. The keys are only kept if the join works; otherwise the old
+ * ones go back and the old network is rejoined. A saved network chosen again
+ * with no passphrase keeps the one it has. */
+bool wifi_connect(const char *ssid, const char *psk)
+{
+	char old_ssid[WIFI_SSID_MAX], old_key[80], cur[WIFI_SSID_MAX];
+	const char *key;
+	int i;
+
+	if (!ssid || !*ssid) return false;
+	cfg_get("wifi.ssid", old_ssid, sizeof old_ssid);
+	cfg_get("wifi.key", old_key, sizeof old_key);
+	key = (psk && *psk) ? psk : !strcmp(old_ssid, ssid) ? old_key : "";
+	if (!cfg_set("wifi.ssid", ssid) || !cfg_set("wifi.key", key)) goto fail;
+
+	wifictl("enable");
+	for (i = 0; i < 20; i++) {
+		if (wifi_status(cur, sizeof cur, NULL, 0) == WIFI_CONNECTED &&
+		    !strcmp(cur, ssid)) return true;
+		sleep(1);
+	}
+fail:
+	cfg_set("wifi.ssid", old_ssid);
+	cfg_set("wifi.key", old_key);
+	if (old_ssid[0]) wifictl("enable");
+	else unlink(CM_PROFILE);                 /* nothing to go back to: see wifi_forget */
+	return false;
+}
+
+/* Not through wifictl: with no SSID, its connect step matches whatever service
+ * is listed first and could join a stranger's open network. Clearing the keys
+ * and deleting the profile ConnMan was provisioned from drops the network and
+ * leaves the radio on; the next boot's wifictl then writes an empty profile. */
+bool wifi_forget(const char *ssid)
+{
+	char saved[WIFI_SSID_MAX];
+
+	if (!cfg_get("wifi.ssid", saved, sizeof saved) || strcmp(saved, ssid))
+		return false;
+	if (!cfg_set("wifi.ssid", "") || !cfg_set("wifi.key", "")) return false;
+	unlink(CM_PROFILE);
+	return true;
+}
+
+static const char *const svc_key[WIFI_NSVC] = { "ssh.enabled", "samba.enabled" };
+
+bool wifi_svc_on(wifi_svc s)
+{
+	char v[8];
+	return cfg_get(svc_key[s], v, sizeof v) && !strcmp(v, "1");
+}
+
+/* The setting, then what ROCKNIX's 099-networkservices would do with it at the
+ * next boot, done now. sshd.service only starts while its marker exists. */
+bool wifi_svc_set(wifi_svc s, bool on)
+{
+	char *verb = on ? (char *)"start" : (char *)"stop";
+	char *ssh[]   = { (char *)SYSTEMCTL, verb, (char *)"sshd", NULL };
+	char *samba[] = { (char *)SYSTEMCTL, verb, (char *)"nmbd", (char *)"smbd", NULL };
+
+	if (!cfg_set(svc_key[s], on ? "1" : "0")) return false;
+	if (s == WIFI_SSH) {
+		if (on) {
+			FILE *f = fopen(SSHD_MARK, "a");
+			if (f) fclose(f);
+		} else {
+			unlink(SSHD_MARK);
+		}
+		return run(ssh, NULL, 0) == 0;
+	}
+	return run(samba, NULL, 0) == 0;
+}
+
+#endif /* PLATFORM_GKD */
+
 #else  /* host build: no radio, and the shelf still has to run */
 
 bool wifi_up(void) { return false; }
@@ -564,4 +930,9 @@ wifi_state wifi_status(char *ssid, int ssid_cap, char *ip, int ip_cap)
 }
 bool wifi_forget(const char *ssid) { (void)ssid; return false; }
 
+#endif
+
+#if !defined(PLATFORM_GKD)   /* no services to switch: WIFI_SVC_ROWS is 0 */
+bool wifi_svc_on(wifi_svc s) { (void)s; return false; }
+bool wifi_svc_set(wifi_svc s, bool on) { (void)s; (void)on; return false; }
 #endif

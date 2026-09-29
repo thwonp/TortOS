@@ -17,6 +17,8 @@ typedef struct {
 	bool     on;
 	bool     scanning;   /* a scan is running; the list is provisional */
 	bool     scanned;    /* a scan has finished at least once this visit */
+	char     ip[80];     /* "IP a.b.c.d" while connected, else empty */
+	bool     svc[WIFI_NSVC];   /* SSH, Samba; read on entry, only where WIFI_SVC_ROWS */
 } wifi_ui;
 
 /* Signal as a word. dBm is the honest number and it is also jargon; the list is

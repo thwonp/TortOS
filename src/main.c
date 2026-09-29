@@ -4693,8 +4693,8 @@ static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 {
 	wifi_ui *w = ctx;
 	char status[96], ssid[WIFI_SSID_MAX], ip[64];
-	int k = sel - 1;                    /* row 0 is the switch */
-	bool net_row = sel >= 1 && sel <= w->n;
+	int k = sel - 1 - WIFI_SVC_ROWS;    /* row 0 is the switch, then the services */
+	bool net_row = sel > WIFI_SVC_ROWS && sel <= WIFI_SVC_ROWS + w->n;
 
 	if (key == IN_Y && w->on) { wifi_begin_scan(w); return MENU_STAY; }
 
@@ -4733,6 +4733,14 @@ static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 	}
 
 	if (key != IN_ACCEPT) return MENU_STAY;
+
+	/* SSH and Samba, where the device has them. No confirm on turning SSH off,
+	 * though it may be the only way in: the owner's call (gkd.10). */
+	if (sel >= 1 && sel <= WIFI_SVC_ROWS) {
+		wifi_svc s = (wifi_svc)(sel - 1);
+		if (wifi_svc_set(s, !w->svc[s])) w->svc[s] = !w->svc[s];
+		return MENU_STAY;
+	}
 
 	/* The switch. Saved on every change rather than on the way out: the way out
 	 * of a handheld is often the power button. */
@@ -4802,6 +4810,9 @@ static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 static void wifi_screen(app *a)
 {
 	wifi_ui w = { 0 };
+	int i;
+
+	for (i = 0; i < WIFI_SVC_ROWS; i++) w.svc[i] = wifi_svc_on((wifi_svc)i);
 
 	/* Entering does not switch the radio on. It used to, which made the screen
 	 * impossible to leave in the off state: you opened it to turn wifi OFF and

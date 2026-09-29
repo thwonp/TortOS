@@ -4,7 +4,7 @@
 
 #include <stdbool.h>
 
-/* WiFi, over the stock wpa_supplicant.
+/* WiFi, over the stock wpa_supplicant (on the GKD, ROCKNIX's ConnMan).
  *
  * TortOS ships no supplicant and no DHCP client of its own. The device has
  * wpa_supplicant, wpa_cli, udhcpc and iw already, procd supervises the
@@ -74,5 +74,17 @@ wifi_state wifi_status(char *ssid, int ssid_cap, char *ip, int ip_cap);
 
 /* Drop a saved network and forget its credential. */
 bool wifi_forget(const char *ssid);
+
+/* The network services a device lets you switch: SSH and Samba on the GKD,
+ * where ROCKNIX runs them, and none on the Brick. On/off is ROCKNIX's own
+ * setting, so it survives a reboot and the stock menu agrees with it. */
+typedef enum { WIFI_SSH, WIFI_SAMBA, WIFI_NSVC } wifi_svc;
+#ifdef PLATFORM_GKD
+#define WIFI_SVC_ROWS WIFI_NSVC
+#else
+#define WIFI_SVC_ROWS 0
+#endif
+bool wifi_svc_on(wifi_svc s);
+bool wifi_svc_set(wifi_svc s, bool on);
 
 #endif
