@@ -1547,7 +1547,9 @@ static char g_game_set[LIB_PATH * 2];
 static aout_policy g_aout_policy;
 static char g_aout_sent[128];      /* the device Diatom was last told to use */
 static bool g_aout_ever;
+#if !defined(PLATFORM_GKD)
 static unsigned g_aout_gen;        /* which connection it was told on */
+#endif
 static unsigned g_aout_retry_at;   /* earliest next in-game retry of a fallback */
 static int      g_aout_retries;    /* spent on the game running now */
 static bool     g_aout_fallen;     /* a fallback already noticed, so not new */
@@ -1570,11 +1572,18 @@ static void aout_save(aout_policy p)
  * A file rather than asking Bluetooth ourselves: asking means forking
  * bluetoothctl out of a 119 MB process, which is what menu_wifi exists to
  * prevent. The shell loop already knows, so it writes and this reads. */
+#if !defined(PLATFORM_GKD)
 static char g_bt_link[32];    /* the published link's ACL handle, see bt_reconnect */
+#endif
 
 static const char *aout_bt_sink(void)
 {
 	static char   sink[128];
+#if defined(PLATFORM_GKD)
+	/* A label only: PipeWire holds the sink, see plat_bt_audio. */
+	snprintf(sink, sizeof sink, "%s", plat_bt_audio() ? "bluetooth" : "");
+	return sink;
+#else
 	static unsigned last;
 	static bool   primed;
 	unsigned now = plat_now_ms();
@@ -1594,6 +1603,7 @@ static const char *aout_bt_sink(void)
 		fclose(f);
 	}
 	return sink;
+#endif
 }
 
 static aout_state aout_now(void)
@@ -1602,6 +1612,10 @@ static aout_state aout_now(void)
 
 	s.policy  = g_aout_policy;
 	s.wired   = plat_headphones_present();
+#if defined(PLATFORM_GKD)
+	/* Speaker overrides a cable on the GKD, whose amps it can set. */
+	if (g_aout_policy == AOUT_SPEAKER) s.wired = false;
+#endif
 	s.bt_sink = aout_bt_sink();
 	return s;
 }
@@ -1615,6 +1629,10 @@ static aout_state aout_now(void)
  * on the desktop build it never will. */
 static aout_dest aout_actual(const aout_state *s)
 {
+#if defined(PLATFORM_GKD)
+	/* PipeWire moves every stream with the default, so asked is actual. */
+	return aout_resolve(s);
+#else
 	char at[128];
 	const char *muse = musec_sink_now();
 
@@ -1624,6 +1642,7 @@ static aout_dest aout_actual(const aout_state *s)
 	if (!plat_resident_audio(at, sizeof at)) return aout_resolve(s);
 	if (at[0]) return AOUT_BT;
 	return s->wired ? AOUT_WIRED : AOUT_SPK;
+#endif
 }
 
 /* SETAUDIO, after which Diatom's last report no longer counts until it has
@@ -1639,6 +1658,7 @@ static bool aout_send(const char *dev)
 	return true;
 }
 
+#if !defined(PLATFORM_GKD)
 /* Send only on a change. SETAUDIO reopens an audio device, which is cheap but
  * not free, and doing it every tick would be a reopen per tick. */
 static void aout_tell_diatom(const aout_state *s, const char *dev, bool force,
@@ -1682,6 +1702,7 @@ static void aout_tell_diatom(const aout_state *s, const char *dev, bool force,
 	        aout_dest_name(aout_resolve(s)), dev[0] ? dev : "default",
 	        muse_has_it ? " (Muse has the headset)" : "");
 }
+#endif
 
 /* The headset's own volume, kept at the Brick's level while sound goes to one.
  *
@@ -1700,6 +1721,7 @@ static void aout_tell_diatom(const aout_state *s, const char *dev, bool force,
  * connect - waits two seconds before the next, because each is a mixer open. */
 static bool g_game_ticking;     /* inside on_game_tick: a game is running */
 
+#if !defined(PLATFORM_GKD)   /* PipeWire: no hand-over, no headset volume */
 static void bt_volume_follow(const char *out, bool fresh)
 {
 	static int      sent = -1;
@@ -1776,6 +1798,7 @@ static void bt_volume_follow(const char *out, bool fresh)
 	fprintf(stderr, "audio: %s volume %d/127 (level %d of %d) in %u ms\n",
 	        out, v, level, count - 1, plat_now_ms() - now);
 }
+#endif
 
 /* Where the system's sound goes, for both players.
  *
@@ -1792,6 +1815,11 @@ static void bt_volume_follow(const char *out, bool fresh)
  * answered, because Diatom does not retry. */
 static void aout_apply(bool force)
 {
+#if defined(PLATFORM_GKD)
+	/* No hand-over: PipeWire mixes, and platform_gkd.c picks the sink. */
+	(void)force;
+	plat_audio_speaker_only(g_aout_policy == AOUT_SPEAKER);
+#else
 	static char  link_seen[32];
 	aout_state  s    = aout_now();
 	const char *out  = aout_device(&s);
@@ -1816,6 +1844,7 @@ static void aout_apply(bool force)
 	aout_tell_diatom(&s, muse ? "" : out, force || (fresh && !muse), muse);
 	if (muse) musec_sink(out);
 	bt_volume_follow(out, fresh);
+#endif
 }
 
 /* The hook musec calls just before a PLAY or RESUME, so the track starts on
@@ -5682,9 +5711,13 @@ static void bt_await_route(const char *mac)
 	while ((int)(until - plat_now_ms()) > 0) {
 		musec_poll();
 		aout_apply(false);
+#if defined(PLATFORM_GKD)
+		if (plat_bt_audio()) return;        /* PipeWire already moved it */
+#else
 		if (!strcasecmp(aout_bt_sink(), want) &&
 		    (!musec_heard() || !strcasecmp(musec_sink_now(), want)))
 			return;
+#endif
 		SDL_Delay(50);
 	}
 }

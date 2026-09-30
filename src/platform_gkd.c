@@ -13,6 +13,8 @@
 
 #include <fcntl.h>
 #include <linux/input.h>
+#include <poll.h>
+#include <signal.h>
 #include <pthread.h>
 #include <spawn.h>
 #include <stdio.h>
@@ -399,7 +401,11 @@ void mute_forget(void) { }
  * twice, amps that disagree with it are set to match. The data register is
  * write-masked per pin (high half), so this touches only those two pins and
  * cannot race the driver's own writes. Pin numbers are this board's device
- * tree; jack_names_ok() checks it is still that tree, or none of this runs. */
+ * tree; jack_names_ok() checks it is still that tree, or none of this runs.
+ *
+ * Audio Output = Speaker overrides the jack here too (user, 2026-09-29): the
+ * amps are set for the speaker with headphones in. The kernel still switches
+ * to them on a plug, so that is a blip of at most half a second. */
 #define JACK_BANK     0x2ae40000u   /* gpio4 */
 #define JACK_DR_L     (0x00 / 4)    /* data out, pins 0-15, write-masked */
 #define JACK_EXT      (0x70 / 4)    /* pin levels */
@@ -409,6 +415,7 @@ void mute_forget(void) { }
 
 static volatile uint32_t *jack_regs;
 static bool               jack_in;
+static bool               route_speaker_only;   /* Audio Output = Speaker */
 
 static bool jack_names_ok(void)
 {
@@ -443,16 +450,17 @@ static void *jack_worker(void *arg)
 		int      det = jack_regs[JACK_EXT] >> JACK_DET & 1;
 		uint32_t out = jack_regs[JACK_DR_L];
 		int      hp  = out >> JACK_HP_CON & 1, spk = out >> JACK_SPK_CON & 1;
-		bool     fix = det == last && (hp != det || spk == det);
+		int      phones = det && !__atomic_load_n(&route_speaker_only, __ATOMIC_RELAXED);
+		bool     fix = det == last && (hp != phones || spk == phones);
 
 		__atomic_store_n(&jack_in, det == 1, __ATOMIC_RELAXED);
 		if (fix) {
-			jack_regs[JACK_DR_L] = mask | (uint32_t)det << JACK_HP_CON
-			                            | (uint32_t)!det << JACK_SPK_CON;
+			jack_regs[JACK_DR_L] = mask | (uint32_t)phones << JACK_HP_CON
+			                            | (uint32_t)!phones << JACK_SPK_CON;
 			/* Once per run of fixes, so a driver that fights back cannot
 			 * fill the card's log. */
-			if (!fixed) fprintf(stderr, "jack: amps were set for %s, fixed\n",
-			                    det ? "the speaker" : "headphones");
+			if (!fixed) fprintf(stderr, "jack: amps set for %s\n",
+			                    phones ? "headphones" : "the speaker");
 		}
 		fixed = fix;
 		last  = det;
@@ -478,6 +486,127 @@ static void jack_init(void)
 	if (p == MAP_FAILED) return;
 	jack_regs = p;
 	if (pthread_create(&t, NULL, jack_worker, NULL) == 0) pthread_detach(t);
+}
+
+/* Where the sound goes (plorpos-gkd.9.3). Every player opens ALSA's "default",
+ * which is PipeWire's default sink, and PipeWire moves running streams when
+ * that changes - so routing here is choosing the default sink, and Diatom and
+ * Muse are never told a device. ROCKNIX's module-switch-on-connect already
+ * makes a new headset the default; this adds the launcher's rules on top:
+ * a cable wins (the kernel puts it on the built-in sink), Speaker never uses
+ * Bluetooth, and a headset going away while it was playing pauses Muse, as a
+ * phone does.
+ *
+ * Driven by `pactl subscribe` - one child for the launcher's life, woken only
+ * when a sink comes, goes or the default changes - plus the jack watchdog's
+ * pin and the player's setting, both looked at every 250 ms for nothing. */
+static bool route_bt;               /* PipeWire has a Bluetooth sink */
+
+void plat_audio_speaker_only(bool on) { __atomic_store_n(&route_speaker_only, on, __ATOMIC_RELAXED); }
+bool plat_bt_audio(void) { return __atomic_load_n(&route_bt, __ATOMIC_RELAXED); }
+
+/* The same note btplayer leaves on the Brick for a headset's own buttons, and
+ * musec reads it wherever Muse matters; tmpfs, so nothing reaches the card. */
+static void route_pause_muse(void)
+{
+	struct timespec t;
+	FILE *f = fopen("/tmp/tortos_btkey.new", "w");
+
+	if (!f) return;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	fprintf(f, "pause %ld\n", (long)t.tv_sec * 1000 + t.tv_nsec / 1000000);
+	if (fclose(f) == 0) rename("/tmp/tortos_btkey.new", "/tmp/tortos_btkey");
+}
+
+static void route_eval(bool *on_bt)
+{
+	extern char **environ;
+	char line[256], bt[128] = "", builtin[128] = "", def[128] = "";
+	const char *want;
+	bool speaker = __atomic_load_n(&route_speaker_only, __ATOMIC_RELAXED);
+	FILE *f = popen("pactl list short sinks 2>/dev/null", "r");
+
+	if (!f) return;
+	while (fgets(line, sizeof line, f)) {
+		char name[128];
+		if (sscanf(line, "%*s %127s", name) != 1) continue;
+		if (!strncmp(name, "bluez_output.", 13) && !bt[0])
+			snprintf(bt, sizeof bt, "%s", name);
+		else if (!strncmp(name, "alsa_output.", 12) && !builtin[0])
+			snprintf(builtin, sizeof builtin, "%s", name);
+	}
+	pclose(f);
+	if ((f = popen("pactl get-default-sink 2>/dev/null", "r"))) {
+		if (fgets(def, sizeof def, f)) def[strcspn(def, "\n")] = '\0';
+		pclose(f);
+	}
+	/* Two headsets: keep the one already chosen. */
+	if (bt[0] && !strncmp(def, "bluez_output.", 13)) snprintf(bt, sizeof bt, "%s", def);
+	__atomic_store_n(&route_bt, bt[0] != '\0', __ATOMIC_RELAXED);
+
+	if (*on_bt && !bt[0]) {
+		fprintf(stderr, "audio: headset gone, pausing Muse\n");
+		route_pause_muse();
+	}
+	want = speaker || plat_headphones_present() || !bt[0] ? builtin : bt;
+	*on_bt = want == bt;
+	if (want[0] && strcmp(want, def)) {
+		char *argv[] = { "pactl", "set-default-sink", (char *)want, NULL };
+		pid_t pid;
+		int st;
+
+		fprintf(stderr, "audio: output %s\n", want == bt ? "bluetooth" : "built-in");
+		if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) == 0)
+			waitpid(pid, &st, 0);
+	}
+}
+
+static void *route_worker(void *arg)
+{
+	extern char **environ;
+	bool on_bt = false;
+	(void)arg;
+
+	for (;;) {
+		char *argv[] = { "pactl", "subscribe", NULL };
+		posix_spawn_file_actions_t fa;
+		int fd[2];
+		pid_t pid;
+		bool speaker = !route_speaker_only, jack = !plat_headphones_present();
+
+		if (pipe(fd) < 0) { sleep(2); continue; }
+		posix_spawn_file_actions_init(&fa);
+		posix_spawn_file_actions_adddup2(&fa, fd[1], STDOUT_FILENO);
+		posix_spawn_file_actions_addclose(&fa, fd[0]);
+		posix_spawn_file_actions_addclose(&fa, fd[1]);
+		if (posix_spawnp(&pid, argv[0], &fa, NULL, argv, environ) != 0) pid = -1;
+		posix_spawn_file_actions_destroy(&fa);
+		close(fd[1]);
+
+		while (pid > 0) {
+			struct pollfd p = { fd[0], POLLIN, 0 };
+			char buf[1024];
+			bool dirty = false;
+
+			if (poll(&p, 1, 250) > 0) {
+				ssize_t n = read(fd[0], buf, sizeof buf - 1);
+				if (n <= 0) break;          /* pipewire-pulse went away */
+				buf[n] = '\0';
+				dirty = strstr(buf, "'new' on sink #") || strstr(buf, "'remove' on sink #")
+				     || strstr(buf, "on server");
+			}
+			if (speaker != route_speaker_only || jack != plat_headphones_present()) {
+				speaker = route_speaker_only;
+				jack    = plat_headphones_present();
+				dirty   = true;
+			}
+			if (dirty) route_eval(&on_bt);
+		}
+		close(fd[0]);
+		if (pid > 0) { kill(pid, SIGTERM); waitpid(pid, NULL, 0); }
+		sleep(1);
+	}
+	return NULL;
 }
 
 /* What PipeWire is at now, in rungs - once, at start, where the one wpctl run
@@ -507,7 +636,15 @@ void plat_settings_init(void)
 		mixer_fd = 0;
 	} else
 		fprintf(stderr, "settings: no volume worker\n");
+	/* Before the watchdog's first look, or it sets the amps for headphones
+	 * until main.c's first aout_apply says Speaker. */
+	{
+		char ao[32];
+		db_get_str(db_dev(), "audioout", ao, sizeof ao, "auto");
+		plat_audio_speaker_only(!strcmp(ao, "speaker"));
+	}
 	jack_init();
+	if (pthread_create(&t, NULL, route_worker, NULL) == 0) pthread_detach(t);
 
 	/* The player's last choice wins; failing that, whatever the device is at
 	 * already, so the first OSD tells the truth. */

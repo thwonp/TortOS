@@ -309,6 +309,13 @@ bool plat_hold_switch(void);
  * switch for its own reason - which volume window to use - so both halves ask
  * the hardware rather than one telling the other something it could get wrong. */
 bool plat_headphones_present(void);
+#if defined(PLATFORM_GKD)
+/* PipeWire's default sink is the output, chosen in platform_gkd.c (gkd.9.3):
+ * the Audio Output setting goes in, whether a Bluetooth sink exists comes
+ * out. Nothing is sent to Diatom or Muse; both stay on "default". */
+void plat_audio_speaker_only(bool on);
+bool plat_bt_audio(void);
+#endif
 /* kind: 1 = brightness, 2 = volume */
 void plat_osd_show(int kind, int val, int max);
 void plat_draw_osd(SDL_Renderer *r);
