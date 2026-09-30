@@ -11,6 +11,7 @@
 #include "platform.h"
 #include "platform_dev.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <linux/input.h>
 #include <poll.h>
@@ -507,14 +508,14 @@ bool plat_bt_audio(void) { return __atomic_load_n(&route_bt, __ATOMIC_RELAXED); 
 
 /* The same note btplayer leaves on the Brick for a headset's own buttons, and
  * musec reads it wherever Muse matters; tmpfs, so nothing reaches the card. */
-static void route_pause_muse(void)
+static void btkey_write(const char *act)
 {
 	struct timespec t;
 	FILE *f = fopen("/tmp/tortos_btkey.new", "w");
 
 	if (!f) return;
 	clock_gettime(CLOCK_MONOTONIC, &t);
-	fprintf(f, "pause %ld\n", (long)t.tv_sec * 1000 + t.tv_nsec / 1000000);
+	fprintf(f, "%s %ld\n", act, (long)t.tv_sec * 1000 + t.tv_nsec / 1000000);
 	if (fclose(f) == 0) rename("/tmp/tortos_btkey.new", "/tmp/tortos_btkey");
 }
 
@@ -546,7 +547,7 @@ static void route_eval(bool *on_bt)
 
 	if (*on_bt && !bt[0]) {
 		fprintf(stderr, "audio: headset gone, pausing Muse\n");
-		route_pause_muse();
+		btkey_write("pause");
 	}
 	want = speaker || plat_headphones_present() || !bt[0] ? builtin : bt;
 	*on_bt = want == bt;
@@ -609,6 +610,83 @@ static void *route_worker(void *arg)
 	return NULL;
 }
 
+/* ---- headset buttons ---------------------------------------------------
+ *
+ * btplayer's job on the Brick (tools/btplayer.c), without its D-Bus half:
+ * BlueZ gives each AVRCP headset a keyboard named `<headset> (AVRCP)` that
+ * comes and goes with the connection, so the list is read again every two
+ * seconds and a node that has gone is closed. The WF-C510 sends PLAYCD or
+ * PAUSECD for a press, by its own idea of the state, NEXTSONG for two and
+ * PREVIOUSSONG for three; a hold stays on the earbud. No volume keys: the GKD
+ * owns the level. */
+#define HEADSETS 4
+
+/* btplayer's key_action, for the same reasons. */
+static const char *avrcp_action(unsigned code)
+{
+	switch (code) {
+	case KEY_PLAYCD: case KEY_PLAYPAUSE: case KEY_PLAY: return "toggle";
+	case KEY_PAUSECD: case KEY_STOPCD: case KEY_PAUSE:  return "pause";
+	case KEY_NEXTSONG: case KEY_FASTFORWARD:           return "next";
+	case KEY_PREVIOUSSONG: case KEY_REWIND:            return "prev";
+	}
+	return NULL;
+}
+
+static void *avrcp_worker(void *arg)
+{
+	struct pollfd p[HEADSETS];
+	char node[HEADSETS][24];
+	int n = 0;
+	(void)arg;
+
+	for (;;) {
+		FILE *f = fopen("/proc/bus/input/devices", "r");
+		char line[256], *ev;
+		bool avrcp = false;
+
+		while (f && fgets(line, sizeof line, f)) {
+			char path[24];
+			int i;
+
+			if (!strncmp(line, "N: Name=", 8)) {
+				avrcp = strstr(line, " (AVRCP)\"") != NULL;
+				continue;
+			}
+			if (!avrcp || strncmp(line, "H: Handlers=", 12) || !(ev = strstr(line, "event")))
+				continue;
+			avrcp = false;
+			snprintf(path, sizeof path, "/dev/input/%.*s", (int)strspn(ev, "event0123456789"), ev);
+			for (i = 0; i < n && strcmp(node[i], path); i++) ;
+			if (i < n || n == HEADSETS) continue;
+			if ((p[n].fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)) < 0) continue;
+			p[n].events = POLLIN;
+			snprintf(node[n++], sizeof node[0], "%s", path);
+			fprintf(stderr, "audio: headset keys on %s\n", path);
+		}
+		if (f) fclose(f);
+
+		poll(p, n, 2000);
+		for (int i = 0; i < n; i++) {
+			struct input_event e;
+			ssize_t got;
+
+			if (!p[i].revents) continue;
+			while ((got = read(p[i].fd, &e, sizeof e)) == (ssize_t)sizeof e) {
+				const char *act = e.type == EV_KEY && e.value == 1 ? avrcp_action(e.code) : NULL;
+				if (act) btkey_write(act);
+			}
+			if (got < 0 && errno != EAGAIN) {   /* the headset went */
+				close(p[i].fd);
+				p[i] = p[--n];
+				memcpy(node[i], node[n], sizeof node[0]);
+				i--;
+			}
+		}
+	}
+	return NULL;
+}
+
 /* What PipeWire is at now, in rungs - once, at start, where the one wpctl run
  * is not in a frame. -1 if it cannot say. */
 static int wpctl_level(void)
@@ -645,6 +723,7 @@ void plat_settings_init(void)
 	}
 	jack_init();
 	if (pthread_create(&t, NULL, route_worker, NULL) == 0) pthread_detach(t);
+	if (pthread_create(&t, NULL, avrcp_worker, NULL) == 0) pthread_detach(t);
 
 	/* The player's last choice wins; failing that, whatever the device is at
 	 * already, so the first OSD tells the truth. */
