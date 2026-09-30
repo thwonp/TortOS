@@ -317,6 +317,16 @@ static size_t tab_run(const char *s, char *out, size_t n)
 	return len;
 }
 
+/* A run's width in panel pixels. The cells and the digits are in pixels too,
+ * so the sum is taken there and converted once, rather than rounding every
+ * run to units. */
+static int run_px(TTF_Font *f, const char *run)
+{
+	int w = 0;
+	TTF_SizeUTF8(f, run, &w, NULL);
+	return w;
+}
+
 int ui_text_tabular_width(TTF_Font *f, const char *s)
 {
 	char run[128];
@@ -326,16 +336,17 @@ int ui_text_tabular_width(TTF_Font *f, const char *s)
 	cell = digit_cell(f);
 	while (*s) {
 		s += tab_run(s, run, sizeof run);
-		w += run[0] >= '0' && run[0] <= '9' ? cell : ui_text_width(f, run);
+		w += run[0] >= '0' && run[0] <= '9' ? cell : run_px(f, run);
 	}
-	return w;
+	return units_up(w);
 }
 
 int ui_text_tabular(SDL_Renderer *r, TTF_Font *f, const char *s, int x, int y,
                     int anchor, SDL_Color col)
 {
 	char run[128];
-	int w, cell, at, k;
+	int w, cell, k;
+	float at;
 
 	if (!f || !s || !*s) return 0;
 	w = ui_text_tabular_width(f, s);
@@ -352,16 +363,24 @@ int ui_text_tabular(SDL_Renderer *r, TTF_Font *f, const char *s, int x, int y,
 				/* Centered. At the cell's right edge, tried 2026-09-29, a
 				 * thin digit closed up on the digit after it and opened a
 				 * gap on the other side instead: "- 1:00: 10". */
-				SDL_Rect dst = { at + (cell - digits[k].w[d]) / 2, y,
-				                 digits[k].w[d], digits[k].h };
+				float dx = at + (float)((cell - digits[k].w[d]) / 2) / ts;
 
 				SDL_SetTextureColorMod(t, col.r, col.g, col.b);
 				SDL_SetTextureAlphaMod(t, col.a);
-				SDL_RenderCopy(r, t, NULL, &dst);
+				/* The digits are panel pixels, like text_copy's textures. */
+				if (ts == 1.0f)
+					SDL_RenderCopy(r, t, NULL, &(SDL_Rect){ (int)dx, y,
+					               digits[k].w[d], digits[k].h });
+				else
+					SDL_RenderCopyF(r, t, NULL, &(SDL_FRect){ snap(dx),
+					                snap((float)y), digits[k].w[d] / ts,
+					                digits[k].h / ts });
 			}
-			at += cell;
+			at += cell / ts;
 		} else {
-			at += ui_text(r, f, run, at, y, -1, col);
+			int adv = ui_text(r, f, run, (int)lroundf(at), y, -1, col);
+
+			at += ts == 1.0f ? adv : run_px(f, run) / ts;
 		}
 	}
 	return w;

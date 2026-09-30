@@ -28,7 +28,14 @@ CARD=/storage/games-external
 DIR=$CARD/TortOS
 LOGS=$CARD/.userdata/gkd/logs
 mkdir -p "$LOGS" "$CARD/Saves" "$CARD/Bios"
+# Ten boots kept, newest first, as on the Brick (sd/tortos/launch.sh), so
+# Over The Hare's Download logs has the boots a report is about.
 LOG=$LOGS/tortos.log
+i=9
+while [ $i -gt 1 ]; do
+	[ -f "$LOG.$((i - 1))" ] && mv -f "$LOG.$((i - 1))" "$LOG.$i"
+	i=$((i - 1))
+done
 [ -f "$LOG" ] && mv -f "$LOG" "$LOG.1"
 : > "$LOG"
 
