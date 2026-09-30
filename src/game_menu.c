@@ -89,21 +89,13 @@ int gi_rows(menu_row *out, const game_info *gi, bool net)
 int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 {
 	static const char *label[GM_ROWS] = {
-		"Continue", "Save", "Load", "Display", "Cheevos", "Sleep",
+		"Continue", "Save", "Load", "Display", "Cheevos",
 		"Hotkeys", "Reset", "Quit"
 	};
 	int i;
 
 	for (i = 0; i < GM_ROWS; i++) out[i] = (menu_row){ label[i], NULL, true };
 	out[GM_DISPLAY].value = u->dmode;
-
-	/* Same habit as Cheevos below: a row that says why it does nothing is
-	 * better than one silently missing, and this kernel not offering suspend
-	 * is a real, expected case - not a bug to hide the row over. */
-	if (!u->sleep_supported) {
-		out[GM_SLEEP].value = "unsupported";
-		out[GM_SLEEP].live = false;
-	}
 
 	/* Most of a library has no set, and a row that says so plainly is better
 	 * than one that is missing: "none" answers the question the player opened

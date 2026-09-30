@@ -828,16 +828,17 @@ static void ingame_rows(void)
 	menu_row rows[GM_ROWS];
 	int got[GM_ROWS], n, k;
 
-	u.dmode = "Native"; u.earned = 12; u.total = 40; u.sleep_supported = true;
+	u.dmode = "Native"; u.earned = 12; u.total = 40;
 	n = gm_rows(&u, rows, &b);
 
-	printf("in-game menu, a game with a set, sleep supported:\n");
-	ck(n == GM_ROWS, "nine rows");
+	printf("in-game menu, a game with a set:\n");
+	ck(n == GM_ROWS, "eight rows");
 	ck(!strcmp(rows[GM_CONTINUE].label, "Continue"), "Continue leads");
 	ck(!strcmp(val(&rows[GM_DISPLAY]), "Native"), "Display carries the mode");
 	ck(!strcmp(val(&rows[GM_CHEEVOS]), "12 / 40"), "Cheevos counts the set");
 	ck(rows[GM_CHEEVOS].live, "and is reachable");
-	ck(rows[GM_SLEEP].live, "Sleep is reachable");
+	ck(!strcmp(rows[GM_CHEEVOS + 1].label, "Hotkeys"),
+	   "no Sleep: Hotkeys follows Cheevos (a POWER tap sleeps)");
 	ck(!strcmp(rows[GM_HOTKEYS].label, "Hotkeys"), "Hotkeys is there");
 	ck(rows[GM_HOTKEYS].live, "and is reachable");
 	k = reachable(rows, n, got, GM_ROWS);
@@ -853,15 +854,6 @@ static void ingame_rows(void)
 	ck(!holds(got, k, GM_CHEEVOS), "and never rests on it");
 	ck(holds(got, k, GM_QUIT) && holds(got, k, GM_CONTINUE),
 	   "the rows either side of it still work");
-
-	u.earned = 12; u.total = 40; u.sleep_supported = false;
-	n = gm_rows(&u, rows, &b);
-	printf("in-game menu, sleep unsupported:\n");
-	ck(!strcmp(val(&rows[GM_SLEEP]), "unsupported"), "Sleep says why");
-	ck(!rows[GM_SLEEP].live, "and does nothing");
-	k = reachable(rows, n, got, GM_ROWS);
-	ck(k == GM_ROWS - 1, "so the cursor steps over it too");
-	ck(!holds(got, k, GM_SLEEP), "and never rests on it");
 }
 
 /* The save slots, and the one constant that survived a rename by being written
