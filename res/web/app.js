@@ -231,8 +231,7 @@ function draw() {
 				 * showing the drop message in the crumbs' place, and stopping
 				 * at the frame leaves it there for good. */
 				dragUI(false);
-				if (ev.dataTransfer.files.length)
-					enqueue(ev.dataTransfer.files, e.path);
+				dropped(ev.dataTransfer, e.path);
 			});
 		}
 
@@ -360,6 +359,97 @@ function enqueue(files, dest) {
 	if (!sending) next();
 }
 
+/* ---- folders --------------------------------------------------------------
+ *
+ * A dropped folder arrives as one empty item in dataTransfer.files, which is
+ * all the page used to read, so dropping an album uploaded nothing. The
+ * entries API walks it instead: every folder in it is made on the device, in
+ * order, parents first, and every file queued into its own folder. Dot files
+ * and folders are skipped - a Mac puts .DS_Store in every folder it has shown,
+ * and ._ files beside every file it copied. */
+
+/* A tree from a drop: { dirs, files }, dirs in the order they must be made
+ * and each file with the folder it belongs in, both relative to the drop.
+ * null when the browser has no entries API, and the drop is read as files. */
+function walkDrop(dt) {
+	/* Read now: the items are only there while the drop event runs, and the
+	 * walk below awaits. */
+	const entries = [];
+	for (const it of dt.items || []) {
+		const en = it.webkitGetAsEntry && it.webkitGetAsEntry();
+		if (en) entries.push(en);
+	}
+	if (!entries.length) return null;
+	return (async () => {
+		const dirs = [], files = [];
+		const walk = async (en, rel) => {
+			if (en.name.startsWith('.')) return;
+			if (en.isFile) {
+				files.push({ file: await new Promise((ok, no) => en.file(ok, no)), rel });
+			} else if (en.isDirectory) {
+				const here = rel ? rel + '/' + en.name : en.name;
+				const reader = en.createReader();
+
+				dirs.push(here);
+				/* readEntries hands a folder over in batches, empty at the end. */
+				for (;;) {
+					const batch = await new Promise((ok, no) => reader.readEntries(ok, no));
+					if (!batch.length) break;
+					for (const c of batch) await walk(c, here);
+				}
+			}
+		};
+		for (const en of entries) await walk(en, '');
+		return { dirs, files };
+	})();
+}
+
+/* The same tree from the Upload folder picker, whose files carry their path
+ * inside the chosen folder as webkitRelativePath. */
+function picked(list) {
+	const dirs = [], files = [], seen = new Set();
+	for (const f of list) {
+		const parts = (f.webkitRelativePath || f.name).split('/');
+		if (parts.some((p) => p.startsWith('.'))) continue;
+		for (let i = 1; i < parts.length; i++) {
+			const d = parts.slice(0, i).join('/');
+			if (!seen.has(d)) { seen.add(d); dirs.push(d); }
+		}
+		files.push({ file: f, rel: parts.slice(0, -1).join('/') });
+	}
+	return { dirs, files };
+}
+
+/* A drop, onto the list or onto a folder row: a tree when it holds folders,
+ * files as before when it does not. */
+function dropped(dt, dest) {
+	const tree = walkDrop(dt);
+	if (!tree) { if (dt.files.length) enqueue(dt.files, dest); return; }
+	tree.then((t) => enqueueTree(t, dest)).catch((err) => toast(err.message, true));
+}
+
+/* Make one folder; one that is already there is fine - a second album
+ * dropped into an artist's folder reuses it. */
+async function makeDir(path) {
+	const r = await fetch('/api/mkdir?p=' + enc(path), { method: 'POST', credentials: 'same-origin' });
+	if (r.status === 401) { showGate('Session ended. Enter the PIN again.'); throw new Error('unauthorized'); }
+	if (!r.ok && r.status !== 409) throw new Error((await r.text()).split('\n')[1] || r.statusText);
+}
+
+async function enqueueTree(tree, dest) {
+	const dir = dest === undefined ? cwd : dest;
+	if (!dir) { toast('Open a folder first', true); return; }
+	if (!tree.dirs.length) { enqueue(tree.files.map((f) => f.file), dir); return; }
+	try {
+		for (const d of tree.dirs) await makeDir(dir + '/' + d);
+	} catch (err) { toast(err.message, true); return; }
+	for (const { file, rel } of tree.files)
+		queue.push({ file, dir: rel ? dir + '/' + rel : dir, pct: 0, state: 'waiting' });
+	if (!tree.files.length) { toast('Folder made'); go(cwd, 'none').catch(() => {}); return; }
+	drawQueue();
+	if (!sending) next();
+}
+
 function next() {
 	const job = queue.find((j) => j.state === 'waiting');
 	if (!job) {
@@ -442,6 +532,10 @@ function drawQueue() {
 }
 
 $('picker').onchange = (e) => { enqueue(e.target.files); e.target.value = ''; };
+$('folderpicker').onchange = (e) => {
+	enqueueTree(picked(e.target.files));
+	e.target.value = '';
+};
 
 /* Drag and drop, counted rather than toggled: dragenter and dragleave fire for
  * every child element the pointer crosses, so a boolean flickers the overlay
@@ -488,7 +582,7 @@ addEventListener('drop', (e) => {
 	e.preventDefault();
 	dragDepth = 0;
 	dragUI(false);
-	if (e.dataTransfer.files.length) enqueue(e.dataTransfer.files);
+	dropped(e.dataTransfer);
 });
 
 /* ---- toast ------------------------------------------------------------- */
