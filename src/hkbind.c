@@ -5,12 +5,14 @@
 
 #include "hkbind.h"
 
-const char *const HK_BTN_NAME[] = { "None", "L2", "R2", "X", "Y" };
-static const char *const HK_BTN_WIRE[] = { NULL, "l2", "r2", "x", "y" };
+const char *const HK_BTN_NAME[] = { "None", "L1", "R1", "L2", "R2", "A", "B", "X", "Y" };
+static const char *const HK_BTN_WIRE[] = { NULL, "l1", "r1", "l2", "r2", "a", "b", "x", "y" };
 const char *const HK_ACTION_LABEL[] = {
-	"Fast-Forward", "Rewind", "Quick Save", "Quick Load"
+	"Fast-Forward", "Rewind", "Quick Save", "Quick Load", "Display Mode", "Screen Filter"
 };
-static const char *const HK_ACTION_WIRE[] = { "ff", "rewind", "savestate", "loadstate" };
+static const char *const HK_ACTION_WIRE[] = {
+	"ff", "rewind", "savestate", "loadstate", "display", "filter"
+};
 
 /* hkbind.h's HK_BTN_COUNT/HK_ROW_COUNT are plain numbers, not derived from
  * these arrays' own sizes - an extern array is an incomplete type in the

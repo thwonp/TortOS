@@ -8621,13 +8621,14 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 	memset(&a->in, 0, sizeof a->in);
 }
 
-/* The hotkey submenu (sibling Diatom feature, its ADR-0035): which of a
- * short candidate list of buttons, if any, triggers fast-forward, rewind, a
- * quicksave or a quickload. Candidates are exactly what Diatom's own
- * display_chord does NOT already claim under SELECT (l1/r1/a) - see that
- * ADR - so a binding made here can never be one Diatom would refuse.
+/* The hotkey submenu (sibling Diatom feature, its ADR-0035): which face
+ * button or shoulder, if any, held with SELECT triggers fast-forward, rewind,
+ * a quicksave, a quickload, the next display mode or the screen filter - the
+ * same set Diatom's hotkeys_set accepts, so a binding made here can never be
+ * one Diatom would refuse. Display and filter were a fixed SELECT+L1/R1/A
+ * chord until plorpos-gkd.22.
  *
- * Four fixed rows, cycled left and right the way Display Mode already is -
+ * Six fixed rows, cycled left and right the way Display Mode already is -
  * not a "press any button to capture it" flow, which this codebase has
  * never built anywhere and would have been the highest-risk new interaction
  * to write with no way to run it. A button already bound to one row is
