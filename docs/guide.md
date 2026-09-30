@@ -103,7 +103,7 @@ matters to you - a card is the one part of this that gets reformatted.
 | | |
 |---|---|
 | **Left/Right** | move along the row, when the shelf runs horizontally |
-| **Up/Down** | move along the shelf when it runs vertically - **up advances** |
+| **Up/Down** | move along the shelf when it runs vertically - **down advances** |
 | **the other axis** | jump to the previous / next initial (games) |
 | **L1/R1** | jump a screenful (games) |
 | **A** | open a system, or start a game |
@@ -448,13 +448,10 @@ cursor filling most of the screen and its neighbors pushed off the top and
 bottom edges. It is laid out the way `Horizontal` is and moves at the row's
 pace.
 
-Vertically the shelf runs **A at the bottom to Z at the top**, and up
-advances. The origin is the bottom left and the index grows with x and with
-y, which is the same rule the horizontal row has always followed; a list that
-numbers downward is the screen's convention, not this one's. The position
-rail moves to the left edge and runs bottom-up with it, and on the games
-shelf the `n / total` sits in the bottom left beside it, stationary, rather
-than turning away with the face.
+Vertically the shelf runs **A at the top to Z at the bottom**, and down
+advances, the way right does on the row. The position rail moves to the left
+edge and runs top-down with it, and on the games shelf the `n / total` sits
+in the bottom left beside it, stationary.
 
 Card art comes from, in order:
 
