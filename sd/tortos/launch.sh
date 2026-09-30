@@ -383,11 +383,24 @@ rm -f /tmp/tortos_poweroff
 # much to spend on the critical path and nothing at all once it is off it. The
 # sleep also keeps it clear of the library scan's own I/O.
 #
-# ONLY the ._ prefix. .media, .cheevos and .tortos are ours and the whole
-# library hangs off them. busybox find has no -delete, and -exec is used
-# rather than xargs because these names contain spaces.
+# NAMES, never "every dot entry". .media, .cheevos, .tortos, .tmp_update and
+# .userdata are ours and the whole library hangs off them. So: ._ files, and
+# since 2026-09-30 .DS_Store, and Windows' Thumbs.db and desktop.ini,
+# anywhere; and the folders macOS writes at the top of any card it mounts.
+# Measured the same day on the device, the pass takes 0.11 s over the card.
+#
+# .Trashes too, by Eric's choice the same day: it is the Mac's Trash for this
+# card, files deleted in Finder and never emptied - 748 MB of them on the test
+# card - and on a handheld "deleted" is expected to mean gone. The cost is that
+# a file trashed there by mistake cannot be put back once the Brick has booted.
+# First, so the find below does not walk it. busybox find has no -delete, and
+# -exec is used rather than xargs because these names contain spaces.
 ( sleep 8
-  find /mnt/SDCARD -name '._*' -exec rm -f {} \; ) >/dev/null 2>&1 &
+  rm -rf /mnt/SDCARD/.Trashes /mnt/SDCARD/.Spotlight-V100 /mnt/SDCARD/.fseventsd \
+         /mnt/SDCARD/.TemporaryItems
+  find /mnt/SDCARD \( -name '._*' -o -name '.DS_Store' -o -name 'Thumbs.db' \
+       -o -name 'desktop.ini' \) -type f -exec rm -f {} \;
+) >/dev/null 2>&1 &
 
 # Restart loop: only ever exits for a power-off.
 cd "$TORTOS_DIR"
