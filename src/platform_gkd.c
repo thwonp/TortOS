@@ -429,14 +429,18 @@ void plat_settings_init(void)
 	cur_bright = b >= 0 ? clampi(b, 0, BRIGHT_MAX) : BRIGHT_MAX / 2;
 	if (cur_vol >= 0) apply_volume(cur_vol);
 	apply_brightness(cur_bright);
+	plat_mute_switch_lock(db_get_int(db_dev(), "muteswitch", 0) == 1);
 }
 
 void plat_audio_jack_poll(void) { }
 bool plat_headphones_present(void) { return false; }
 bool plat_mute_poll(bool own_volume) { (void)own_volume; return false; }
 bool plat_muted(void) { return false; }
-void plat_mute_switch_lock(bool lock) { (void)lock; }
-bool plat_hold_switch(void) { return false; }
+/* No switch: Muse Settings' Sleep Button Lock stands in for the Brick's
+ * switch held down in button lock (gkd.34), under the same db key. */
+static bool button_lock;
+void plat_mute_switch_lock(bool lock) { button_lock = lock; }
+bool plat_hold_switch(void) { return button_lock; }
 
 /* Real suspend through systemd, so ROCKNIX's system-sleep hook runs - it
  * brings Wi-Fi back, among other things. By starting suspend.target, not

@@ -6435,7 +6435,15 @@ static int muse_set_build(void *ctx, menu_row *rows, int max,
 	                      true };
 	rows[1] = (menu_row){ "Screen Off",
 	                      MUSE_SCREEN_OFF_LABEL[muse_screen_off_at()], true };
+#if defined(PLATFORM_GKD)
+	/* The GKD has no switch to hold, so this is it (gkd.34) - see
+	 * plat_hold_switch. The Brick's Mute Switch row's db key. */
+	rows[2] = (menu_row){ "Sleep Button Lock",
+	                      plat_hold_switch() ? "On" : "Off", true };
+	return 3;
+#else
 	return 2;
+#endif
 }
 
 /* Wake is a toggle, so A flips it as well as left/right - as Mute Switch.
@@ -6457,6 +6465,15 @@ static menu_result muse_set_key(app *a, void *ctx, in_button key, int sel)
 		else if (at < MUSE_SCREEN_OFF_COUNT - 1) at++;
 		db_set_int(db_dev(), "muse.screenoff", MUSE_SCREEN_OFF[at]);
 	}
+#if defined(PLATFORM_GKD)
+	/* Sleep Button Lock: a toggle, like Wake. */
+	if (sel == 2 && (key == IN_LEFT || key == IN_RIGHT || key == IN_ACCEPT)) {
+		bool lock = !plat_hold_switch();
+
+		db_set_int(db_dev(), "muteswitch", lock);
+		plat_mute_switch_lock(lock);
+	}
+#endif
 	return MENU_STAY;
 }
 
@@ -6720,6 +6737,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 	}
 	/* Mute Switch: a toggle, so A flips it as well as left/right
 	 * (TortOS-ib9). */
+#if !defined(PLATFORM_GKD)
 	if (sel == PM_MUTESW && (d || key == IN_ACCEPT)) {
 		bool lock = db_get_int(db_dev(), "muteswitch", 0) != 1;
 
@@ -6727,6 +6745,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		plat_mute_switch_lock(lock);
 		return MENU_STAY;
 	}
+#endif
 	/* Text size, same idiom. Changing it reopens every font, so the whole UI
 	 * is rebuilt: the panel's cached width is measured from font metrics, and
 	 * any card generated for a game with no box art has its title baked in at

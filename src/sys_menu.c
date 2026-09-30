@@ -128,8 +128,10 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	/* TortOS-ib9: what the side switch does. Button Lock is an iPod's hold
 	 * switch, and only while music plays with the screen off - music_dark.
 	 * "muse" in the value says so (TortOS-mhw). */
+#if !defined(PLATFORM_GKD)
 	out[PM_MUTESW]       = (menu_row){ "Mute Switch",
 	                                   u->mute_lock ? "muse button lock" : "mute", true };
+#endif
 	/* Both change how the shelf looks and nothing about what is on it. They
 	 * are what is left of that group: Text Size stood here until the band it
 	 * offered turned out to be too narrow to matter - src/ui.c. */
