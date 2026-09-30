@@ -1969,6 +1969,9 @@ static void on_game_tick(void)
 	g_game_ticking = true;             /* see bt_volume_follow */
 	aout_apply(false);
 	g_game_ticking = false;
+#if defined(PLATFORM_GKD)
+	plat_sink_follow(true);
+#endif
 	aout_retry_in_game();
 
 

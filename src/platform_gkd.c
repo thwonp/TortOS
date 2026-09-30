@@ -292,6 +292,7 @@ void plat_input_poll(in_state *st)
 	pad_read(st);
 	keys_read(st);
 	power_read(st);
+	plat_sink_follow(false);
 }
 
 void plat_leds_off(void) { }
@@ -503,6 +504,8 @@ static void jack_init(void)
  * when a sink comes, goes or the default changes - plus the jack watchdog's
  * pin and the player's setting, both looked at every 250 ms for nothing. */
 static bool route_bt;               /* PipeWire has a Bluetooth sink */
+static int  sink_level = -1;        /* the default sink's volume, in rungs */
+static int  wpctl_level(void);
 
 void plat_audio_speaker_only(bool on) { __atomic_store_n(&route_speaker_only, on, __ATOMIC_RELAXED); }
 bool plat_bt_audio(void) { return __atomic_load_n(&route_bt, __ATOMIC_RELAXED); }
@@ -610,6 +613,10 @@ static void *route_worker(void *arg)
 				dirty   = true;
 			}
 			if (dirty) route_eval(&on_bt);
+			/* After route_eval, so a new default is the one read. Every
+			 * volume set - ours, Diatom's, a headset's - is a sink change. */
+			if (dirty || (p.revents && strstr(buf, "'change' on sink #")))
+				__atomic_store_n(&sink_level, wpctl_level(), __ATOMIC_RELAXED);
 		}
 		close(fd[0]);
 		if (pid > 0) { kill(pid, SIGTERM); waitpid(pid, NULL, 0); }
@@ -708,6 +715,32 @@ static int wpctl_level(void)
 		lv = clampi((int)(v * VOL_MAX + 0.5f), 0, VOL_MAX);
 	pclose(f);
 	return lv;
+}
+
+/* The output's own volume, when something other than a level set here or by
+ * Diatom moved it: a headset's buttons, which PipeWire takes as the sink's
+ * (bluez5.hw-volume), or a change of output, since each sink keeps its own.
+ * Adopted once the sink has disagreed with the level for half a second - a
+ * set of ours lands in tens of ms, and a headset's echo of it rounds to the
+ * same rung, so only a change from outside lasts. On the shelf it is a nudge
+ * (slider, saved; the sink snaps onto the ladder's 5 % rungs); in a game it
+ * goes to Diatom, which owns the level while it runs. */
+void plat_sink_follow(bool game)
+{
+	static unsigned since;
+	static int seen = -1;
+	int count, resident = plat_resident_volume(&count);
+	int have = game && resident >= 0 ? resident : cur_vol;
+	int want = __atomic_load_n(&sink_level, __ATOMIC_RELAXED);
+	unsigned now = plat_now_ms();
+
+	if (want < 0 || have < 0 || want == have) { seen = -1; return; }
+	if (want != seen) { seen = want; since = now; return; }
+	if (now - since < 500) return;
+	seen = -1;
+	fprintf(stderr, "audio: output is at level %d, was %d\n", want, have);
+	if (game) plat_resident_line("SETLEVEL\tkind=volume\tindex=%d\tcount=%d", want, VOL_MAX + 1);
+	else      plat_volume_nudge(want - have);
 }
 
 void plat_settings_init(void)
