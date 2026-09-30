@@ -8656,17 +8656,43 @@ static const char *const RW_NAME[] = { "1x", "2x", "3x", "5x", "10x", "Disabled"
 #define HK_SCREEN_ROWS HK_ROW_COUNT
 #endif
 
+/* Press-to-bind's inputs, the stick ahead of the d-pad: a stick push also
+ * sets the plain direction in the same frame, and the first match wins. */
+static const struct { in_button b; int hk; } HK_CAPTURE[] = {
+	{ IN_L1, HK_IN_L1 }, { IN_R1, HK_IN_R1 }, { IN_L2, HK_IN_L2 }, { IN_R2, HK_IN_R2 },
+	{ IN_ACCEPT, HK_IN_A }, { IN_BACK, HK_IN_B }, { IN_X, HK_IN_X }, { IN_Y, HK_IN_Y },
+	{ IN_SUP, HK_IN_SUP }, { IN_SDOWN, HK_IN_SDOWN },
+	{ IN_SLEFT, HK_IN_SLEFT }, { IN_SRIGHT, HK_IN_SRIGHT },
+	{ IN_UP, HK_IN_UP }, { IN_DOWN, HK_IN_DOWN },
+	{ IN_LEFT, HK_IN_LEFT }, { IN_RIGHT, HK_IN_RIGHT },
+};
+
+/* The launcher key behind a modifier's wire name (plat_hotkey_modifiers). */
+static in_button hk_modifier_button(const char *wire)
+{
+	if (!strcmp(wire, "select")) return IN_SELECT;
+	if (!strcmp(wire, "l3"))     return IN_L3;
+	if (!strcmp(wire, "home"))   return IN_HOME;
+	return IN_MENU;
+}
+
 static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 {
 	/* Row 0 is the modifier (global, diatom's ADR-0038); the action rows
-	 * follow it, action i at row i + 1; on the GKD, Rewind Speed is last. */
+	 * follow it, action i at row i + 1; on the GKD, Rewind Speed is last. The
+	 * rule and legend are drawn after them and are never selected. */
 	enum { MOD_ROW = 0, FIRST_ACT = 1, ROWS = HK_SCREEN_ROWS + 1 };
 	int trig_for_row[HK_ROW_COUNT];
-	menu_row rows[ROWS];
+	menu_row rows[ROWS + 2];
 	char vals[HK_ROW_COUNT][32];
 	const char *const *mod_wire, *const *mod_label;
 	int nmods = plat_hotkey_modifiers(&mod_wire, &mod_label);
 	int mod = 0, sel = 0, done = 0, i;
+	/* Press-to-bind (plorpos-gkd.43.3): A on an action row waits for the
+	 * next trigger. Only a lone MENU tap cancels - B is bindable, and MENU
+	 * held is the default modifier - so it is judged on the release. */
+	bool capturing = false, menu_tap = false;
+	bool changed = false;
 	char spec[128];
 
 	hk_parse(plat_hotkey_map(tag), trig_for_row);
@@ -8687,61 +8713,78 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	while (!done && !want_quit) {
 		plat_input_poll(&a->in);
 
-		if (in_repeat(&a->in, IN_UP))   sel = (sel + ROWS - 1) % ROWS;
-		if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % ROWS;
+		if (capturing) {
+			int act = sel - FIRST_ACT, t = 0;
+			bool held = a->in.down[hk_modifier_button(mod_wire[mod])];
+			size_t k;
 
-		{
-			int d = 0;
-
-			if (in_repeat(&a->in, IN_LEFT))  d = -1;
-			if (in_repeat(&a->in, IN_RIGHT)) d = 1;
-#if defined(PLATFORM_GKD)
-			if (d && sel == RW_ROW) {
-				rw = (rw + d + RW_COUNT) % RW_COUNT;
-				db_set_int(db_dev(), "rewindspeed", RW_EVERY[rw]);
-				plat_resident_line("SETREWINDSPEED\tevery=%d", RW_EVERY[rw]);
-				d = 0;
+			for (k = 0; k < sizeof HK_CAPTURE / sizeof HK_CAPTURE[0] && !t; k++)
+				if (a->in.pressed[HK_CAPTURE[k].b])
+					t = hk_trig_from(HK_CAPTURE[k].hk, held);
+			if (t) {
+				/* Taken from whichever row held it: one trigger, one action. */
+				for (i = 0; i < HK_ROW_COUNT; i++)
+					if (trig_for_row[i] == t) trig_for_row[i] = 0;
+				trig_for_row[act] = t;
+				capturing = false;
+				changed = true;
+			} else if (a->in.pressed[IN_MENU]) {
+				menu_tap = true;
+			} else if (a->in.down[IN_MENU]) {
+				for (k = 0; k < IN_COUNT; k++)
+					if (k != IN_MENU && a->in.pressed[k]) menu_tap = false;
+			} else if (menu_tap) {
+				capturing = menu_tap = false;   /* a lone tap, released */
 			}
-#endif
-			if (d && sel == MOD_ROW) {
-				mod = (mod + d + nmods) % nmods;
-				plat_hotkey_modifier_set(mod_wire[mod]);
-			} else if (d) {
-				/* Skip candidates another row already holds, rather than
-				 * landing on one and clearing that row out from under it -
-				 * cycling past a taken trigger while looking for a further
-				 * one used to steal it with no way to tell "passing
-				 * through" from "selecting". A row is freed the same way
-				 * it is claimed: cycle it to None first. Stick triggers
-				 * are skipped too where there is no stick. Stopgap list;
-				 * plorpos-gkd.43.3 replaces it with press-to-bind. */
-				int act = sel - FIRST_ACT;
-				int nt = trig_for_row[act];
-				int tries;
+		} else {
+			if (in_repeat(&a->in, IN_UP))   sel = (sel + ROWS - 1) % ROWS;
+			if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % ROWS;
 
-				for (tries = 0; tries < HK_TRIG_COUNT; tries++) {
-					nt = (nt + d + HK_TRIG_COUNT) % HK_TRIG_COUNT;
-					if (nt == 0) break;
-					if (hk_trig_stick(nt) && !plat_has_stick()) continue;
-					for (i = 0; i < HK_ROW_COUNT; i++)
-						if (i != act && trig_for_row[i] == nt) break;
-					if (i == HK_ROW_COUNT) break;   /* nt is free */
+			if (sel == MOD_ROW) {
+				int d = 0;
+
+				if (in_repeat(&a->in, IN_LEFT))  d = -1;
+				if (in_repeat(&a->in, IN_RIGHT)) d = 1;
+				if (d) {
+					mod = (mod + d + nmods) % nmods;
+					plat_hotkey_modifier_set(mod_wire[mod]);
+					changed = true;
 				}
-				trig_for_row[act] = nt;
+#if defined(PLATFORM_GKD)
+			} else if (sel == RW_ROW) {
+				int d = 0;
+
+				if (in_repeat(&a->in, IN_LEFT))  d = -1;
+				if (in_repeat(&a->in, IN_RIGHT)) d = 1;
+				if (d) {
+					rw = (rw + d + RW_COUNT) % RW_COUNT;
+					db_set_int(db_dev(), "rewindspeed", RW_EVERY[rw]);
+					plat_resident_line("SETREWINDSPEED\tevery=%d", RW_EVERY[rw]);
+				}
+#endif
+			} else if (a->in.pressed[IN_ACCEPT]) {
+				capturing = true;
+				menu_tap = false;
+			} else if (a->in.pressed[IN_X] && trig_for_row[sel - FIRST_ACT]) {
+				trig_for_row[sel - FIRST_ACT] = 0;
+				changed = true;
 			}
-			if (d) {
-				hk_serialize(trig_for_row, spec, sizeof spec);
-				if (sel != MOD_ROW) plat_hotkey_set(tag, spec);
-				/* Live, not only persisted: this screen is only ever open
-				 * mid-session (reached from the in-game menu), so the
-				 * change should take hold without the player having to
-				 * quit and relaunch to see it. */
-				plat_resident_line("SETHOTKEYS\thotkeys=%s\tmodifier=%s",
-				                   spec, mod_wire[mod]);
-			}
+
+			if (menu_leaving(a)) done = 1;
 		}
 
-		if (menu_leaving(a)) done = 1;
+		if (changed) {
+			hk_serialize(trig_for_row, spec, sizeof spec);
+			plat_hotkey_set(tag, spec);
+			/* Live, not only persisted: this screen is only ever open
+			 * mid-session (reached from the in-game menu), so the change
+			 * should take hold without the player having to quit and
+			 * relaunch to see it. */
+			plat_resident_line("SETHOTKEYS\thotkeys=%s\tmodifier=%s",
+			                   spec, mod_wire[mod]);
+			changed = false;
+		}
+
 		{
 			pwr_action pa = power_check(a);
 			if (pa == PWR_POWEROFF) {
@@ -8752,19 +8795,26 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 		}
 
 		rows[MOD_ROW] = (menu_row){ "Hotkey Modifier", mod_label[mod], true };
-		for (i = 0; i < HK_ROW_COUNT; i++)
-			snprintf(vals[i], sizeof vals[i], "%s%s%s",
-			         hk_trig_mod(trig_for_row[i]) ? mod_label[mod] : "",
-			         hk_trig_mod(trig_for_row[i]) ? " + " : "",
-			         HK_TRIG_NAME[trig_for_row[i]]);
-		for (i = 0; i < HK_ROW_COUNT; i++)
+		for (i = 0; i < HK_ROW_COUNT; i++) {
+			int t = trig_for_row[i];
+
+			if (capturing && i == sel - FIRST_ACT)
+				snprintf(vals[i], sizeof vals[i], "Press...");
+			else
+				snprintf(vals[i], sizeof vals[i], "%s%s%s",
+				         hk_trig_mod(t) ? mod_label[mod] : "",
+				         hk_trig_mod(t) ? " + " : "", HK_TRIG_NAME[t]);
 			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[i], vals[i], true };
+		}
 #if defined(PLATFORM_GKD)
 		rows[RW_ROW] = (menu_row){ "Rewind Speed", RW_NAME[rw], true };
 #endif
+		rows[ROWS] = MENU_RULE;
+		rows[ROWS + 1] = MENU_NOTE(capturing ? "Press a button    Menu: cancel"
+		                                     : "A: set    X: clear");
 
 		chv_backdrop(a, bg, false);
-		menu_draw(a, "Hotkeys", rows, ROWS, sel, 0, MENU_ACCENT);
+		menu_draw(a, "Hotkeys", rows, ROWS + 2, sel, 0, MENU_ACCENT);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}

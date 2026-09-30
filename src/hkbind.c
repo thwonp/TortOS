@@ -27,6 +27,13 @@ enum { HK_FIRST_DIRECT = 9, HK_FIRST_DPAD = 17, HK_FIRST_STICK = 21 };
 
 int hk_trig_mod(int t)   { return t > 0 && (t < HK_FIRST_DIRECT || t >= HK_FIRST_DPAD); }
 int hk_trig_stick(int t) { return t >= HK_FIRST_STICK && t < HK_TRIG_COUNT; }
+
+int hk_trig_from(int input, int mod)
+{
+	if (input < 0 || input >= HK_IN_COUNT) return 0;
+	if (input < HK_IN_UP) return (mod ? 1 : HK_FIRST_DIRECT) + input;
+	return mod ? HK_FIRST_DPAD + (input - HK_IN_UP) : 0;
+}
 const char *const HK_ACTION_LABEL[] = {
 	"Fast-Forward", "Rewind", "Quick Save", "Quick Load", "Display Mode", "Screen Filter"
 };

@@ -261,6 +261,9 @@ static in_button map_joy_button(int jb)
 	case JOY_START: return IN_START;
 	case JOY_SELECT: return IN_SELECT;
 	case JOY_MENU: return IN_MENU;
+	/* The Pro's left stick click. The plain Brick's 9 is its front
+	 * brightness key, read from the raw node in poll_raw_fd. */
+	case JOY_L3: return plat_is_brick_pro() ? IN_L3 : IN_NONE;
 	case JOY_VOLUP: return IN_VOLUP;
 	case JOY_VOLDN: return IN_VOLDN;
 	default: return IN_NONE;
@@ -325,6 +328,8 @@ static void set_dirs(in_state *st)
 	set_btn(st, IN_RIGHT, hat_dir[1] || stick_dir[1]);
 	set_btn(st, IN_UP,    hat_dir[2] || stick_dir[2]);
 	set_btn(st, IN_DOWN,  hat_dir[3] || stick_dir[3]);
+	for (int i = 0; i < 4; i++)
+		set_btn(st, (in_button)(IN_SLEFT + i), stick_dir[i]);
 }
 
 void plat_input_poll(in_state *st)
@@ -368,6 +373,11 @@ void plat_input_poll(in_state *st)
 				stick_axis(&stick_dir[e.jaxis.axis == 0 ? 0 : 2], e.jaxis.value);
 				set_dirs(st);
 			}
+			/* L2/R2: axes 2 and 5, resting at -32768 and slamming to
+			 * +32767 - digital switches in axis clothing, as diatom reads
+			 * them. Only the Hotkeys screen listens. */
+			if (e.jaxis.axis == 2 || e.jaxis.axis == 5)
+				set_btn(st, e.jaxis.axis == 2 ? IN_L2 : IN_R2, e.jaxis.value > 16384);
 			break;
 		case SDL_JOYDEVICEADDED:
 			if (!joy) open_joystick();

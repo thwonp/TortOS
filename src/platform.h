@@ -58,6 +58,12 @@ typedef enum {
 	IN_L1, IN_R1, IN_START, IN_SELECT, IN_MENU,
 	IN_VOLUP, IN_VOLDN, IN_BRIGHTUP, IN_BRIGHTDN,
 	IN_POWER,
+	/* For the Hotkeys screen's press-to-bind (plorpos-gkd.43.3) - nothing
+	 * else acts on them. The stick still drives IN_LEFT..IN_DOWN as well, so
+	 * every menu scrolls with it as before; IN_SLEFT..IN_SDOWN say it was the
+	 * stick, set in the same frame. Order: left, right, up, down. */
+	IN_L2, IN_R2, IN_L3, IN_HOME,
+	IN_SLEFT, IN_SRIGHT, IN_SUP, IN_SDOWN,
 	IN_COUNT,
 	IN_NONE = -1,
 } in_button;
