@@ -40,8 +40,9 @@ and stays up for the life of the session. The launcher hands it a game as a
 and the card preview live, and reads back what actually happened: `RUNNING`,
 `EXIT reason=`, or an `ERROR code=` it can show.
 
-A warm launch - the process up, the core already mapped - is **~15 ms** to
-`RUNNING`. Every core is mapped at startup, during the boot animation, and
+A warm launch - the process up, the core already mapped - is **26 to 44 ms**
+from `RUN` to `RUNNING`, and about 70 ms from pressing A, measured on Contra
+on the device. Every core is mapped at startup, during the boot animation, and
 never unloaded, so no launch pays for opening one: six mapped plus one running
 measured **15.0 MB** against the device's 975, which is what makes holding all
 of them affordable rather than reckless. They are opened `RTLD_LOCAL`, so
