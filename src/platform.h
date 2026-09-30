@@ -30,6 +30,9 @@ void paths_init(void);
  * differences are its sticks, its buttons and one more ring of LEDs. */
 bool plat_is_brick_pro(void);
 
+/* A stick whose directions can be hotkey triggers (diatom ADR-0039). */
+bool plat_has_stick(void);
+
 typedef enum {
 	IN_LEFT, IN_RIGHT, IN_UP, IN_DOWN,
 	IN_ACCEPT, IN_BACK, IN_X, IN_Y,

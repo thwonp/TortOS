@@ -60,6 +60,8 @@ bool plat_is_brick_pro(void)
 	return pro;
 }
 
+bool plat_has_stick(void) { return plat_is_brick_pro(); }
+
 /* SDL joystick button indices on the Brick's "TRIMUI Player1" device.
  *
  * SDL numbers these in ascending evdev-code order and the device declares
