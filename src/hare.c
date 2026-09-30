@@ -45,6 +45,7 @@ static int      g_uploads;
 static bool     g_shelf_changed;  /* something the shelf would show has moved */
 static char     g_last[128];
 static bool   (*g_pack_logs)(char *path, size_t pn, char *name, size_t nn);
+static void   (*g_before_delete)(const char *abs);
 static unsigned long g_in, g_out;
 
 /* ---- randomness ------------------------------------------------------ */
@@ -250,6 +251,65 @@ bool hare_shelf_changed(void) { return g_shelf_changed; }
 void hare_set_logs(bool (*pack)(char *path, size_t pn, char *name, size_t nn))
 {
 	g_pack_logs = pack;
+}
+
+void hare_set_before_delete(void (*fn)(const char *abs)) { g_before_delete = fn; }
+
+/* ---- a folder and everything in it ----------------------------------------
+ *
+ * lstat, so a link is removed and never followed. The card is vfat and has no
+ * links (see xfer.h), and this would still not walk out of a root if it ever
+ * had one. Deep enough for any album or disc game; a folder deeper than this
+ * is counted as too big rather than half deleted. */
+#define TREE_DEPTH 12
+
+/* Files and folders under `dir`, stopping once past `cap`. */
+static int tree_count(const char *dir, int depth, int cap, int *files, int *folders)
+{
+	DIR *d;
+	struct dirent *e;
+	int n = 0;
+
+	if (depth > TREE_DEPTH) return cap + 1;
+	if (!(d = opendir(dir))) return 0;
+	while ((e = readdir(d)) && n <= cap) {
+		char p[XFER_PATH_MAX];
+		struct stat st;
+
+		if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+		if (snprintf(p, sizeof p, "%s/%s", dir, e->d_name) >= (int)sizeof p) continue;
+		if (lstat(p, &st) != 0) continue;
+		n++;
+		if (S_ISDIR(st.st_mode)) {
+			(*folders)++;
+			n += tree_count(p, depth + 1, cap - n, files, folders);
+		} else {
+			(*files)++;
+		}
+	}
+	closedir(d);
+	return n;
+}
+
+static bool tree_delete(const char *dir, int depth)
+{
+	DIR *d;
+	struct dirent *e;
+	bool ok = true;
+
+	if (depth > TREE_DEPTH || !(d = opendir(dir))) return false;
+	while ((e = readdir(d))) {
+		char p[XFER_PATH_MAX];
+		struct stat st;
+
+		if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+		if (snprintf(p, sizeof p, "%s/%s", dir, e->d_name) >= (int)sizeof p) { ok = false; continue; }
+		if (lstat(p, &st) != 0) continue;
+		if (S_ISDIR(st.st_mode)) ok = tree_delete(p, depth + 1) && ok;
+		else if (remove(p) != 0) ok = false;
+	}
+	closedir(d);
+	return rmdir(dir) == 0 && ok;
 }
 
 /* The name a listing shows for a path, or "" for a root. */
@@ -673,13 +733,39 @@ static void on_request(httpd_req *r, bool done, void *ctx)
 			return;
 		}
 		if (stat(abs, &st) != 0) { httpd_reply_status(r, 404, "not there"); return; }
-		/* rmdir, not a recursive delete. One click should not be able to take
-		 * a whole system's ROMs, and a folder that has to be emptied first is
-		 * a confirmation nobody has to design. */
+		/* A folder goes as xfer_delete_rule says, and only with everything
+		 * in it when the page asked for that by name (all=1), having shown
+		 * what is inside first - see /api/count. It was rmdir alone once:
+		 * one click should not take a whole system's ROMs, and a folder
+		 * that had to be emptied first was a confirmation nobody had to
+		 * design. That still holds where it matters, and an album or a
+		 * book no longer has to be emptied a file at a time. */
 		if (S_ISDIR(st.st_mode)) {
+			const char *why;
+			xfer_del rule = xfer_delete_rule(abs, &why);
+			char all[4];
+
+			httpd_query(r, "all", all, sizeof all);
+			if (rule == XFER_DEL_NO) { httpd_reply_status(r, 403, why); return; }
 			if (rmdir(abs) != 0) {
-				httpd_reply_status(r, 409, "that folder is not empty");
-				return;
+				int files = 0, folders = 0, n;
+
+				if (rule != XFER_DEL_ALL) { httpd_reply_status(r, 409, why); return; }
+				if (strcmp(all, "1") != 0) {
+					httpd_reply_status(r, 409, "that folder is not empty");
+					return;
+				}
+				n = tree_count(abs, 0, HARE_DELETE_MAX, &files, &folders);
+				if (n > HARE_DELETE_MAX) {
+					httpd_reply_status(r, 413, "too much in one go; delete it in parts");
+					return;
+				}
+				if (g_before_delete) g_before_delete(abs);
+				if (!tree_delete(abs, 0)) {
+					httpd_reply_status(r, 500, "some of it could not be deleted");
+					note_write(abs);
+					return;
+				}
 			}
 		} else if (remove(abs) != 0) {
 			httpd_reply_status(r, 500, strerror(errno));
@@ -688,6 +774,45 @@ static void on_request(httpd_req *r, bool done, void *ctx)
 		note_write(abs);
 		note("deleted %s", base_of(abs));
 		httpd_reply(r, 200, "text/plain", "ok", 2, NULL);
+		return;
+	}
+
+	/* What deleting a folder would take, asked before the page asks you:
+	 * how much is in it, and whether it may go whole, only empty, or not at
+	 * all - xfer_delete_rule, with the reason when it will not. */
+	if (!strcmp(path, "/api/count") && !strcmp(m, "GET")) {
+		char req[XFER_PATH_MAX], abs[XFER_PATH_MAX];
+		const char *why, *rule;
+		int files = 0, folders = 0, n;
+		struct stat st;
+		jbuf j = { 0 };
+
+		if (!done) httpd_want_body(r, HTTPD_BODY_NONE, NULL);
+		httpd_query(r, "p", req, sizeof req);
+		if (!xfer_resolve(req, abs, sizeof abs)) {
+			httpd_reply_status(r, 403, "not somewhere you can look");
+			return;
+		}
+		if (stat(abs, &st) != 0 || !S_ISDIR(st.st_mode)) {
+			httpd_reply_status(r, 404, "not a folder");
+			return;
+		}
+		switch (xfer_delete_rule(abs, &why)) {
+		case XFER_DEL_ALL:   rule = "all";   break;
+		case XFER_DEL_EMPTY: rule = "empty"; break;
+		default:             rule = "no";    break;
+		}
+		n = tree_count(abs, 0, HARE_DELETE_MAX, &files, &folders);
+		j.p = malloc(512);
+		if (!j.p) { httpd_reply_status(r, 500, "out of memory"); return; }
+		j.cap = 512;
+		jfmt(&j, "{\"files\":%d,\"folders\":%d,\"too_many\":%s,\"rule\":\"%s\",\"why\":",
+		     files, folders, n > HARE_DELETE_MAX ? "true" : "false", rule);
+		jstr(&j, why);
+		jfmt(&j, "}");
+		if (j.over) httpd_reply_status(r, 500, "reply too long");
+		else        httpd_reply(r, 200, "application/json", j.p, j.used, NULL);
+		free(j.p);
 		return;
 	}
 

@@ -115,6 +115,38 @@ int main(void)
 	 * the shape of an attack rather than its meaning. */
 	allow("roms/..%2e/x", "/mnt/SDCARD/Roms/.../x");
 
+	printf("  what a delete may take:\n");
+	{
+		static const struct { const char *abs; xfer_del want; } t[] = {
+			{ "/mnt/SDCARD/Roms",                             XFER_DEL_NO },
+			{ "/mnt/SDCARD/Music",                            XFER_DEL_NO },
+			{ "/mnt/SDCARD/Audiobooks",                       XFER_DEL_NO },
+			{ "/mnt/SDCARD/Bios",                             XFER_DEL_NO },
+			{ "/mnt/SDCARD/.userdata/shared/.tortos",         XFER_DEL_NO },
+			{ "/mnt/SDCARD/Roms/NES",                         XFER_DEL_EMPTY },
+			{ "/mnt/SDCARD/Roms/NES/Some Disc Game",          XFER_DEL_ALL },
+			{ "/mnt/SDCARD/Roms/NES/.media",                  XFER_DEL_ALL },
+			{ "/mnt/SDCARD/Music/Radiohead",                  XFER_DEL_ALL },
+			{ "/mnt/SDCARD/Music/Radiohead/The Bends",        XFER_DEL_ALL },
+			{ "/mnt/SDCARD/Audiobooks/Some Book",             XFER_DEL_ALL },
+			{ "/mnt/SDCARD/Saves/NES",                        XFER_DEL_EMPTY },
+			{ "/mnt/SDCARD/Bios/sub",                         XFER_DEL_EMPTY },
+			{ "/mnt/SDCARD/.userdata/shared/.tortos/NES",     XFER_DEL_EMPTY },
+			{ "/mnt/SDCARD/Roms/",                            XFER_DEL_NO },
+			{ "/mnt/SDCARD/TortOS",                           XFER_DEL_NO },
+			{ "/mnt/SDCARD/Musical",                          XFER_DEL_NO },
+		};
+		size_t k;
+		const char *why;
+
+		for (k = 0; k < sizeof t / sizeof t[0]; k++)
+			CHECK(xfer_delete_rule(t[k].abs, &why) == t[k].want,
+			      "%s: got %d, wanted %d", t[k].abs, xfer_delete_rule(t[k].abs, NULL),
+			      t[k].want);
+		xfer_delete_rule("/mnt/SDCARD/Roms/NES", &why);
+		CHECK(why && why[0], "and a reason when it will not");
+	}
+
 	printf("  climbing out, in every shape:\n");
 	deny("roms/../TortOS/tortos.elf", "the launcher, overwritable from a phone");
 	deny("roms/..", "one level is all it takes");

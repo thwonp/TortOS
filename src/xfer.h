@@ -56,6 +56,25 @@ const xfer_root *xfer_root_at(int i);
  * and that is the caller's question, not this one's. */
 bool xfer_resolve(const char *url_path, char *out, size_t outn);
 
+/* WHAT A DELETE MAY TAKE, for a folder `abs` that resolved into a root.
+ *
+ * A file is always the file alone. A folder is one of three, decided here and
+ * enforced by the server rather than trusted to the page:
+ *
+ *   NO     a root itself, even empty: TortOS's own folders, and the ones
+ *          Over The Hare recreates when it starts anyway
+ *   EMPTY  only once it is empty: a console's folder under ROMs, so one click
+ *          cannot take every game for a system; a console's save states; and
+ *          anything in BIOS or Saves, which are flat by design
+ *   ALL    with everything in it: a game's own folder inside a console, an
+ *          artist, an album, a book - the things a person deletes whole
+ *
+ * Eric's, 2026-09-29. `why`, when not NULL, is set to a line the page can show
+ * for NO and EMPTY. Pure, and decided on the resolved path, so no spelling of
+ * a URL reaches a different answer. */
+typedef enum { XFER_DEL_NO, XFER_DEL_EMPTY, XFER_DEL_ALL } xfer_del;
+xfer_del xfer_delete_rule(const char *abs, const char **why);
+
 /* Percent-decoding on its own, for values that are NOT paths: a rename's
  * destination, a PIN. Same decoder xfer_resolve uses, exposed rather than
  * copied, because a second decoder is a second set of rules about what "%2e"

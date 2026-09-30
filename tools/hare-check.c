@@ -425,6 +425,57 @@ int main(void)
 		}
 	}
 
+	printf("  deleting a folder with what is in it, where that is allowed:\n");
+	{
+		char p[512], body[1024];
+		struct stat st;
+		FILE *f;
+		int i;
+
+		snprintf(p, sizeof p, "%s/Music/Artist", g_card);          mkdir(p, 0777);
+		snprintf(p, sizeof p, "%s/Music/Artist/Album", g_card);    mkdir(p, 0777);
+		snprintf(p, sizeof p, "%s/Music/Artist/Album/01 A.mp3", g_card);
+		if ((f = fopen(p, "w"))) fclose(f);
+		snprintf(p, sizeof p, "%s/Music/Artist/Album/02 B.mp3", g_card);
+		if ((f = fopen(p, "w"))) fclose(f);
+		snprintf(p, sizeof p, "%s/NES/Kept.nes", g_roms);
+		if ((f = fopen(p, "w"))) fclose(f);
+
+		CHECK(req("GET", "/api/count?p=music/Artist", g_cookie, NULL, 0, body, sizeof body) == 200 &&
+		      json_ok(body) && strstr(body, "\"files\":2") && strstr(body, "\"folders\":1") &&
+		      strstr(body, "\"rule\":\"all\""),
+		      "what an artist's folder holds, and that it may go whole: %s", body);
+		CHECK(post("/api/delete?p=music/Artist", g_cookie) == 409,
+		      "a full folder went without all=1");
+		CHECK(post("/api/delete?p=music/Artist&all=1", g_cookie) == 200,
+		      "an artist's folder did not go whole");
+		snprintf(p, sizeof p, "%s/Music/Artist", g_card);
+		CHECK(stat(p, &st) != 0, "the artist's folder is still there");
+
+		CHECK(req("GET", "/api/count?p=roms/NES", g_cookie, NULL, 0, body, sizeof body) == 200 &&
+		      strstr(body, "\"rule\":\"empty\""), "a console's folder is empty-only: %s", body);
+		CHECK(post("/api/delete?p=roms/NES&all=1", g_cookie) == 409,
+		      "A WHOLE CONSOLE'S GAMES WENT IN ONE CLICK");
+		snprintf(p, sizeof p, "%s/NES/Kept.nes", g_roms);
+		CHECK(stat(p, &st) == 0, "a game went with the refused console folder");
+
+		CHECK(post("/api/delete?p=music", g_cookie) == 403, "an empty root was deleted");
+		snprintf(p, sizeof p, "%s/Music", g_card);
+		CHECK(stat(p, &st) == 0, "the Music folder is gone");
+		CHECK(post("/api/delete?p=roms&all=1", g_cookie) == 403, "THE ROM ROOT WAS DELETED");
+
+		/* Past the limit it is asked for in parts, and nothing is touched. */
+		snprintf(p, sizeof p, "%s/Music/Big", g_card);             mkdir(p, 0777);
+		for (i = 0; i <= HARE_DELETE_MAX; i++) {
+			snprintf(p, sizeof p, "%s/Music/Big/%04d.mp3", g_card, i);
+			if ((f = fopen(p, "w"))) fclose(f);
+		}
+		CHECK(post("/api/delete?p=music/Big&all=1", g_cookie) == 413,
+		      "a folder past the limit was deleted");
+		snprintf(p, sizeof p, "%s/Music/Big/0000.mp3", g_card);
+		CHECK(stat(p, &st) == 0, "a refused folder lost files");
+	}
+
 	printf("  the lockout, which is what makes four digits a lock:\n");
 	{
 		char wrong[5];

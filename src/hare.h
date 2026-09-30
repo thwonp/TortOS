@@ -46,6 +46,15 @@ void hare_stop(void);
  * download should be called. Unset, the route answers that there are none. */
 void hare_set_logs(bool (*pack)(char *path, size_t pn, char *name, size_t nn));
 
+/* Called with a folder's absolute path just before it is deleted with
+ * everything in it, so the launcher can stop Muse if it is playing a file in
+ * there. Unset, nothing is told. */
+void hare_set_before_delete(void (*fn)(const char *abs));
+
+/* The most a delete takes at once, files and folders together. More than
+ * this is almost certainly the wrong folder, and it is asked for in parts. */
+#define HARE_DELETE_MAX 1000
+
 /* What the screen puts on the panel. `ip` is the LAN address, from wifi. */
 const char *hare_pin(void);
 int         hare_port(void);
