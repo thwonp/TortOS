@@ -529,7 +529,7 @@ checkmark:
 	python3 tools/checkmark.py
 
 payload: all checkmark
-	./mk/payload.sh
+	VERSION=$(VERSION) ./mk/payload.sh
 
 release: payload
 	@echo "out/TortOS-v$(VERSION).zip"
