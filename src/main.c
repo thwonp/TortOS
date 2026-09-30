@@ -8638,12 +8638,32 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
  * than for a protocol. The parser/serializer (hk_parse/hk_serialize) live
  * in hkbind.c/.h, split out under ADR-0001 so a check can drive them with
  * no SDL. */
+#if defined(PLATFORM_GKD)
+/* Rewind Speed, the row under the four bindings (plorpos-gkd.40): one
+ * setting for every system, sent to Diatom as SETREWINDSPEED after each RUN
+ * (platform.c) and live from here. `every` is Diatom's capture cadence,
+ * which IS the speed - one snapshot replayed per displayed frame - and 0 is
+ * off. The ring's memory is fixed, so a slower speed holds less history;
+ * the player chose that trade. 5 matches the GKD build's default. */
+static const int  RW_EVERY[] = { 1, 2, 3, 5, 10, 0 };
+static const char *const RW_NAME[] = { "1x", "2x", "3x", "5x", "10x", "Disabled" };
+#define RW_COUNT ((int)(sizeof RW_EVERY / sizeof RW_EVERY[0]))
+#define HK_SCREEN_ROWS (HK_ROW_COUNT + 1)
+#else
+#define HK_SCREEN_ROWS HK_ROW_COUNT
+#endif
+
 static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 {
 	int btn_for_row[HK_ROW_COUNT];
-	menu_row rows[HK_ROW_COUNT];
+	menu_row rows[HK_SCREEN_ROWS];
 	char vals[HK_ROW_COUNT][8];
 	int sel = 0, done = 0, i;
+#if defined(PLATFORM_GKD)
+	int rw = 0, every = db_get_int(db_dev(), "rewindspeed", 5);
+
+	while (rw < RW_COUNT - 1 && RW_EVERY[rw] != every) rw++;
+#endif
 
 	hk_parse(plat_hotkey_map(tag), btn_for_row);
 
@@ -8653,14 +8673,22 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	while (!done && !want_quit) {
 		plat_input_poll(&a->in);
 
-		if (in_repeat(&a->in, IN_UP))   sel = (sel + HK_ROW_COUNT - 1) % HK_ROW_COUNT;
-		if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % HK_ROW_COUNT;
+		if (in_repeat(&a->in, IN_UP))   sel = (sel + HK_SCREEN_ROWS - 1) % HK_SCREEN_ROWS;
+		if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % HK_SCREEN_ROWS;
 
 		{
 			int d = 0;
 
 			if (in_repeat(&a->in, IN_LEFT))  d = -1;
 			if (in_repeat(&a->in, IN_RIGHT)) d = 1;
+#if defined(PLATFORM_GKD)
+			if (d && sel == HK_ROW_COUNT) {
+				rw = (rw + d + RW_COUNT) % RW_COUNT;
+				db_set_int(db_dev(), "rewindspeed", RW_EVERY[rw]);
+				plat_resident_line("SETREWINDSPEED\tevery=%d", RW_EVERY[rw]);
+				d = 0;
+			}
+#endif
 			if (d) {
 				/* Skip candidates another row already holds, rather than
 				 * landing on one and clearing that row out from under it -
@@ -8705,9 +8733,12 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			snprintf(vals[i], sizeof vals[i], "%s", HK_BTN_NAME[btn_for_row[i]]);
 		for (i = 0; i < HK_ROW_COUNT; i++)
 			rows[i] = (menu_row){ HK_ACTION_LABEL[i], vals[i], true };
+#if defined(PLATFORM_GKD)
+		rows[HK_ROW_COUNT] = (menu_row){ "Rewind Speed", RW_NAME[rw], true };
+#endif
 
 		chv_backdrop(a, bg, false);
-		menu_draw(a, "Hotkeys", rows, HK_ROW_COUNT, sel, 0, MENU_ACCENT);
+		menu_draw(a, "Hotkeys", rows, HK_SCREEN_ROWS, sel, 0, MENU_ACCENT);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
