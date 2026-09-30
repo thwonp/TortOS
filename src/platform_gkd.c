@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/prctl.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -564,24 +565,31 @@ static void route_eval(bool *on_bt)
 
 static void *route_worker(void *arg)
 {
-	extern char **environ;
 	bool on_bt = false;
 	(void)arg;
 
 	for (;;) {
 		char *argv[] = { "pactl", "subscribe", NULL };
-		posix_spawn_file_actions_t fa;
 		int fd[2];
 		pid_t pid;
 		bool speaker = !route_speaker_only, jack = !plat_headphones_present();
 
 		if (pipe(fd) < 0) { sleep(2); continue; }
-		posix_spawn_file_actions_init(&fa);
-		posix_spawn_file_actions_adddup2(&fa, fd[1], STDOUT_FILENO);
-		posix_spawn_file_actions_addclose(&fa, fd[0]);
-		posix_spawn_file_actions_addclose(&fa, fd[1]);
-		if (posix_spawnp(&pid, argv[0], &fa, NULL, argv, environ) != 0) pid = -1;
-		posix_spawn_file_actions_destroy(&fa);
+		/* Not posix_spawn: pactl ignores SIGPIPE itself, so a launcher that
+		 * died would leave it writing into a pipe nobody reads, one more per
+		 * restart. The kernel ends it with the launcher instead - with this
+		 * thread, strictly, which lives as long. */
+		pid_t parent = getpid();
+		pid = fork();
+		if (pid == 0) {
+			prctl(PR_SET_PDEATHSIG, SIGTERM);
+			if (getppid() != parent) _exit(1);      /* died before the prctl */
+			dup2(fd[1], STDOUT_FILENO);
+			close(fd[0]);
+			close(fd[1]);
+			execv("/usr/bin/pactl", argv);
+			_exit(127);
+		}
 		close(fd[1]);
 
 		while (pid > 0) {
