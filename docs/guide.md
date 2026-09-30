@@ -114,7 +114,7 @@ matters to you - a card is the one part of this that gets reformatted.
 | **F1/F2** | brightness, everywhere, including in game |
 | **Left stick** (Brick Pro) | the d-pad, in menus and in game; FN1/FN2 are its brightness keys |
 | **Right stick, stick clicks** (Brick Pro) | nothing, by design: the bundled cores are all digital |
-| **MENU** (on the systems row) | the TortOS menu - settings that are about the firmware |
+| **MENU** (on the systems row) | the plorpOS menu - settings that are about the firmware |
 | **MENU** (inside a system) | that system's menu, below |
 | **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Cheevos, Sleep, Hotkeys, Reset, Quit |
 | **MENU** (inside any menu) | closes the whole menu, however deep in it you are. B goes back one screen |
@@ -124,7 +124,7 @@ matters to you - a card is the one part of this that gets reformatted.
 MENU means three different menus depending on where you are, and each one is
 about the thing you are looking at: the firmware on the systems row, one
 console inside it, the running game in a game. Inside any of them MENU closes
-the whole menu at once - from Play Time or Wi-Fi straight back to where you
+the whole menu at once - from Play Time or Wi-Fi Services straight back to where you
 were, or back into the game - and B goes back one screen at a time.
 
 **The Brick carries this table itself**, under **MENU > Controls**: five pages
@@ -134,26 +134,20 @@ that follows your UI Direction, so the page shows the axes as they are on your
 device rather than all three at once. This guide is the long version of the
 same thing.
 
-The TortOS menu opens from the systems row and is about the device rather
+The plorpOS menu opens from the systems row and is about the device rather
 than any one console:
 
 | | |
 |---|---|
 | **Play Time** | per game or per system, by day, week, month, year or all time |
-| **Wi-Fi** | the network's name when connected, or why it is not |
+| **Wi-Fi Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; **Cheevos**, the RetroAchievements account, or `sign in`; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed - see **Audio** below |
-| **Over The Hare** | the file server; needs Wi-Fi and says so when there is none |
-| **Auto Off** | how long without a button before the device powers itself down instead of sleeping. Setting it turns Auto Sleep to `never`, and the other way round |
-| **Auto Sleep** | how long without a button before the device sleeps, the same as a tap of POWER. Not during play - only on the shelf and in the menus, the in-game menu included |
-| **Suspend Timeout** | how long a sleeping device waits for POWER before it suspends |
-| **Mute Switch** | what the side switch does: `mute`, or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
-| **UI Theme** | `Plain Jane` or `Fancy Pants` - which art the shelves wear |
-| **UI Direction** | `Horizontal` or `Vertical` - see below |
+| **System Settings** | **Auto Off**: how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Suspend Timeout**: how long a sleeping device waits for POWER before it suspends. **Mute Switch**: what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
+| **UI Settings** | **UI Theme**: `Plain Jane` or `Fancy Pants`, which art the shelves wear. **UI Direction**: `Horizontal` or `Vertical` - see below |
 | **Scraping** | **Box Art**: fetch what the whole library is missing. **ScreenScraper**: the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build`. **Import gamelist.xml metadata**: see below |
-| **Cheevos** | the RetroAchievements account, or `sign in` |
 | **Controls** | every button and what it does, a page per place |
-| **About TortOS** | version, address, battery, uptime |
+| **About** | version, address, battery, uptime |
 
 Charging, or plugged into a computer, the device never sleeps, suspends or
 turns itself off: Auto Off, Auto Sleep and Suspend Timeout all wait until it is
@@ -403,7 +397,7 @@ dark can be undone in the dark. Then the device suspends, or with Auto Off it
 powers down: the Suspend Timeout is also Auto Off's grace once the music
 stops. NextUI pauses the music to sleep; this is TortOS's own.
 
-For a pocket, set **Mute Switch** (Settings) to `muse button lock`. The switch
+For a pocket, set **Mute Switch** (System Settings) to `muse button lock`. The switch
 then no longer mutes; it works like an iPod's hold switch. While it is down
 and the music plays with the screen dark, every button and the volume keys are
 ignored. POWER and a headset's buttons still work. With the screen on, the

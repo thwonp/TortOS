@@ -89,7 +89,7 @@ xfer_del xfer_delete_rule(const char *abs, const char **why)
 		if (*p == '/' && p[1]) depth++;
 
 	if (depth == 0) {
-		if (why) *why = "TortOS's own folders stay";
+		if (why) *why = "plorpOS's own folders stay";
 		return XFER_DEL_NO;
 	}
 	if (!strcmp(root->name, "roms")) {
