@@ -1727,8 +1727,9 @@ struct pl_ctl_elem_value {
 #define HP_RAW_TOP      8
 #define HP_RAW_BOTTOM   61
 
-#define SPEAKER_CTL  "HpSpeaker Switch"   /* the only true mute on this codec */
+#define SPEAKER_CTL  "HpSpeaker Switch"   /* the speaker's only true mute */
 #define HP_CTL       "Headphone Volume"   /* 0-7, 6 dB a step, INVERTED */
+#define HP_CTL_QUIET 7                    /* its quiet end, for the cut */
 #define SWAP_CTL     "DAC Swap"           /* 1 crosses left and right */
 #define VOL_MAX      PLAT_VOL_MAX         /* 21 positions, 0..20 - Diatom's scale */
 
@@ -1831,7 +1832,8 @@ static void ctl_set(const char *name, long val)
  * the answer was not this control: 9.3 dB was wanted at the ceiling and this
  * steps in sixes, and it attenuates the speaker as well, so it cannot be moved
  * for the jack alone. The headphone case is handled by its own window on
- * GAIN_CTL instead - see HP_RAW_TOP. */
+ * GAIN_CTL instead - see HP_RAW_TOP. The one exception is the cut, in
+ * apply_volume. */
 static void mixer_defaults(void)
 {
 	if (mixer_fd < 0) return;
@@ -1932,19 +1934,30 @@ static bool mute_switch_down(void)
 static void apply_volume(int v)
 {
 	int hp = jack_present();
-	long raw = aout_level_to_raw(v, VOL_MAX,
+	bool cut = v == 0 || muted == 1;
+	long raw = cut ? GAIN_RAW_MAX
+	         : aout_level_to_raw(v, VOL_MAX,
 	                             hp ? HP_RAW_TOP : SPK_RAW_TOP,
 	                             hp ? HP_RAW_BOTTOM : SPK_RAW_BOTTOM);
-	long on;
+	long quiet = cut ? HP_CTL_QUIET : 0;
+	long on = !cut;
 
 	jack_was = hp;
 	cur_vol = v;
-	ctl_io(GAIN_CTL, &raw, 1);
 	/* Zero has to cut the path, not merely attenuate it - and so does the
 	 * switch, which is why it lands here rather than beside the callers: every
 	 * route that re-applies a level (a nudge, a jack coming out) passes
-	 * through this line and honors the switch for free. */
-	on = (v > 0) && muted != 1;
+	 * through this line and honors the switch for free.
+	 *
+	 * SPEAKER_CTL cuts the speaker only, so with headphones in the switch and
+	 * level 0 both left them playing until 2026-09-30. They are cut by level
+	 * instead: GAIN_CTL and HP_CTL both at their quiet ends, about -116 dB and
+	 * silent by ear that day. Not "Headphone Switch", tried the same day: with
+	 * it and SPEAKER_CTL both off the codec stops taking samples (hw_ptr stood
+	 * still), and whatever waits on its stream waits until one comes back on -
+	 * a game froze switching to a headset until the mute came off. */
+	ctl_io(GAIN_CTL, &raw, 1);
+	ctl_io(HP_CTL, &quiet, 1);
 	ctl_io(SPEAKER_CTL, &on, 1);
 }
 
@@ -1972,17 +1985,18 @@ bool plat_mute_poll(bool own_volume)
 
 	if (now == muted) return false;
 	muted = now;
-	/* Tell the resident whichever side of a game we are on. It cuts the stage
-	 * itself below, which is what makes the switch feel immediate; this is
-	 * what stops Diatom putting it back on its next level write. Harmless
-	 * with no game running - the resident is there either way, and knowing
-	 * early means a RUN cannot race the flip. */
-	dsend("SETMUTE\ton=%d", muted == 1 ? 1 : 0);
+	/* Out of a game this side is the only writer. Diatom used to be told here
+	 * too, and it answered by applying its own level - which out of a game is
+	 * -1, unknown - so every unmute switched the speaker back off a moment
+	 * after this side turned it on, and with headphones in wrote a gain past
+	 * the register's end that wrapped around to full volume. Found
+	 * 2026-09-30. It needs no telling here: every RUN sends the switch's
+	 * state before the game starts. */
 	if (own_volume) {
 		if (cur_vol >= 0) apply_volume(cur_vol);
 		return true;
 	}
-	/* DURING A GAME, ONLY THE SWITCH - never the gain.
+	/* DURING A GAME, ONLY THE CUT - never this side's level.
 	 *
 	 * apply_volume would write GAIN_CTL from cur_vol, which is this side's
 	 * idea of the volume and is stale the moment Diatom takes over: the
@@ -1996,13 +2010,23 @@ bool plat_mute_poll(bool own_volume)
 	 * something already inaudible, and Diatom's own next write settles it.
 	 *
 	 * This side cuts because it is immediate: 100 ms, the resident loop's
-	 * period. The SETMUTE above is what makes the cut STICK, since Diatom
-	 * writes the same control whenever it applies a level (ADR-0031). Neither
-	 * alone is enough - one is fast and one is durable. */
+	 * period. The SETMUTE is what makes the cut STICK, since Diatom writes
+	 * the same controls whenever it applies a level (ADR-0031). Neither alone
+	 * is enough - one is fast and one is durable. */
+	dsend("SETMUTE\ton=%d", muted == 1 ? 1 : 0);
 	{
 		long on = (muted != 1);
 
 		ctl_io(SPEAKER_CTL, &on, 1);
+		/* And the headphones, by level as in apply_volume - the cut only.
+		 * Coming back, the level is Diatom's, and the SETMUTE above has it
+		 * put its own back. */
+		if (!on) {
+			long raw = GAIN_RAW_MAX, quiet = HP_CTL_QUIET;
+
+			ctl_io(GAIN_CTL, &raw, 1);
+			ctl_io(HP_CTL, &quiet, 1);
+		}
 	}
 	return true;
 }
