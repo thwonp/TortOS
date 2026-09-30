@@ -41,5 +41,7 @@ void mute_forget(void);
  * Under a compositor the launcher's window has to get out of its way. */
 void screen_yield(bool to_game);
 bool battery_read(const char *dir, int *pct, bool *charging);
+/* Up to ms for a POWER press (1) or release (0) on fd_power; platform.c. */
+bool power_key_within(int ms, int value);
 
 #endif

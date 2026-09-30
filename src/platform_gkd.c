@@ -3,8 +3,8 @@
  * PLATFORM=gkd, as platform_brick.c is for the Brick.
  *
  * Video, input and paths are real (plorpos-gkd.3.3), levels and battery too
- * (gkd.3.4). The rest are stubs answering "not here" until their tasks:
- * power and sleep later. diatom's port/gkd.c is the reference for all of it - same
+ * (gkd.3.4), power and sleep too (gkd.7). The rest are stubs answering "not
+ * here". diatom's port/gkd.c is the reference for all of it - same
  * window setup, same buttons - so the launcher and a game agree on the
  * device. */
 #include "db.h"
@@ -20,6 +20,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 /* Where everything is, unless TORTOS_* says otherwise - see paths_init(). The
@@ -184,6 +185,9 @@ bool plat_input_init(void)
 {
 	if (fd_pad < 0)  fd_pad  = evdev_open("gkd_atom_joypad");
 	if (fd_keys < 0) fd_keys = evdev_open("gpio-keys");
+	/* Read though logind is reading it too: launch.sh's inhibitor only stops
+	 * logind acting on it. */
+	if (fd_power < 0) fd_power = evdev_open("rk805 pwrkey");
 	return true;
 }
 
@@ -200,6 +204,7 @@ void plat_input_flush(void)
 	while (SDL_PollEvent(&e)) { }
 	drain(fd_pad);
 	drain(fd_keys);
+	drain(fd_power);
 	/* Their releases were in what was just thrown away. */
 	memset(pad_dir, 0, sizeof pad_dir);
 	memset(stick_dir, 0, sizeof stick_dir);
@@ -210,6 +215,7 @@ void plat_input_quit(void)
 {
 	if (fd_pad >= 0)  { close(fd_pad);  fd_pad = -1; }
 	if (fd_keys >= 0) { close(fd_keys); fd_keys = -1; }
+	if (fd_power >= 0) { close(fd_power); fd_power = -1; }
 }
 
 static void stick_axis(bool *neg_pos, int v)
@@ -261,6 +267,15 @@ static void keys_read(in_state *st)
 	}
 }
 
+static void power_read(in_state *st)
+{
+	struct input_event ev;
+
+	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+		if (ev.type == EV_KEY && ev.code == KEY_POWER && ev.value != 2)
+			set_btn(st, IN_POWER, ev.value == 1);
+}
+
 void plat_input_poll(in_state *st)
 {
 	memset(st->pressed, 0, sizeof st->pressed);
@@ -270,6 +285,7 @@ void plat_input_poll(in_state *st)
 		if (e.type == SDL_QUIT) st->quit_requested = true;
 	pad_read(st);
 	keys_read(st);
+	power_read(st);
 }
 
 void plat_leds_off(void) { }
@@ -422,16 +438,115 @@ bool plat_muted(void) { return false; }
 void plat_mute_switch_lock(bool lock) { (void)lock; }
 bool plat_hold_switch(void) { return false; }
 
-bool plat_sleep_supported(void) { return false; }
-bool plat_sleep(void) { return false; }
-/* "Awake at once", not false: false means no suspend to escalate into, and
- * the caller answers that by powering off - which is what idle did here,
- * minutes into the first test. Until the GKD sleeps for real, idle is a
- * no-op that restarts the idle clock. */
-bool plat_light_sleep(unsigned waited_ms) { (void)waited_ms; return true; }
-bool plat_usb_host(void) { return false; }
-int plat_suspend_timeout_secs(void) { return 30; }   /* never 0: platform.h */
-pwr_action plat_power_tap_or_hold(bool down) { (void)down; return PWR_NONE; }
+/* Real suspend through systemd, so ROCKNIX's system-sleep hook runs - it
+ * brings Wi-Fi back, among other things. By starting suspend.target, not
+ * `systemctl suspend`: that returns before the device has even gone down
+ * (28ms, measured 2026-09-29), while starting the target returns only once
+ * systemd-suspend.service has finished, resume hook included. Skipped that
+ * way: logind's PrepareForSleep, which nothing on the device waits on (no
+ * delay inhibitors).
+ *
+ * Two things about the wake, both measured 2026-09-29. The panel comes back
+ * at full brightness whatever the backlight file says, until someone writes
+ * it. And the hook's resume half takes 2s, behind its Wi-Fi reconnect, then
+ * writes ES's brightness. So this does not wait for the hook: it watches for
+ * the wake itself - suspended time counts on CLOCK_BOOTTIME and not on
+ * CLOCK_MONOTONIC - writes the player's level at once and returns, as the
+ * Brick's does with its radios still coming up behind it. hook_watch sees
+ * the hook out and puts the level back over ES's. */
+bool plat_sleep_supported(void) { return true; }
+
+/* The hook's brightness is ES's display.brightness, a percent, and it writes
+ * it back into system.cfg itself on every wake through set_setting. Handing
+ * it the player's level first makes that write land where the screen already
+ * is, so hook_watch has at most a unit of rounding to fix instead of a flash.
+ * ROCKNIX's own function and lock; the timeout because wait_lock waits
+ * forever on a stale lock, and then the flash is all that is lost. */
+static void hook_brightness_sync(void)
+{
+	static int synced = -1;
+	extern char **environ;
+	int pct = (bright_ladder[cur_bright] * 100 + 127) / 255;
+	char cmd[128];
+	char *argv[] = { "timeout", "2", "sh", "-c", cmd, NULL };
+	pid_t pid;
+	int st = -1;
+
+	if (pct == synced) return;
+	snprintf(cmd, sizeof cmd, ". /etc/profile.d/001-functions && "
+	         "set_setting display.brightness %d", pct);
+	if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) == 0)
+		waitpid(pid, &st, 0);
+	if (st == 0) synced = pct;
+	else fprintf(stderr, "sleep: display.brightness %d not set (%d)\n", pct, st);
+}
+
+static long long asleep_ms(void)
+{
+	struct timespec b, m;
+
+	clock_gettime(CLOCK_BOOTTIME, &b);
+	clock_gettime(CLOCK_MONOTONIC, &m);
+	return (b.tv_sec - m.tv_sec) * 1000LL + (b.tv_nsec - m.tv_nsec) / 1000000;
+}
+
+/* Until systemctl exits: any backlight value that is neither the player's
+ * level nor dark is the hook's, so the level goes back. Dark is left alone -
+ * that is a tap sleeping again before the hook is done. */
+static void *hook_watch(void *arg)
+{
+	pid_t pid = (pid_t)(intptr_t)arg;
+	int st;
+
+	while (waitpid(pid, &st, WNOHANG) == 0) {
+		char s[16] = { 0 };
+		int raw;
+
+		if (disp_fd >= 0 && pread(disp_fd, s, sizeof s - 1, 0) > 0 &&
+		    (raw = atoi(s)) != 0 && raw != bright_ladder[cur_bright]) {
+			fprintf(stderr, "sleep: backlight %d after the wake, back to %d\n",
+			        raw, bright_ladder[cur_bright]);
+			apply_brightness(cur_bright);
+		}
+		usleep(10 * 1000);
+	}
+	return NULL;
+}
+
+bool plat_sleep(void)
+{
+	extern char **environ;
+	char *argv[] = { "systemctl", "start", "suspend.target", NULL };
+	unsigned t0 = plat_now_ms();
+	long long went = asleep_ms();
+	pthread_t th;
+	pid_t pid;
+	int st = -1;
+
+	hook_brightness_sync();
+	sync();
+	if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) != 0) return false;
+	while (waitpid(pid, &st, WNOHANG) == 0) {
+		if (asleep_ms() - went > 500) {
+			apply_brightness(cur_bright);
+			fprintf(stderr, "sleep: woke after %us\n",
+			        (plat_now_ms() - t0) / 1000);
+			if (pthread_create(&th, NULL, hook_watch, (void *)(intptr_t)pid) == 0)
+				pthread_detach(th);
+			else
+				waitpid(pid, &st, 0);   /* no watcher: wait the hook out */
+			/* The press that woke it, which would otherwise read as a tap. */
+			drain(fd_power);
+			return true;
+		}
+		usleep(10 * 1000);
+	}
+	/* Out before a wake was seen: a sleep too short to see (the hook done
+	 * too), or systemd would not suspend. */
+	fprintf(stderr, "sleep: suspend.target %s\n", st == 0 ? "ok" : "failed");
+	drain(fd_power);
+	return st == 0;
+}
 
 bool plat_battery(int *pct, bool *charging)
 {
