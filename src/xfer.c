@@ -63,6 +63,46 @@ void xfer_init(const char *roms_dir, const char *card_dir,
 
 int xfer_root_count(void) { return g_nroots; }
 
+xfer_del xfer_delete_rule(const char *abs, const char **why)
+{
+	const xfer_root *root = NULL;
+	size_t best = 0;
+	const char *rest, *p;
+	int depth = 0, i;
+
+	if (why) *why = "";
+	for (i = 0; i < g_nroots; i++) {
+		size_t n = strlen(g_roots[i].path);
+
+		if (n > best && !strncmp(abs, g_roots[i].path, n) &&
+		    (abs[n] == '\0' || abs[n] == '/')) {
+			root = &g_roots[i];
+			best = n;
+		}
+	}
+	if (!root) {
+		if (why) *why = "not somewhere you can write";
+		return XFER_DEL_NO;
+	}
+	rest = abs + best;
+	for (p = rest; *p; p++)
+		if (*p == '/' && p[1]) depth++;
+
+	if (depth == 0) {
+		if (why) *why = "TortOS's own folders stay";
+		return XFER_DEL_NO;
+	}
+	if (!strcmp(root->name, "roms")) {
+		if (depth >= 2) return XFER_DEL_ALL;
+		if (why) *why = "a console's folder only goes once it is empty";
+		return XFER_DEL_EMPTY;
+	}
+	if (!strcmp(root->name, "music") || !strcmp(root->name, "books"))
+		return XFER_DEL_ALL;
+	if (why) *why = "this folder only goes once it is empty";
+	return XFER_DEL_EMPTY;
+}
+
 const xfer_root *xfer_root_at(int i)
 {
 	return (i >= 0 && i < g_nroots) ? &g_roots[i] : NULL;

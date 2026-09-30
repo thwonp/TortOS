@@ -5293,6 +5293,24 @@ static bool pack_logs(char *path, size_t pn, char *name, size_t nn)
 	return true;
 }
 
+/* A folder about to be deleted whole from Over The Hare: if Muse is playing
+ * or paused on a file in it, stop Muse first. The shelf is rebuilt when the
+ * screen closes, as for any change there; this is only so the player is not
+ * left holding a file that is gone. */
+static void muse_before_delete(const char *abs)
+{
+	const char *p = musec_path();
+	char full[LIB_PATH * 2];
+	size_t n = strlen(abs);
+
+	if (!p[0]) return;
+	snprintf(full, sizeof full, "%s/%s", P_CARD, p);
+	if (!strncmp(full, abs, n) && full[n] == '/') {
+		fprintf(stderr, "muse: stopped, its folder is being deleted\n");
+		musec_stop();
+	}
+}
+
 static void xfer_screen(app *a)
 {
 	char       ssid[WIFI_SSID_MAX], ip[64];
@@ -5304,6 +5322,7 @@ static void xfer_screen(app *a)
 
 	g_logs_app = a;
 	hare_set_logs(pack_logs);
+	hare_set_before_delete(muse_before_delete);
 	if (!hare_start(P_ROMS, P_CARD, P_SHARED, P_WEB)) {
 		menu_row row = { "Could not start", NULL, false };
 

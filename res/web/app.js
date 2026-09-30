@@ -292,10 +292,36 @@ async function rename(e) {
 	} catch (err) { toast(err.message, true); }
 }
 
+/* A file, or an empty folder, is asked about by name. A folder with anything
+ * in it is asked about by what is in it, which the device counts first - and
+ * the device also says whether it may go whole at all: an album or a book can,
+ * a console's folder cannot (see xfer_delete_rule). The server enforces both;
+ * this is only so the question asked is the right one. */
 async function del(e) {
+	if (e.dir) {
+		let c;
+		try {
+			c = await (await api('GET', '/api/count?p=' + enc(e.path))).json();
+		} catch (err) { toast(err.message, true); return; }
+		if (c.files + c.folders > 0) {
+			if (c.rule !== 'all') { toast(e.name + ': ' + c.why, true); return; }
+			if (c.too_many) {
+				toast(e.name + ' holds too much to delete at once; delete it in parts', true);
+				return;
+			}
+			const what = c.files + (c.files === 1 ? ' file' : ' files') +
+				(c.folders ? ' in ' + c.folders + (c.folders === 1 ? ' folder' : ' folders') : '');
+			if (!confirm('Delete ' + e.name + ' and everything in it: ' + what + '?')) return;
+			return removeEntry(e, true);
+		}
+	}
 	if (!confirm('Delete ' + e.name + '?')) return;
+	return removeEntry(e, false);
+}
+
+async function removeEntry(e, all) {
 	try {
-		await api('POST', '/api/delete?p=' + enc(e.path));
+		await api('POST', '/api/delete?p=' + enc(e.path) + (all ? '&all=1' : ''));
 		toast('Deleted');
 		await go(cwd, 'none');
 	} catch (err) { toast(err.message, true); }
