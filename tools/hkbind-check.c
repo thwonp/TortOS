@@ -66,6 +66,24 @@ int main(void)
 	ck(!strcmp(HK_TRIG_NAME[b[0]], "R2") && hk_trig_mod(b[0]), "ff row -> R2, with the modifier");
 	ck(!strcmp(HK_TRIG_NAME[b[4]], "L1") && hk_trig_mod(b[4]), "display row -> L1, with the modifier");
 
+	printf("press-to-bind: what each press makes (plorpos-gkd.43.3):\n");
+	{
+		int in;
+		for (in = 0; in < HK_IN_COUNT; in++) {
+			int m = hk_trig_from(in, 1), d = hk_trig_from(in, 0);
+			ck(m > 0 && hk_trig_mod(m), "every input makes a modifier trigger");
+			ck(in < HK_IN_UP ? d > 0 && !hk_trig_mod(d) : d == 0,
+			   "buttons alone are direct; directions alone are nothing");
+			ck(!hk_trig_stick(m) == (in < HK_IN_SUP), "only the stick makes stick triggers");
+		}
+	}
+	hk_parse("x:ff,d.x:rewind,up:savestate,sright:loadstate", b);
+	ck(b[0] == hk_trig_from(HK_IN_X, 1),      "Mod + X is x");
+	ck(b[1] == hk_trig_from(HK_IN_X, 0),      "X alone is d.x");
+	ck(b[2] == hk_trig_from(HK_IN_UP, 1),     "Mod + Up is up");
+	ck(b[3] == hk_trig_from(HK_IN_SRIGHT, 1), "Mod + Stick Right is sright");
+	ck(hk_trig_from(HK_IN_COUNT, 1) == 0 && hk_trig_from(-1, 0) == 0, "out of range is None");
+
 	printf("empty spec means every row is None:\n");
 	hk_parse("", b);
 	ck(!strcmp(HK_TRIG_NAME[b[0]], "None"), "ff row -> None");
