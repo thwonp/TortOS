@@ -9730,9 +9730,9 @@ static void launch(app *a)
 			 * through GL, and the handoff spike's one invariant is that
 			 * they never present concurrently - a 190ms overlap that is
 			 * harmless GL-on-GL is the exact case that wedges the display
-			 * engine when one side is fbdev. A warm launch is ~15ms, so there is
-			 * nothing to animate over anyway; the shelf simply holds until
-			 * the game's first frame replaces it. */
+			 * engine when one side is fbdev. A warm launch is 26 to 44 ms from
+			 * RUN to RUNNING, so there is nothing to animate over anyway; the
+			 * shelf simply holds until the game's first frame replaces it. */
 			a->game_on = true;
 			for (;;) {
 				r = plat_resident_wait();
