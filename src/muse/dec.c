@@ -12,6 +12,7 @@
 #include <libavfilter/buffersrc.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/log.h>
 
 /* The resampler, and the only part of this chain anyone would hear go wrong.
  *
@@ -88,6 +89,10 @@ dec *dec_open(const char *path, double at, double speed, char *err, size_t errn)
 	dec *d = calloc(1, sizeof *d);
 	const AVCodec *codec = NULL;
 
+	/* FFmpeg's own log goes to stderr, which is the launcher's log on the
+	 * card, and some m4a files draw a warning or two per file - SD wear for
+	 * nothing (gkd.33). What goes wrong is reported through err instead. */
+	av_log_set_level(AV_LOG_QUIET);
 	if (!d) { snprintf(err, errn, "no memory"); return NULL; }
 	d->speed = speed > 0.1 ? speed : 1.0;
 	d->at = at > 0 ? at : 0;
