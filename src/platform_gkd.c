@@ -18,7 +18,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -383,6 +385,101 @@ void backlight_off(void) { backlight_write(0); }
 void jack_forget(void) { }
 void mute_forget(void) { }
 
+/* The headphone jack, which the kernel switches and sometimes gets wrong.
+ *
+ * ROCKNIX's es9018k2m driver owns three pins on gpio4: hp-det (the jack), and
+ * hp-con / spk-con (the two amps). On an edge it waits 100 ms, reads hp-det
+ * once and re-arms for the opposite edge only - so when the plug's rings are
+ * still crossing the detect contact after that read, the last edge is lost
+ * and the amps stay set for headphones that are gone: a silent speaker, with
+ * the stream still running, until the next edge. Seen 2026-09-29 (plorpos-
+ * gkd.9.1), rare, and nothing in userspace makes the driver look again.
+ *
+ * So this looks instead: every 250 ms, and once the pin has read the same
+ * twice, amps that disagree with it are set to match. The data register is
+ * write-masked per pin (high half), so this touches only those two pins and
+ * cannot race the driver's own writes. Pin numbers are this board's device
+ * tree; jack_names_ok() checks it is still that tree, or none of this runs. */
+#define JACK_BANK     0x2ae40000u   /* gpio4 */
+#define JACK_DR_L     (0x00 / 4)    /* data out, pins 0-15, write-masked */
+#define JACK_EXT      (0x70 / 4)    /* pin levels */
+#define JACK_HP_CON   2             /* gpio-130 */
+#define JACK_SPK_CON  4             /* gpio-132 */
+#define JACK_DET      6             /* gpio-134 */
+
+static volatile uint32_t *jack_regs;
+static bool               jack_in;
+
+static bool jack_names_ok(void)
+{
+	static const char *want[] = {
+		"GPIOs 128-159, parent: platform/2ae40000.gpio",
+		"gpio-130 (", "avrman-hp-con",
+		"gpio-132 (", "avrman-spk-con",
+		"gpio-134 (", "avrman-hp-det",
+	};
+	char line[256];
+	int  seen = 0;
+	FILE *f = fopen("/sys/kernel/debug/gpio", "r");
+
+	if (!f) return false;
+	while (fgets(line, sizeof line, f)) {
+		if (strstr(line, want[0])) seen |= 1;
+		for (int i = 1; i < 7; i += 2)
+			if (strstr(line, want[i]) && strstr(line, want[i + 1])) seen |= 2 << (i / 2);
+	}
+	fclose(f);
+	return seen == 15;
+}
+
+static void *jack_worker(void *arg)
+{
+	const uint32_t mask = 1u << (16 + JACK_HP_CON) | 1u << (16 + JACK_SPK_CON);
+	int  last  = -1;
+	bool fixed = false;
+	(void)arg;
+
+	for (;;) {
+		int      det = jack_regs[JACK_EXT] >> JACK_DET & 1;
+		uint32_t out = jack_regs[JACK_DR_L];
+		int      hp  = out >> JACK_HP_CON & 1, spk = out >> JACK_SPK_CON & 1;
+		bool     fix = det == last && (hp != det || spk == det);
+
+		__atomic_store_n(&jack_in, det == 1, __ATOMIC_RELAXED);
+		if (fix) {
+			jack_regs[JACK_DR_L] = mask | (uint32_t)det << JACK_HP_CON
+			                            | (uint32_t)!det << JACK_SPK_CON;
+			/* Once per run of fixes, so a driver that fights back cannot
+			 * fill the card's log. */
+			if (!fixed) fprintf(stderr, "jack: amps were set for %s, fixed\n",
+			                    det ? "the speaker" : "headphones");
+		}
+		fixed = fix;
+		last  = det;
+		usleep(250 * 1000);
+	}
+	return NULL;
+}
+
+static void jack_init(void)
+{
+	pthread_t t;
+	void *p;
+	int fd;
+
+	if (!jack_names_ok()) {
+		fprintf(stderr, "jack: not the expected gpio layout, no jack watch\n");
+		return;
+	}
+	fd = open("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC);
+	if (fd < 0) return;
+	p = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, JACK_BANK);
+	close(fd);
+	if (p == MAP_FAILED) return;
+	jack_regs = p;
+	if (pthread_create(&t, NULL, jack_worker, NULL) == 0) pthread_detach(t);
+}
+
 /* What PipeWire is at now, in rungs - once, at start, where the one wpctl run
  * is not in a frame. -1 if it cannot say. */
 static int wpctl_level(void)
@@ -410,6 +507,7 @@ void plat_settings_init(void)
 		mixer_fd = 0;
 	} else
 		fprintf(stderr, "settings: no volume worker\n");
+	jack_init();
 
 	/* The player's last choice wins; failing that, whatever the device is at
 	 * already, so the first OSD tells the truth. */
@@ -433,7 +531,7 @@ void plat_settings_init(void)
 }
 
 void plat_audio_jack_poll(void) { }
-bool plat_headphones_present(void) { return false; }
+bool plat_headphones_present(void) { return __atomic_load_n(&jack_in, __ATOMIC_RELAXED); }
 bool plat_mute_poll(bool own_volume) { (void)own_volume; return false; }
 bool plat_muted(void) { return false; }
 /* No switch: Muse Settings' Sleep Button Lock stands in for the Brick's
