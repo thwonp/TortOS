@@ -17,9 +17,21 @@ typedef struct {
 	bool     on;
 	bool     scanning;   /* a scan is running; the list is provisional */
 	bool     scanned;    /* a scan has finished at least once this visit */
-	char     ip[80];     /* "IP a.b.c.d" while connected, else empty */
 	bool     svc[WIFI_NSVC];   /* SSH, Samba; read on entry, only where WIFI_SVC_ROWS */
+	bool     connected;  /* associated with an address: Over The Hare can run */
+	char     conn[WIFI_SSID_MAX + 72]; /* "<ssid> · <ip>" while connected, else empty */
+	const char *ra_name; /* the RetroAchievements account, NULL signed out */
 } wifi_ui;
+
+/* The Wi-Fi Services rows above the network list (plorpos-z0d.1): the radio,
+ * then what the network is for - the services a device lets you switch
+ * (WIFI_SVC_ROWS of them, from WIFI_ROW_SVC) among them. Fixed, so a scan
+ * changing the list's length never moves them, and the key handler finds a
+ * network at WIFI_TOP_ROWS + i. */
+enum {
+	WIFI_ROW_SWITCH, WIFI_ROW_CHEEVOS, WIFI_ROW_SVC,
+	WIFI_ROW_XFER = WIFI_ROW_SVC + WIFI_SVC_ROWS, WIFI_TOP_ROWS
+};
 
 /* Signal as a word. dBm is the honest number and it is also jargon; the list is
  * sorted strongest first anyway, so the word only has to separate "this will

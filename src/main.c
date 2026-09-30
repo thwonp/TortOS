@@ -185,6 +185,9 @@ static void muse_order_view(sysview *v);
 static void album_art_screen(app *a);
 /* Same reason: Over The Hare is a screen up here and the scan is down there. */
 static void rescan_all(app *a);
+/* Wi-Fi Services opens both, and they are written after it. */
+static void ra_signin_screen(app *a);
+static void xfer_screen(app *a);
 /* And again: Play Time can send you to a game's shelf, which is the input
  * loop's job and lives with it. */
 static void enter_system(app *a);
@@ -2505,7 +2508,7 @@ static bool idle_due(app *a)
 {
 	int b, secs;
 
-	/* Whichever of the two is armed - never both (PM_SLEEP/PM_AUTO_OFF) -
+	/* Whichever of the two is armed - never both (ST_SLEEP/ST_AUTO_OFF) -
 	 * except while music plays, when Muse Settings' Screen Off says how
 	 * long (TortOS-28l): an iPod's backlight timer, short where Auto Sleep's
 	 * shortest is long. Never is the screen on for as long as music plays. A
@@ -4142,15 +4145,16 @@ static wifi_state menu_wifi(char *ssid, int cap)
  *
  * Returns the row count, so the input loop never needs to know which of the
  * two menus it is driving. */
-static int menu_build(app *a, screen_id screen, int sys,
-                      menu_row *out, menu_bufs *b, const char **heading)
+/* What either MENU menu, and the plorpOS menu's submenus, need to know about
+ * the device. `ss` holds the network's name and has to outlive `u_`. */
+static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
+                    char *ss, size_t ss_n)
 {
-	char ss[WIFI_SSID_MAX];
 	sys_ui u = { 0 };
 
 	/* Asked once. The cache is why - see menu_wifi - and three rows used to
 	 * ask separately, which is how it got expensive in the first place. */
-	u.wifi  = menu_wifi(ss, sizeof ss);
+	u.wifi  = menu_wifi(ss, ss_n);
 	u.ssid  = ss;
 	u.games = screen == SCREEN_GAMES;
 
@@ -4173,8 +4177,6 @@ static int menu_build(app *a, screen_id screen, int sys,
 	} else {
 		aout_state ao = aout_now();
 
-		u.ra_in     = ra_signed_in();
-		u.ra_name   = u.ra_in ? ra_user() : NULL;
 		u.ss_have   = ss_have_dev();
 		u.ss_in     = ss_signed_in();
 		u.ss_name   = u.ss_in ? ss_user() : NULL;
@@ -4218,6 +4220,16 @@ static int menu_build(app *a, screen_id screen, int sys,
 			u.bt_name = btname[0] ? btname : NULL;
 		}
 	}
+	*u_ = u;
+}
+
+static int menu_build(app *a, screen_id screen, int sys,
+                      menu_row *out, menu_bufs *b, const char **heading)
+{
+	char ss[WIFI_SSID_MAX];
+	sys_ui u;
+
+	menu_ui(a, screen, sys, &u, ss, sizeof ss);
 	return sys_menu_build(&u, out, b, heading);
 }
 
@@ -4586,8 +4598,8 @@ static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 {
 	wifi_ui *w = ctx;
 	char status[96], ssid[WIFI_SSID_MAX], ip[64];
-	int k = sel - 1 - WIFI_SVC_ROWS;    /* row 0 is the switch, then the services */
-	bool net_row = sel > WIFI_SVC_ROWS && sel <= WIFI_SVC_ROWS + w->n;
+	int k = sel - WIFI_TOP_ROWS;        /* the fixed rows, then the networks */
+	bool net_row = sel >= WIFI_TOP_ROWS && sel < WIFI_TOP_ROWS + w->n;
 
 	if (key == IN_Y && w->on) { wifi_begin_scan(w); return MENU_STAY; }
 
@@ -4629,15 +4641,25 @@ static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 
 	/* SSH and Samba, where the device has them. No confirm on turning SSH off,
 	 * though it may be the only way in: the owner's call (gkd.10). */
-	if (sel >= 1 && sel <= WIFI_SVC_ROWS) {
-		wifi_svc s = (wifi_svc)(sel - 1);
+	if (sel >= WIFI_ROW_SVC && sel < WIFI_ROW_SVC + WIFI_SVC_ROWS) {
+		wifi_svc s = (wifi_svc)(sel - WIFI_ROW_SVC);
 		if (wifi_svc_set(s, !w->svc[s])) w->svc[s] = !w->svc[s];
 		return MENU_STAY;
 	}
 
 	/* The switch. Saved on every change rather than on the way out: the way out
 	 * of a handheld is often the power button. */
-	if (sel == 0) {
+	/* The two that moved here from the plorpOS menu (plorpos-z0d.1). The
+	 * account is read again on the way back, since signing in or out is what
+	 * the screen behind it is for. */
+	if (sel == WIFI_ROW_CHEEVOS) {
+		ra_signin_screen(a);
+		w->ra_name = ra_signed_in() ? ra_user() : NULL;
+		return MENU_STAY;
+	}
+	if (sel == WIFI_ROW_XFER) { xfer_screen(a); return MENU_STAY; }
+
+	if (sel == WIFI_ROW_SWITCH) {
 		if (w->on) {
 			wifi_down();
 			wifi_pref_save(false);
@@ -4711,6 +4733,7 @@ static void wifi_screen(app *a)
 	 * impossible to leave in the off state: you opened it to turn wifi OFF and
 	 * the act of opening it turned wifi on. */
 	w.on = wifi_status(NULL, 0, NULL, 0) != WIFI_OFF;
+	w.ra_name = ra_signed_in() ? ra_user() : NULL;
 	if (w.on) wifi_begin_scan(&w);
 
 	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
@@ -6168,7 +6191,7 @@ static void about_screen(app *a)
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 		SDL_RenderFillRect(a->r, NULL);
-		menu_draw(a, "About TortOS", rows, 4, -1, menu_std_width(a), MENU_ACCENT);
+		menu_draw(a, "About", rows, 4, -1, menu_std_width(a), MENU_ACCENT);
 		plat_draw_osd(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
@@ -6560,6 +6583,169 @@ static void scraping_screen(app *a)
 	         scraping_build, scraping_key, NULL);
 }
 
+/* Settings > System Settings and UI Settings (plorpos-z0d.1): rows that
+ * stood in the plorpOS menu itself until then, with the keys they always had.
+ * The rows are src/sys_menu.c's, so tools/menu-check.c can state them. */
+typedef struct { app *a; menu_bufs bufs; } subset_ctx;
+
+static int system_settings_build(void *ctx, menu_row *rows, int max,
+                                 const char **heading)
+{
+	subset_ctx *c = ctx;
+	char ss[WIFI_SSID_MAX];
+	sys_ui u;
+
+	(void)max;
+	menu_ui(c->a, SCREEN_SYSTEMS, 0, &u, ss, sizeof ss);
+	return sys_menu_system_build(&u, rows, &c->bufs, heading);
+}
+
+static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel)
+{
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : 0;
+
+	(void)ctx;
+	/* Auto Sleep, on the left/right idiom Display mode uses. */
+	if (d && sel == ST_SLEEP) {
+		int k, at = AUTO_OFF_COUNT - 1;
+
+		/* The first rung at or above, not an exact match: 300s from the
+		 * pre-NextUI ladder steps from 240/360, not from never. */
+		for (k = 0; k < AUTO_OFF_COUNT; k++)
+			if (AUTO_OFF[k] >= a->auto_off) { at = k; break; }
+		at += d;
+		if (at < 0) at = 0;
+		if (at >= AUTO_OFF_COUNT) at = AUTO_OFF_COUNT - 1;
+		a->auto_off = AUTO_OFF[at];
+		auto_off_save(a->auto_off);
+		/* Mutually exclusive with Auto Off, matching NextUI: no two-tier
+		 * escalation ladder, so at most one of the pair is ever armed. */
+		if (a->auto_off && a->auto_poweroff) {
+			a->auto_poweroff = 0;
+			auto_poweroff_save(0);
+		}
+		/* From now, not from whenever the last countdown began: choosing 30s
+		 * should not inherit two minutes of an old one already spent. */
+		a->idle.since_ms = plat_now_ms();
+		return MENU_STAY;
+	}
+	/* Auto Off, same idiom as Auto Sleep above and mutually exclusive with
+	 * it - see that block's comment. */
+	if (d && sel == ST_AUTO_OFF) {
+		int k, at = 0;
+
+		for (k = 0; k < AUTO_POWEROFF_COUNT; k++)
+			if (AUTO_POWEROFF[k] == a->auto_poweroff) { at = k; break; }
+		at += d;
+		if (at < 0) at = 0;
+		if (at >= AUTO_POWEROFF_COUNT) at = AUTO_POWEROFF_COUNT - 1;
+		a->auto_poweroff = AUTO_POWEROFF[at];
+		auto_poweroff_save(a->auto_poweroff);
+		if (a->auto_poweroff && a->auto_off) {
+			a->auto_off = 0;
+			auto_off_save(0);
+		}
+		a->idle.since_ms = plat_now_ms();
+		return MENU_STAY;
+	}
+	/* Suspend Timeout, same idiom, and independent of both rows above: it
+	 * governs light sleep however it began. Clamped at both ends - there is
+	 * no "never", as in NextUI. */
+	if (d && sel == ST_SUSPEND) {
+		int k, at = 3;                    /* 30s, should the stored value be off-ladder */
+
+		for (k = 0; k < SUSPEND_TIMEOUT_COUNT; k++)
+			if (SUSPEND_TIMEOUT[k] == plat_suspend_timeout_secs()) { at = k; break; }
+		at += d;
+		if (at < 0) at = 0;
+		if (at >= SUSPEND_TIMEOUT_COUNT) at = SUSPEND_TIMEOUT_COUNT - 1;
+		db_set_int(db_dev(), "suspendtimeout", SUSPEND_TIMEOUT[at]);
+		return MENU_STAY;
+	}
+	/* Mute Switch: a toggle, so A flips it as well as left/right
+	 * (TortOS-ib9). */
+#if !defined(PLATFORM_GKD)
+	if (sel == ST_MUTESW && (d || key == IN_ACCEPT)) {
+		bool lock = db_get_int(db_dev(), "muteswitch", 0) != 1;
+
+		db_set_int(db_dev(), "muteswitch", lock);
+		plat_mute_switch_lock(lock);
+		return MENU_STAY;
+	}
+#endif
+	return MENU_STAY;
+}
+
+static void system_settings_screen(app *a)
+{
+	subset_ctx c = { .a = a };
+
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+	                           .fixed_w = menu_std_width(a) },
+	         system_settings_build, system_settings_key, &c);
+}
+
+static int ui_settings_build(void *ctx, menu_row *rows, int max,
+                             const char **heading)
+{
+	subset_ctx *c = ctx;
+	char ss[WIFI_SSID_MAX];
+	sys_ui u;
+
+	(void)max;
+	menu_ui(c->a, SCREEN_SYSTEMS, 0, &u, ss, sizeof ss);
+	return sys_menu_ui_build(&u, rows, heading);
+}
+
+static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
+{
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : 0;
+
+	(void)ctx;
+	/* Text size, same idiom. Changing it reopens every font, so the whole UI
+	 * is rebuilt: the panel's cached width is measured from font metrics, and
+	 * any card generated for a game with no box art has its title baked in at
+	 * the old size. Both are dropped here rather than left subtly wrong. */
+	/* The UI theme. No font is reopened, so only the
+	 * card textures are dropped - but the same shape: change it, throw away
+	 * what was drawn from the old value, draw it again. A steps as well as
+	 * left and right, so the row can be cycled without leaving the thumb.
+	 *
+	 * Themes the systems shelf today. The name is deliberately wider than
+	 * that, so menu colors or the accent rule can join without the row having
+	 * to be renamed a second time. */
+	if (sel == US_THEME && (d || key == IN_ACCEPT)) {
+		int k = cards_step(g_cards, d ? d : 1);
+
+		if (k != g_cards) {
+			g_cards = k;
+			free_all_textures(a);
+			prime_sys_window(a);
+			db_set_str(db_dev(), "cards", CARD_SETS[g_cards].id);
+		}
+		return MENU_STAY;
+	}
+
+	/* Which way both shelves run. Only the cards' positions change, not the
+	 * textures, so nothing is dropped and there is nothing to rebuild. */
+	if (sel == US_DIR && (d || key == IN_ACCEPT)) {
+		g_dir = cards_dir_step(g_dir, d ? d : 1);
+		db_set_str(db_dev(), "cards_dir", CARD_DIRS[g_dir].id);
+		return MENU_STAY;
+	}
+
+	return MENU_STAY;
+}
+
+static void ui_settings_screen(app *a)
+{
+	subset_ctx c = { .a = a };
+
+	menu_run(a, &(menu_style){ .accent = MENU_ACCENT,
+	                           .fixed_w = menu_std_width(a) },
+	         ui_settings_build, ui_settings_key, &c);
+}
+
 static int sysmenu_build(void *ctx, menu_row *rows, int max,
                          const char **heading)
 {
@@ -6685,106 +6871,6 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 
-	/* Auto Sleep, on the left/right idiom Display mode uses. */
-	if (d && sel == PM_SLEEP) {
-		int k, at = AUTO_OFF_COUNT - 1;
-
-		/* The first rung at or above, not an exact match: 300s from the
-		 * pre-NextUI ladder steps from 240/360, not from never. */
-		for (k = 0; k < AUTO_OFF_COUNT; k++)
-			if (AUTO_OFF[k] >= a->auto_off) { at = k; break; }
-		at += d;
-		if (at < 0) at = 0;
-		if (at >= AUTO_OFF_COUNT) at = AUTO_OFF_COUNT - 1;
-		a->auto_off = AUTO_OFF[at];
-		auto_off_save(a->auto_off);
-		/* Mutually exclusive with Auto Off, matching NextUI: no two-tier
-		 * escalation ladder, so at most one of the pair is ever armed. */
-		if (a->auto_off && a->auto_poweroff) {
-			a->auto_poweroff = 0;
-			auto_poweroff_save(0);
-		}
-		/* From now, not from whenever the last countdown began: choosing 30s
-		 * should not inherit two minutes of an old one already spent. */
-		a->idle.since_ms = plat_now_ms();
-		return MENU_STAY;
-	}
-	/* Auto Off, same idiom as Auto Sleep above and mutually exclusive with
-	 * it - see that block's comment. */
-	if (d && sel == PM_AUTO_OFF) {
-		int k, at = 0;
-
-		for (k = 0; k < AUTO_POWEROFF_COUNT; k++)
-			if (AUTO_POWEROFF[k] == a->auto_poweroff) { at = k; break; }
-		at += d;
-		if (at < 0) at = 0;
-		if (at >= AUTO_POWEROFF_COUNT) at = AUTO_POWEROFF_COUNT - 1;
-		a->auto_poweroff = AUTO_POWEROFF[at];
-		auto_poweroff_save(a->auto_poweroff);
-		if (a->auto_poweroff && a->auto_off) {
-			a->auto_off = 0;
-			auto_off_save(0);
-		}
-		a->idle.since_ms = plat_now_ms();
-		return MENU_STAY;
-	}
-	/* Suspend Timeout, same idiom, and independent of both rows above: it
-	 * governs light sleep however it began. Clamped at both ends - there is
-	 * no "never", as in NextUI. */
-	if (d && sel == PM_SUSPEND) {
-		int k, at = 3;                    /* 30s, should the stored value be off-ladder */
-
-		for (k = 0; k < SUSPEND_TIMEOUT_COUNT; k++)
-			if (SUSPEND_TIMEOUT[k] == plat_suspend_timeout_secs()) { at = k; break; }
-		at += d;
-		if (at < 0) at = 0;
-		if (at >= SUSPEND_TIMEOUT_COUNT) at = SUSPEND_TIMEOUT_COUNT - 1;
-		db_set_int(db_dev(), "suspendtimeout", SUSPEND_TIMEOUT[at]);
-		return MENU_STAY;
-	}
-	/* Mute Switch: a toggle, so A flips it as well as left/right
-	 * (TortOS-ib9). */
-#if !defined(PLATFORM_GKD)
-	if (sel == PM_MUTESW && (d || key == IN_ACCEPT)) {
-		bool lock = db_get_int(db_dev(), "muteswitch", 0) != 1;
-
-		db_set_int(db_dev(), "muteswitch", lock);
-		plat_mute_switch_lock(lock);
-		return MENU_STAY;
-	}
-#endif
-	/* Text size, same idiom. Changing it reopens every font, so the whole UI
-	 * is rebuilt: the panel's cached width is measured from font metrics, and
-	 * any card generated for a game with no box art has its title baked in at
-	 * the old size. Both are dropped here rather than left subtly wrong. */
-	/* The UI theme. No font is reopened, so only the
-	 * card textures are dropped - but the same shape: change it, throw away
-	 * what was drawn from the old value, draw it again. A steps as well as
-	 * left and right, so the row can be cycled without leaving the thumb.
-	 *
-	 * Themes the systems shelf today. The name is deliberately wider than
-	 * that, so menu colors or the accent rule can join without the row having
-	 * to be renamed a second time. */
-	if (sel == PM_THEME && (d || key == IN_ACCEPT)) {
-		int k = cards_step(g_cards, d ? d : 1);
-
-		if (k != g_cards) {
-			g_cards = k;
-			free_all_textures(a);
-			prime_sys_window(a);
-			db_set_str(db_dev(), "cards", CARD_SETS[g_cards].id);
-		}
-		return MENU_STAY;
-	}
-
-	/* Which way both shelves run. Only the cards' positions change, not the
-	 * textures, so nothing is dropped and there is nothing to rebuild. */
-	if (sel == PM_DIR && (d || key == IN_ACCEPT)) {
-		g_dir = cards_dir_step(g_dir, d ? d : 1);
-		db_set_str(db_dev(), "cards_dir", CARD_DIRS[g_dir].id);
-		return MENU_STAY;
-	}
-
 	/* Two positions, so left and right and A all do the same thing: there is
 	 * nothing to step through, only something to turn off and on. */
 	if (sel == PM_AUDIO && (d || key == IN_ACCEPT)) {
@@ -6801,9 +6887,9 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 	if (key != IN_ACCEPT) return MENU_STAY;
 	switch (sel) {
 	case PM_WIFI:         wifi_screen(a); break;
-	case PM_XFER:         xfer_screen(a); break;
+	case PM_SYSTEM:       system_settings_screen(a); break;
+	case PM_UI:           ui_settings_screen(a); break;
 	case PM_SCRAPING:     scraping_screen(a); break;
-	case PM_ACHIEVEMENTS: ra_signin_screen(a); break;
 	case PM_BT:           bt_screen(a); break;
 	case PM_STATS:        if (stats_screen(a)) return MENU_DONE; break;
 	case PM_CONTROLS:     controls_screen(a); break;

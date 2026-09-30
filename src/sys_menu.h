@@ -23,24 +23,38 @@
 #include "wifi.h"
 #include "audioout.h"
 
-/* The TortOS menu, in the order it is read.
+/* The plorpOS menu, in the order it is read.
  *
  * Play Time leads because it is the only row here anyone opens twice. Wi-Fi,
  * Bluetooth and Audio Output are setup: you use them when something is wrong
  * or new, and then never again. A menu ordered by what a device needs on its
  * first day puts the thing you actually come back to five rows down. */
 /* Controls and About are the two rows you only read, so they sit together at
- * the end, after everything that changes something. */
+ * the end, after everything that changes something.
+ *
+ * The rest are grouped a level down since plorpos-z0d.1: the timers under
+ * System Settings, the look under UI Settings, and Cheevos and Over The Hare
+ * on the Wi-Fi Services screen with the other things that need the network. */
 typedef enum {
 	PM_STATS,
-	PM_WIFI, PM_BT, PM_AUDIO, PM_XFER,
-	PM_AUTO_OFF, PM_SLEEP, PM_SUSPEND,
-#if !defined(PLATFORM_GKD)   /* no switch: Muse Settings' Sleep Button Lock (gkd.34) */
-	PM_MUTESW,
-#endif
-	PM_THEME, PM_DIR, PM_SCRAPING, PM_ACHIEVEMENTS,
+	PM_WIFI, PM_BT, PM_AUDIO,
+	PM_SYSTEM, PM_UI, PM_SCRAPING,
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
 } pm_row;
+
+/* Settings > System Settings: the three timers, and the side switch where
+ * there is one. */
+typedef enum {
+	ST_AUTO_OFF, ST_SLEEP, ST_SUSPEND,
+#if !defined(PLATFORM_GKD)   /* no switch: Muse Settings' Sleep Button Lock (gkd.34) */
+	ST_MUTESW,
+#endif
+	ST_ROWS
+} st_row;
+
+/* Settings > UI Settings: how the shelves look, and nothing about what is on
+ * them. */
+typedef enum { US_THEME, US_DIR, US_ROWS } us_row;
 
 /* Settings > Scraping (TortOS-mh0): everything that puts art and text on a
  * card, in one place - the Box Art job, the ScreenScraper account it signs in
@@ -111,6 +125,7 @@ int sys_menu_muse_rows(bool books, bool both, sm_muse_row *out);
 _Static_assert(MENU_MAX_ROWS >= PM_ROWS, "MENU_MAX_ROWS < PM_ROWS");
 _Static_assert(MENU_MAX_ROWS >= SM_ROWS, "MENU_MAX_ROWS < SM_ROWS");
 _Static_assert(MENU_MAX_ROWS >= SC_ROWS, "MENU_MAX_ROWS < SC_ROWS");
+_Static_assert(MENU_MAX_ROWS >= ST_ROWS, "MENU_MAX_ROWS < ST_ROWS");
 
 /* Where the built rows' text lives. A row holds pointers, not copies, so the
  * strings a build formats have to outlive the build; the caller owns this and
@@ -131,9 +146,7 @@ typedef struct {
 	wifi_state  wifi;        /* already cached by the caller; see menu_wifi */
 	const char *ssid;        /* the network's name when connected, else NULL */
 
-	/* The TortOS menu */
-	bool        ra_in;
-	const char *ra_name;     /* only read when ra_in */
+	/* The plorpOS menu */
 	/* The ScreenScraper account, which needs one more fact than the
 	 * RetroAchievements one: whether this build can reach them at all. The
 	 * developer key comes from the environment at build time and a build
@@ -186,5 +199,12 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 
 /* Settings > Scraping's rows, from the same sys_ui. Returns SC_ROWS. */
 int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading);
+
+/* Settings > System Settings. Returns ST_ROWS. */
+int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
+                          const char **heading);
+
+/* Settings > UI Settings. Returns US_ROWS. */
+int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading);
 
 #endif

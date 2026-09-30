@@ -34,11 +34,10 @@ void wifi_label(wifi_ui *w)
 	char cur[WIFI_SSID_MAX], ip[64];
 	int i;
 
-	/* The address too: short of asking the router, this screen is where
-	 * someone about to ssh in looks for it. */
-	w->ip[0] = '\0';
-	if (wifi_status(cur, sizeof cur, ip, sizeof ip) != WIFI_CONNECTED) cur[0] = '\0';
-	else if (ip[0]) snprintf(w->ip, sizeof w->ip, "IP %s", ip);
+	w->conn[0] = '\0';
+	w->connected = wifi_status(cur, sizeof cur, ip, sizeof ip) == WIFI_CONNECTED;
+	if (!w->connected) cur[0] = '\0';
+	else if (ip[0]) snprintf(w->conn, sizeof w->conn, "%s · %s", cur, ip);
 	for (i = 0; i < w->n; i++) {
 		const char *state = (cur[0] && !strcmp(cur, w->nets[i].ssid))
 		                    ? " - connected"
@@ -70,13 +69,17 @@ void wifi_begin_scan(wifi_ui *w)
 	w->scanning = wifi_scan_start();
 }
 
+/* Every row goes through here, so no state - a long list, a small buffer -
+ * writes past what the caller gave. */
+#define ADD(...) do { if (nrows < max) rows[nrows++] = (__VA_ARGS__); } while (0)
+
 int wifi_build(void *ctx, menu_row *rows, int max, const char **heading)
 {
 	wifi_ui *w = ctx;
 	int nrows = 0, i;
 	bool any_saved = false;
 
-	*heading = WIFI_SVC_ROWS ? "Wi-Fi Services" : "Wi-Fi";
+	*heading = "Wi-Fi Services";
 
 	/* The scan is driven from here because this is the function that already
 	 * runs every frame. wifi_scan_poll() does nothing until its next second is
@@ -96,40 +99,48 @@ int wifi_build(void *ctx, menu_row *rows, int max, const char **heading)
 
 	/* The switch is row 0, so the state of the radio is the first thing read
 	 * and the first thing reachable. */
-	rows[nrows++] = (menu_row){ "Wi-Fi", w->on ? "on" : "off", true };
+	ADD((menu_row){ "Wi-Fi", w->on ? "on" : "off", true });
 	/* Under the switch and above the list, so they stay put while a scan
-	 * changes the list's length. Not tied to the radio: they serve whatever
-	 * network the device is on. */
+	 * changes the list's length (WIFI_TOP_ROWS). An account, reading "sign
+	 * in" until there is one, and the file server, dead until there is a
+	 * network to serve it on - the same words the plorpOS menu used for both
+	 * before they moved here (plorpos-z0d.1). */
+	ADD((menu_row){ "Cheevos", w->ra_name ? w->ra_name : "sign in", true });
+	/* Not tied to the radio: they serve whatever network the device is on. */
 	if (WIFI_SVC_ROWS) {
-		rows[nrows++] = (menu_row){ "SSH",   w->svc[WIFI_SSH]   ? "on" : "off", true };
-		rows[nrows++] = (menu_row){ "Samba", w->svc[WIFI_SAMBA] ? "on" : "off", true };
+		ADD((menu_row){ "SSH",   w->svc[WIFI_SSH]   ? "on" : "off", true });
+		ADD((menu_row){ "Samba", w->svc[WIFI_SAMBA] ? "on" : "off", true });
 	}
+	ADD((menu_row){ "Over The Hare",
+	                            w->connected ? NULL : "needs Wi-Fi", w->connected });
 	for (i = 0; i < w->n && nrows < max - 3; i++)
-		rows[nrows++] = (menu_row){ w->nets[i].ssid, w->vals[i], true };
+		ADD((menu_row){ w->nets[i].ssid, w->vals[i], true });
 
 	/* These are footers, not list items - they say something about the list
 	 * rather than offering anything - so they sit under a rule like the key
 	 * legend does. */
 	if (!w->on) {
-		rows[nrows++] = MENU_RULE;
-		rows[nrows++] = MENU_NOTE("Turn Wi-Fi on to scan");
+		ADD(MENU_RULE);
+		ADD(MENU_NOTE("Turn Wi-Fi on to scan"));
 		return nrows;
 	}
 	if (w->n == 0 && !w->scanning) {
-		rows[nrows++] = MENU_RULE;
-		rows[nrows++] = MENU_NOTE("No networks found");
+		ADD(MENU_RULE);
+		ADD(MENU_NOTE("No networks found"));
 		return nrows;
 	}
 	for (i = 0; i < w->n; i++)
 		if (w->nets[i].known) { any_saved = true; break; }
-	rows[nrows++] = MENU_RULE;
-	if (w->ip[0]) rows[nrows++] = MENU_NOTE(w->ip);
+	ADD(MENU_RULE);
+	/* Where the device is on the network: what Over The Hare, SSH and a file
+	 * share need typed into the other machine. */
+	if (w->conn[0]) ADD(MENU_NOTE(w->conn));
 	/* What is happening, then what you can do. The footer is the honest place
 	 * for progress: it is already outside the list, and swapping its text
 	 * means the screen never has to put a modal in front of you. */
-	rows[nrows++] = w->scanning
+	ADD(w->scanning
 	              ? MENU_NOTE("Scanning...")
-	              : MENU_NOTE(any_saved ? "Y: rescan   X: forget" : "Y: rescan");
+	              : MENU_NOTE(any_saved ? "Y: rescan   X: forget" : "Y: rescan"));
 	return nrows;
 }
 

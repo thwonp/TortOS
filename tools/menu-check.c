@@ -54,15 +54,21 @@ static void off_state(void)
 	n = wifi_build(&w, rows, 64, &heading);
 
 	printf("radio off:\n");
-	ck(heading && !strcmp(heading, "Wi-Fi"), "the screen names itself");
-	ck(n == 3, "switch, rule, note");
-	ck(rows[0].live, "the switch is live");
-	ck(!strcmp(rows[0].label, "Wi-Fi"), "row 0 is the switch");
-	ck(!strcmp(rows[0].value, "off"), "the switch reads off");
-	ck(rule_at(rows, n) == 1, "the rule separates the footer");
-	ck(ROW_IS_NOTE(rows[2]), "the footer is a note");
-	ck(!rows[2].live, "the footer is not selectable");
-	ck(live_count(rows, n) == 1, "only the switch can be chosen");
+	ck(heading && !strcmp(heading, "Wi-Fi Services"), "the screen names itself");
+	ck(n == WIFI_TOP_ROWS + 2, "switch, Cheevos, OTH, rule, note");
+	ck(rows[WIFI_ROW_SWITCH].live, "the switch is live");
+	ck(!strcmp(rows[WIFI_ROW_SWITCH].label, "Wi-Fi"), "row 0 is the switch");
+	ck(!strcmp(rows[WIFI_ROW_SWITCH].value, "off"), "the switch reads off");
+	ck(!strcmp(rows[WIFI_ROW_CHEEVOS].label, "Cheevos"), "Cheevos is under it");
+	ck(!strcmp(rows[WIFI_ROW_CHEEVOS].value, "sign in"), "and invites a sign in");
+	ck(rows[WIFI_ROW_CHEEVOS].live, "and is reachable signed out, radio off");
+	ck(!strcmp(rows[WIFI_ROW_XFER].label, "Over The Hare"), "OTH is under it too");
+	ck(!strcmp(rows[WIFI_ROW_XFER].value, "needs Wi-Fi"), "OTH says why it is dead");
+	ck(!rows[WIFI_ROW_XFER].live, "OTH is not selectable offline");
+	ck(rule_at(rows, n) == WIFI_TOP_ROWS, "the rule separates the footer");
+	ck(ROW_IS_NOTE(rows[WIFI_TOP_ROWS + 1]), "the footer is a note");
+	ck(!rows[WIFI_TOP_ROWS + 1].live, "the footer is not selectable");
+	ck(live_count(rows, n) == 2, "only the switch and Cheevos can be chosen");
 }
 
 /* The state the async scan produces on entry: saved networks up immediately,
@@ -88,13 +94,13 @@ static void scanning_state(void)
 	n = wifi_build(&w, rows, 64, &heading);
 
 	printf("scanning, two saved networks:\n");
-	ck(n == 5, "switch, two networks, rule, note");
-	ck(live_count(rows, n) == 3, "switch and both networks are choosable");
-	ck(!strcmp(rows[1].label, "ReinFi"), "the first saved network is listed");
-	ck(!strcmp(rows[1].value, "saved"), "no signal word before the scan lands");
-	ck(rule_at(rows, n) == 3, "rule after the networks");
-	ck(!strcmp(rows[4].label, "Scanning..."), "footer says what is happening");
-	ck(ROW_IS_NOTE(rows[4]), "the progress line is a note");
+	ck(n == WIFI_TOP_ROWS + 4, "fixed rows, two networks, rule, note");
+	ck(live_count(rows, n) == 4, "switch, Cheevos and both networks are choosable");
+	ck(!strcmp(rows[WIFI_TOP_ROWS].label, "ReinFi"), "the first saved network is listed");
+	ck(!strcmp(rows[WIFI_TOP_ROWS].value, "saved"), "no signal word before the scan lands");
+	ck(rule_at(rows, n) == WIFI_TOP_ROWS + 2, "rule after the networks");
+	ck(!strcmp(rows[WIFI_TOP_ROWS + 3].label, "Scanning..."), "footer says what is happening");
+	ck(ROW_IS_NOTE(rows[WIFI_TOP_ROWS + 3]), "the progress line is a note");
 }
 
 /* After results land the footer becomes the key legend, and the legend only
@@ -118,15 +124,51 @@ static void scanned_state(void)
 	n = wifi_build(&w, rows, 64, &heading);
 
 	printf("scan done, one unsaved network:\n");
-	ck(n == 4, "switch, network, rule, note");
-	ck(!strcmp(rows[1].value, "strong"), "-55 dBm reads as strong");
-	ck(!strcmp(rows[3].label, "Y: rescan"), "no forget offered with nothing saved");
+	ck(n == WIFI_TOP_ROWS + 3, "fixed rows, network, rule, note");
+	ck(!strcmp(rows[WIFI_TOP_ROWS].value, "strong"), "-55 dBm reads as strong");
+	ck(!strcmp(rows[WIFI_TOP_ROWS + 2].label, "Y: rescan"), "no forget offered with nothing saved");
 
 	w.nets[0].known = true;
 	wifi_label(&w);
 	n = wifi_build(&w, rows, 64, &heading);
-	ck(!strcmp(rows[3].label, "Y: rescan   X: forget"), "forget offered once saved");
-	ck(!strcmp(rows[1].value, "strong - saved"), "a saved network in range shows both");
+	ck(!strcmp(rows[WIFI_TOP_ROWS + 2].label, "Y: rescan   X: forget"), "forget offered once saved");
+	ck(!strcmp(rows[WIFI_TOP_ROWS].value, "strong - saved"), "a saved network in range shows both");
+}
+
+/* Connected and signed in: Over The Hare opens, Cheevos names the account,
+ * and the footer says where the device is - the network, then the address
+ * another machine types in (plorpos-z0d.1). wifi_label asks the radio, which
+ * a build machine does not have, so the connection is stated after it. */
+static void connected_state(void)
+{
+	wifi_ui w;
+	menu_row rows[64];
+	const char *heading;
+	int n;
+
+	memset(&w, 0, sizeof w);
+	w.on = true;
+	w.scanned = true;
+	w.n = 1;
+	snprintf(w.nets[0].ssid, sizeof w.nets[0].ssid, "kitchen");
+	w.nets[0].known = true;
+	w.nets[0].signal = -50;
+	wifi_label(&w);
+	w.connected = true;
+	snprintf(w.conn, sizeof w.conn, "kitchen · 192.168.0.55");
+	w.ra_name = "eric";
+	n = wifi_build(&w, rows, 64, &heading);
+
+	printf("connected, signed in:\n");
+	ck(rows[WIFI_ROW_XFER].live && !rows[WIFI_ROW_XFER].value, "OTH is live and unqualified");
+	ck(!strcmp(rows[WIFI_ROW_CHEEVOS].value, "eric"), "Cheevos shows the account");
+	ck(n == WIFI_TOP_ROWS + 4, "fixed rows, network, rule, where, legend");
+	ck(rule_at(rows, n) == WIFI_TOP_ROWS + 1, "rule after the network");
+	ck(!strcmp(rows[WIFI_TOP_ROWS + 2].label, "kitchen · 192.168.0.55"),
+	   "the footer names the network and the address");
+	ck(ROW_IS_NOTE(rows[WIFI_TOP_ROWS + 2]) && !rows[WIFI_TOP_ROWS + 2].live,
+	   "and is a note, not a stop");
+	ck(!strcmp(rows[WIFI_TOP_ROWS + 3].label, "Y: rescan   X: forget"), "the legend stays last");
 }
 
 /* The bands are a judgment on a measured number and the boundary is not
@@ -186,12 +228,16 @@ static void tortos_menu_offline(void)
 	u.suspend_timeout = 90;
 	n = sys_menu_build(&u, rows, &b, &heading);
 
-	printf("TortOS menu, radio off:\n");
+	printf("plorpOS menu, radio off:\n");
 	ck(n == PM_ROWS, "every row is filled");
-	ck(!strcmp(heading, "TortOS"), "heading");
-	ck(!strcmp(val(&rows[PM_WIFI]), "off"), "Wi-Fi reads off");
-	ck(!strcmp(val(&rows[PM_XFER]), "needs Wi-Fi"), "OTH says why it is dead");
-	ck(!rows[PM_XFER].live, "OTH is not selectable offline");
+	ck(!strcmp(heading, "plorpOS"), "heading");
+	ck(!strcmp(rows[PM_WIFI].label, "Wi-Fi Services"), "the Wi-Fi row is Wi-Fi Services");
+	ck(!strcmp(val(&rows[PM_WIFI]), "off"), "and reads the radio: off");
+	ck(!strcmp(rows[PM_SYSTEM].label, "System Settings") && rows[PM_SYSTEM].live
+	   && !rows[PM_SYSTEM].value, "System Settings opens, with no value");
+	ck(!strcmp(rows[PM_UI].label, "UI Settings") && rows[PM_UI].live
+	   && !rows[PM_UI].value, "UI Settings opens, with no value");
+	ck(!strcmp(rows[PM_ABOUT].label, "About"), "About is only About");
 	ck(rows[PM_SCRAPING].live && !rows[PM_SCRAPING].value,
 	   "Scraping opens offline: gamelist import needs no network");
 	n = sys_menu_scraping_build(&u, rows, &heading);
@@ -199,17 +245,20 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(val(&rows[SC_BOXART]), "needs Wi-Fi"), "Box Art says why");
 	ck(!rows[SC_BOXART].live, "Box Art is not selectable offline");
 	ck(rows[SC_IMPORT].live, "Import is selectable offline");
+	n = sys_menu_system_build(&u, rows, &b, &heading);
+	ck(n == ST_ROWS && !strcmp(heading, "System Settings"), "System Settings submenu");
+	ck(!strcmp(rows[ST_AUTO_OFF].label, "Auto Off"), "Auto Off leads");
+	ck(!strcmp(val(&rows[ST_SLEEP]), "2m"), "120s reads as 2m");
+	ck(!strcmp(val(&rows[ST_SUSPEND]), "90s"), "90s stays in seconds, as NextUI spells it");
+	ck(rows[ST_SUSPEND].live, "Suspend Timeout is reachable offline");
+	ck(!strcmp(val(&rows[ST_MUTESW]), "mute"), "Mute Switch defaults to mute");
+	n = sys_menu_ui_build(&u, rows, &heading);
+	ck(n == US_ROWS && !strcmp(heading, "UI Settings"), "UI Settings submenu");
+	ck(!strcmp(val(&rows[US_THEME]), "Plain Jane"), "the card set names itself");
+	ck(!strcmp(val(&rows[US_DIR]), "Horizontal"), "and so does the direction");
+	ck(rows[US_DIR].live, "UI Direction is reachable offline too");
+	ck(rows[US_THEME].live, "UI Theme is reachable offline, being a look and not a service");
 	n = sys_menu_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[PM_ACHIEVEMENTS]), "sign in"), "Cheevos invites a sign in");
-	ck(rows[PM_ACHIEVEMENTS].live, "Cheevos is reachable signed out");
-	ck(!strcmp(val(&rows[PM_SLEEP]), "2m"), "120s reads as 2m");
-	ck(!strcmp(val(&rows[PM_SUSPEND]), "90s"), "90s stays in seconds, as NextUI spells it");
-	ck(rows[PM_SUSPEND].live, "Suspend Timeout is reachable offline");
-	ck(!strcmp(val(&rows[PM_MUTESW]), "mute"), "Mute Switch defaults to mute");
-	ck(!strcmp(val(&rows[PM_THEME]), "Plain Jane"), "the card set names itself");
-	ck(!strcmp(val(&rows[PM_DIR]), "Horizontal"), "and so does the direction");
-	ck(rows[PM_DIR].live, "UI Direction is reachable offline too");
-	ck(rows[PM_THEME].live, "UI Theme is reachable offline, being a look and not a service");
 	/* Live since 2026-09-06, when the pairing screen landed. The row used to
 	 * be dead and read "not yet", which was true of the screen and false of
 	 * the feature - game audio had been going to a headset for three days. */
@@ -271,24 +320,20 @@ static void tortos_menu_online(void)
 	memset(&u, 0, sizeof u);
 	u.wifi = WIFI_CONNECTED;
 	u.ssid = "kitchen";
-	u.ra_in = true;
-	u.ra_name = "eric";
 	u.auto_off = 0;
 	n = sys_menu_build(&u, rows, &b, &heading);
 
 	ck(n == PM_ROWS, "row count does not depend on the network");
-	printf("TortOS menu, connected:\n");
-	ck(!strcmp(val(&rows[PM_WIFI]), "kitchen"), "Wi-Fi shows the network name");
-	ck(rows[PM_XFER].live && !rows[PM_XFER].value, "OTH is live and unqualified");
+	printf("plorpOS menu, connected:\n");
+	ck(!strcmp(val(&rows[PM_WIFI]), "kitchen"), "Wi-Fi Services shows the network name");
 	sys_menu_scraping_build(&u, rows, &heading);
 	ck(rows[SC_BOXART].live, "Box Art is live");
-	n = sys_menu_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[PM_ACHIEVEMENTS]), "eric"), "Cheevos shows the account");
-	ck(!strcmp(val(&rows[PM_SLEEP]), "never"), "0s reads as never");
-	ck(!strcmp(val(&rows[PM_AUTO_OFF]), "never"), "Auto Off unset reads as never");
+	sys_menu_system_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[ST_SLEEP]), "never"), "0s reads as never");
+	ck(!strcmp(val(&rows[ST_AUTO_OFF]), "never"), "Auto Off unset reads as never");
 	u.mute_lock = true;
-	sys_menu_build(&u, rows, &b, &heading);
-	ck(!strcmp(val(&rows[PM_MUTESW]), "muse button lock"), "Mute Switch reads muse button lock");
+	sys_menu_system_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[ST_MUTESW]), "muse button lock"), "Mute Switch reads muse button lock");
 
 	/* THE SCREENSCRAPER ROW HAS THREE STATES, one more than the Cheevos row
 	 * beside it: the developer key comes from the environment at build time,
@@ -321,7 +366,7 @@ static void tortos_menu_online(void)
 	ck(!strcmp(rows[PM_CONTROLS].label, "Controls"), "it is there");
 	ck(rows[PM_CONTROLS].live, "and live with the radio down and nobody signed in");
 	ck(!rows[PM_CONTROLS].value, "and says nothing in the value column");
-	ck(PM_CONTROLS == PM_ABOUT - 1, "and sits just above About TortOS");
+	ck(PM_CONTROLS == PM_ABOUT - 1, "and sits just above About");
 }
 
 /* Connecting and idle are not the same as off, and the row must not flatten
@@ -572,13 +617,14 @@ static void cursor_reaches(void)
 	n = sys_menu_build(&u, rows, &b, &heading);
 	k = reachable(rows, n, got, MENU_MAX_ROWS);
 
-	printf("TortOS menu offline, what the cursor can reach:\n");
+	printf("plorpOS menu offline, what the cursor can reach:\n");
 	/* No network needed to pair a headset, so it stays reachable offline -
 	 * unlike the three rows above, which do need one. */
 	ck(holds(got, k, PM_BT), "Bluetooth is reachable with no network");
-	ck(!holds(got, k, PM_XFER), "OTH is skipped with no network");
+	ck(k == PM_ROWS, "every row is a stop: nothing here needs the network now");
+	ck(holds(got, k, PM_SYSTEM) && holds(got, k, PM_UI), "both settings submenus");
 	ck(holds(got, k, PM_SCRAPING), "Scraping is reachable with no network");
-	ck(holds(got, k, PM_WIFI), "Wi-Fi is reachable, which is how you fix that");
+	ck(holds(got, k, PM_WIFI), "Wi-Fi Services is reachable, which is how you fix that");
 	ck(holds(got, k, PM_ABOUT), "About is reachable");
 	/* Play Time reads what is already stored and asks nothing of the network,
 	 * so it stays reachable when everything else is grayed out. */
@@ -969,6 +1015,7 @@ int main(void)
 	off_state();
 	scanning_state();
 	scanned_state();
+	connected_state();
 	strength_words();
 	respects_max();
 	tortos_menu_offline();

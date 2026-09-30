@@ -144,7 +144,7 @@ bool plat_video_init(void)
 		return false;
 	}
 	SDL_ShowCursor(SDL_DISABLE);
-	win = SDL_CreateWindow("TortOS", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+	win = SDL_CreateWindow("plorpOS", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
 	                       ww, wh, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
 	if (!win) {
 		fprintf(stderr, "window: %s\n", SDL_GetError());

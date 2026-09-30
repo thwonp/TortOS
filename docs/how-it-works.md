@@ -188,7 +188,7 @@ The launcher declares which console the game is and hands over the set, and
 diatom watches every frame
 (its ADR-0025 and ADR-0026).
 
-**The device does the normal thing.** Sign in once under `MENU` -> Cheevos,
+**The device does the normal thing.** Sign in once under `MENU` -> Wi-Fi Services -> Cheevos,
 and the first time you launch a game TortOS hashes the ROM, asks
 RetroAchievements which game it is, fetches the set and caches it at
 `Roms/<System>/.cheevos/<name>.set`, beside the box art in `.media/`. After

@@ -111,7 +111,7 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		return SM_ROWS;
 	}
 
-	*heading = "TortOS";
+	*heading = "plorpOS";
 	/* The network's name, not its address. A settings row should say what the
 	 * setting IS; the address is a fact about the machine and lives on the
 	 * About page with the other ones. */
@@ -121,7 +121,10 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		snprintf(b->b, sizeof b->b, "%s",
 		         u->wifi == WIFI_CONNECTING ? "connecting" :
 		         u->wifi == WIFI_IDLE       ? "not connected" : "off");
-	out[PM_WIFI]         = (menu_row){ "Wi-Fi",     b->b,      true  };
+	/* The Wi-Fi screen, named for everything on it now: the radio, and the
+	 * rows that need it - Cheevos and Over The Hare (plorpos-z0d.1). The
+	 * value is still the radio's, since that is what decides the rest. */
+	out[PM_WIFI]         = (menu_row){ "Wi-Fi Services", b->b, true };
 	out[PM_BT]           = (menu_row){ "Bluetooth",
 	                                   u->bt_name ? u->bt_name : "not connected",
 	                                   true  };
@@ -136,54 +139,58 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	else
 		snprintf(b->d, sizeof b->d, "%s", aout_dest_name(u->audio_dest));
 	out[PM_AUDIO]        = (menu_row){ "Audio Output", b->d, true };
-	/* Files onto and off the device over Wi-Fi: a small web server on the LAN
-	 * that a phone or a laptop opens. Named for OTA, which is what everyone
-	 * already calls this, and for the other half of the fable - the tortoise
-	 * runs the system, the hare carries the files.
-	 *
-	 * Directly under Wi-Fi because it is useless without it, and reads as an
-	 * answer to the row above rather than a separate idea. */
-	out[PM_XFER]         = (menu_row){ "Over The Hare", NEEDS_WIFI(net), net };
 	out[PM_STATS]        = (menu_row){ "Play Time",  NULL,      true  };
+	out[PM_SYSTEM]       = (menu_row){ "System Settings", NULL, true  };
+	out[PM_UI]           = (menu_row){ "UI Settings", NULL,     true  };
+	/* Box Art and the ScreenScraper account moved under here with gamelist
+	 * import (TortOS-mh0) - see sys_menu_scraping_build. Always live: the
+	 * import needs no network, whatever the other two do. */
+	out[PM_SCRAPING]     = (menu_row){ "Scraping",  NULL,      true  };
+	/* What every button does, per screen. Needs nothing of the device, which
+	 * is the point: it is the page you reach when the thing you have forgotten
+	 * is which button opens Muse. See src/controls.h. */
+	out[PM_CONTROLS]     = (menu_row){ "Controls",    NULL,   true  };
+	out[PM_ABOUT]        = (menu_row){ "About",       NULL,   true  };
+	return PM_ROWS;
+}
+
+int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
+                          const char **heading)
+{
+	*heading = "System Settings";
 	/* NextUI's two sleep rows, same meaning: Auto Sleep is its "Screen
 	 * timeout" (idle until light sleep - screen off, CPU awake), Suspend
 	 * Timeout its "Suspend timeout" (how long light sleep waits unwoken
 	 * before real suspend, whether a tap or idle began it). Auto Off is
 	 * TortOS's own: idle until a full shutdown, resume-into-game putting you
 	 * back. It and Auto Sleep are mutually exclusive - main.c's
-	 * PM_SLEEP/PM_AUTO_OFF handling - so at most one of those two labels is
+	 * ST_SLEEP/ST_AUTO_OFF handling - so at most one of those two labels is
 	 * ever a real interval, and why the two sit together, Auto Off on top. */
-	out[PM_AUTO_OFF]     = (menu_row){ "Auto Off",  b->a,      true  };
 	sys_menu_auto_off_label(u->auto_poweroff, b->a, sizeof b->a);
-	out[PM_SLEEP]        = (menu_row){ "Auto Sleep", b->c,     true  };
+	out[ST_AUTO_OFF] = (menu_row){ "Auto Off",        b->a, true };
 	sys_menu_auto_off_label(u->auto_off, b->c, sizeof b->c);
-	out[PM_SUSPEND]      = (menu_row){ "Suspend Timeout", b->e, true };
+	out[ST_SLEEP]    = (menu_row){ "Auto Sleep",      b->c, true };
 	sys_menu_auto_off_label(u->suspend_timeout, b->e, sizeof b->e);
+	out[ST_SUSPEND]  = (menu_row){ "Suspend Timeout", b->e, true };
 	/* TortOS-ib9: what the side switch does. Button Lock is an iPod's hold
 	 * switch, and only while music plays with the screen off - music_dark.
 	 * "muse" in the value says so (TortOS-mhw). */
 #if !defined(PLATFORM_GKD)
-	out[PM_MUTESW]       = (menu_row){ "Mute Switch",
-	                                   u->mute_lock ? "muse button lock" : "mute", true };
+	out[ST_MUTESW]   = (menu_row){ "Mute Switch",
+	                               u->mute_lock ? "muse button lock" : "mute", true };
 #endif
-	/* Both change how the shelf looks and nothing about what is on it. They
-	 * are what is left of that group: Text Size stood here until the band it
-	 * offered turned out to be too narrow to matter - src/ui.c. */
-	out[PM_THEME]        = (menu_row){ "UI Theme",  u->cards,     true };
-	out[PM_DIR]          = (menu_row){ "UI Direction", u->cards_dir, true };
-	/* Box Art and the ScreenScraper account moved under here with gamelist
-	 * import (TortOS-mh0) - see sys_menu_scraping_build. Always live: the
-	 * import needs no network, whatever the other two do. */
-	out[PM_SCRAPING]     = (menu_row){ "Scraping",  NULL,      true  };
-	out[PM_ACHIEVEMENTS] = (menu_row){ "Cheevos",
-	                                   u->ra_in ? u->ra_name : "sign in",
-	                                   true };
-	/* What every button does, per screen. Needs nothing of the device, which
-	 * is the point: it is the page you reach when the thing you have forgotten
-	 * is which button opens Muse. See src/controls.h. */
-	out[PM_CONTROLS]     = (menu_row){ "Controls",    NULL,   true  };
-	out[PM_ABOUT]        = (menu_row){ "About TortOS", NULL,   true  };
-	return PM_ROWS;
+	return ST_ROWS;
+}
+
+int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
+{
+	*heading = "UI Settings";
+	/* Both change how the shelf looks and nothing about what is on it. Text
+	 * Size stood here until the band it offered turned out to be too narrow
+	 * to matter - src/ui.c. */
+	out[US_THEME] = (menu_row){ "UI Theme",     u->cards,     true };
+	out[US_DIR]   = (menu_row){ "UI Direction", u->cards_dir, true };
+	return US_ROWS;
 }
 
 int sys_menu_scraping_build(const sys_ui *u, menu_row *out, const char **heading)
