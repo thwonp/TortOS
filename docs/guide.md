@@ -362,9 +362,9 @@ cover, the track, where in it you are, and what comes next.
 | | |
 |---|---|
 | **A** | pause, or play |
-| **L1/R1** | previous / next track. More than three seconds in, L1 starts the track over |
+| **L1/R1** | previous / next track, or chapter in a book that has them. More than three seconds in, L1 starts the track or chapter over |
 | **Left/Right** | back or ahead ten seconds; held, a minute a step after a second and five minutes after three |
-| **Y** | the play mode (music; books play in order) |
+| **Y** | the play mode for music; the speed for a book, 1x to 2x and 0.75x, kept for each book |
 | **B** | the album's tracks |
 | **MENU** | Muse's menu |
 | **SELECT** | close Muse |

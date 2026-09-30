@@ -44,6 +44,12 @@ static mu_now  g_now;
 static bool    g_book;              /* the queue is a book: in order, always */
 static double  g_start_at;          /* where the first PLAY of a queue starts */
 static bool    g_ran_out;           /* see musec_take_ran_out */
+static double  g_speed = 1.0;       /* see musec_set_speed */
+/* The playing file's chapters, from the daemon's CHAPTER lines. */
+#define MAX_CHAPTERS 256
+static double  g_ch_at[MAX_CHAPTERS];
+static char    g_ch_title[MAX_CHAPTERS][96];
+static int     g_nch;
 /* A seek on its way: where to, and when it was asked for. See seek_to. */
 static bool    g_seeking;
 static double  g_seek_to;
@@ -57,6 +63,8 @@ static unsigned g_sink_ms;          /* when the ask went */
 static bool     g_sink_waiting;     /* asked, and no answer yet */
 static bool     g_asked;            /* PLAY or RESUME sent, not yet answered */
 static void   (*g_before_heard)(void);
+
+static void seek_to(double t);
 
 void musec_init(const char *muse_bin, const char *root)
 {
@@ -160,14 +168,15 @@ static void play_current(void)
 	if (g_before_heard) g_before_heard();
 	/* Only the queue's first PLAY starts part way: every track after it is
 	 * one the queue moved on to, from its beginning. */
-	if (g_start_at > 0) sendf("PLAY\tpath=%s/%s\tat=%.1f", g_root, q, g_start_at);
-	else                sendf("PLAY\tpath=%s/%s", g_root, q);
+	sendf("PLAY\tpath=%s/%s\tat=%.1f\tspeed=%.2f", g_root, q, g_start_at, g_speed);
+	g_nch = 0;                     /* the new file says its own */
 	/* Until META says otherwise, the name the file has. */
 	ml_track_name(strrchr(q, '/') ? strrchr(q, '/') + 1 : q,
 	              g_now.title, sizeof g_now.title);
 	snprintf(g_now.artist, sizeof g_now.artist, "%s", g_artist);
 	snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
 	g_now.at = g_start_at;
+	g_now.speed = g_speed;
 	g_start_at = 0;
 	g_seeking = false;
 	g_now.len = 0;
@@ -227,7 +236,20 @@ static void event(const char *line)
 		g_now.state = !strcmp(v, "playing") ? MU_PLAYING
 		            : !strcmp(v, "paused")  ? MU_PAUSED : MU_STOPPED;
 		if (g_now.state == MU_PLAYING) g_skips = 0;
+	} else if (!strncmp(line, "CHAPTER", 7)) {
+		int i;
+
+		field(line, "i", v, sizeof v);
+		i = atoi(v);
+		if (i >= 0 && i < MAX_CHAPTERS) {
+			field(line, "at", v, sizeof v);
+			g_ch_at[i] = atof(v);
+			field(line, "title", g_ch_title[i], sizeof g_ch_title[i]);
+			if (i + 1 > g_nch) g_nch = i + 1;
+		}
 	} else if (!strncmp(line, "META", 4)) {
+		/* The CHAPTER lines follow, and are this file's alone. */
+		g_nch = 0;
 		/* The file's own tags win where it has them; the folder names stand
 		 * in where it does not, which on this card is the artist almost
 		 * every time - the rips carry an album tag and no artist one. */
@@ -375,7 +397,7 @@ void musec_poll(void)
 }
 
 void musec_play(const char *const *paths, int n, int start, double at, bool book,
-                const char *artist, const char *album)
+                double speed, const char *artist, const char *album)
 {
 	int i, k = 0;
 
@@ -395,6 +417,7 @@ void musec_play(const char *const *paths, int n, int start, double at, bool book
 	g_qn = k;
 	muq_free(&g_order);
 	g_book = book;
+	g_speed = speed >= 0.5 && speed <= 2.0 ? speed : 1.0;
 	muq_init(&g_order, k, start >= 0 && start < k ? start : 0,
 	         book ? MUQ_IN_ORDER : g_mode, plat_now_ms() * 2654435761u + 1);
 	g_skips = 0;
@@ -458,6 +481,11 @@ const char *musec_sink_now(void)
 
 void musec_next(void)
 {
+	if (g_book && g_nch > 1) {
+		int c = musec_chapter_now();
+
+		if (c + 1 < g_nch) { seek_to(g_ch_at[c + 1]); return; }
+	}
 	if (muq_next(&g_order) >= 0) play_current();
 }
 
@@ -477,6 +505,13 @@ void musec_prev(void)
 	/* The way every player does it: three seconds in, "back" means the start
 	 * of this track; before that it means the one before - and where there is
 	 * none before, the start of this one again. */
+	if (g_book && g_nch > 1) {
+		int c = musec_chapter_now();
+		double into = c >= 0 ? g_now.at - g_ch_at[c] : 0;
+
+		if (c >= 0 && into > 3.0) { seek_to(g_ch_at[c]); return; }
+		if (c > 0)                { seek_to(g_ch_at[c - 1]); return; }
+	}
 	if (g_now.at > 3.0 || muq_prev(&g_order) < 0) seek_to(0);
 	else play_current();
 }
@@ -536,6 +571,33 @@ void musec_set_mode(muq_mode m)
 }
 
 bool musec_is_book(void) { return g_book; }
+
+void musec_set_speed(double x)
+{
+	if (x < 0.5 || x > 2.0) return;
+	g_speed = x;
+	g_now.speed = x;
+	if (g_now.state == MU_PLAYING || g_now.state == MU_PAUSED) sendf("SPEED\tx=%.2f", x);
+}
+
+double musec_speed(void) { return g_speed; }
+
+int musec_chapters(void) { return g_nch; }
+
+double musec_chapter_at(int i) { return i >= 0 && i < g_nch ? g_ch_at[i] : 0; }
+
+const char *musec_chapter_title(int i) { return i >= 0 && i < g_nch ? g_ch_title[i] : ""; }
+
+int musec_chapter_now(void)
+{
+	int i, c = -1;
+
+	/* Half a second of slack: a seek to a chapter's start is shown at once
+	 * and confirmed a moment later, and should read as that chapter. */
+	for (i = 0; i < g_nch; i++)
+		if (g_ch_at[i] <= g_now.at + 0.5) c = i;
+	return c;
+}
 
 bool musec_take_ran_out(void)
 {

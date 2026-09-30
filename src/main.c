@@ -54,6 +54,7 @@
 
 #include <SDL.h>
 #include <SDL_image.h>
+#include <ctype.h>
 #include <math.h>
 #include <signal.h>
 #include <stdio.h>
@@ -588,14 +589,59 @@ static void muse_poll(void)
 	book_keep(false);
 }
 
+/* A book's speed, kept beside its place: the last one chosen on it, 1x for a
+ * book never changed. Its own key rather than a third field in the place, so
+ * a place written before speeds existed still reads. */
+static void book_speed_key(int al, char *out, size_t n)
+{
+	const char *p = g_muse.tracks[g_muse.albums[al].first].path;
+	const char *slash = strrchr(p, '/');
+
+	snprintf(out, n, "bookspeed.%.*s", slash ? (int)(slash - p) : 0, p);
+}
+
+static double book_speed(int al)
+{
+	char key[LIB_PATH + 16], val[16];
+	double x;
+
+	book_speed_key(al, key, sizeof key);
+	db_get_str(db_dev(), key, val, sizeof val, "1");
+	x = atof(val);
+	return x >= 0.5 && x <= 2.0 ? x : 1.0;
+}
+
+/* Y on a book's Now Playing: the next speed, 1x to 2x in quarters and then
+ * 0.75x before coming round - the speeds a listener reaches for, in the order
+ * they reach for them. Set on the book as it plays and kept for it. */
+static void book_cycle_speed(void)
+{
+	static const double STEPS[] = { 1.0, 1.25, 1.5, 1.75, 2.0, 0.75 };
+	int al = ml_album_of(&g_muse, musec_track(musec_now()->index));
+	double now = musec_speed(), next = STEPS[0];
+	char key[LIB_PATH + 16], val[16];
+	size_t k;
+
+	for (k = 0; k < sizeof STEPS / sizeof STEPS[0]; k++)
+		if (fabs(STEPS[k] - now) < 0.01) {
+			next = STEPS[(k + 1) % (sizeof STEPS / sizeof STEPS[0])];
+			break;
+		}
+	musec_set_speed(next);
+	if (al < 0 || !g_muse.albums[al].book) return;
+	book_speed_key(al, key, sizeof key);
+	snprintf(val, sizeof val, "%.2f", next);
+	db_set_str(db_dev(), key, val);
+}
+
 /* A new queue. Whatever book it replaces has its place written first, since
  * the queue is the only record of where that was. */
 static void muse_play(const char *const *paths, int n, int start, double at,
-                      bool book, const char *artist, const char *album)
+                      bool book, double speed, const char *artist, const char *album)
 {
 	book_keep(true);
 	g_bk.al = -1;
-	musec_play(paths, n, start, at, book, artist, album);
+	musec_play(paths, n, start, at, book, speed, artist, album);
 }
 
 /* The play modes as the player meets them: the name saved in the settings and
@@ -7938,6 +7984,19 @@ static void mmss(char *out, size_t n, double sec)
 #define NP_TX   (NP_X + NP_SIDE + 56)            /* the words beside it */
 #define NP_TW   (TORTOS_SCREEN_W - NP_TX - 64)
 
+/* A chapter as Now Playing names it: its own title when it has one worth
+ * reading, "Chapter 3" when the title is only its number - Dungeon Crawler
+ * Carl's thirty-seven are "001" to "037" - or missing. */
+static void chapter_label(int i, char *out, size_t n)
+{
+	const char *t = musec_chapter_title(i);
+	const char *p;
+
+	for (p = t; *p && (isdigit((unsigned char)*p) || *p == ' '); p++) { }
+	if (t[0] && *p) snprintf(out, n, "%s", t);
+	else            snprintf(out, n, "Chapter %d", i + 1);
+}
+
 /* One line of the words, sliding when it is wider than the column. */
 static void np_line(SDL_Renderer *r, TTF_Font *f, const char *s, int y,
                     unsigned phase, SDL_Color col, unsigned *wait)
@@ -8009,7 +8068,12 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 			if (TTF_GlyphMetrics(fs, 'H', &mnx, &mxx, &mny, &mxy, &adv) == 0)
 				cap = mxy;
 		}
-		if (mn->count > 1) {
+		/* A book with chapters counts those instead of its one file. */
+		if (musec_is_book() && musec_chapters() > 1) {
+			snprintf(line, sizeof line, "Chapter %d of %d",
+			         musec_chapter_now() + 1, musec_chapters());
+			gx += ui_text(r, fs, line, NP_TX, y, -1, UI_TEXT_DIM) + 18;
+		} else if (mn->count > 1) {
 			snprintf(line, sizeof line, "%d of %d", mn->index + 1, mn->count);
 			/* Not tabular: it changes with the track, not every second,
 			 * and a 1 in a fixed-width cell read as "1 of  14". */
@@ -8019,6 +8083,13 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 			ui_glyph_draw(r, (ui_glyph)g, gx + gs / 2, y + asc - cap / 2, gs, acc);
 			gx += gs + 12;
 		}
+		/* A book's speed where music's mode mark would be, and only when it
+		 * is not the ordinary one. */
+		if (musec_is_book() && fabs(musec_speed() - 1.0) > 0.01) {
+			snprintf(line, sizeof line, "%gx", musec_speed());
+			ui_text(r, fs, line, gx, y, -1, acc);
+			gx += ui_text_width(fs, line) + 12;
+		}
 		/* The Mute Switch down in muse button lock: what the buttons will
 		 * do once the screen goes dark, which is nothing. Only while it is
 		 * down, as an iPod shows its hold. TortOS-7cv. */
@@ -8027,7 +8098,18 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	/* Room under it for the larger mark and for the title to stand clear of
 	 * the line above - which read as one block with it at 6px. */
 	y += ui_font_line(UI_F_META) + 24;
-	np_line(r, ui_font(UI_F_TITLE), mn->title, y, phase, UI_TEXT, &wait);
+	{
+		/* A chapter with a title of its own is what is playing; one that
+		 * is only a number leaves the book's title there. */
+		char chap[128];
+		const char *top = mn->title;
+
+		if (musec_is_book() && musec_chapters() > 1) {
+			chapter_label(musec_chapter_now() < 0 ? 0 : musec_chapter_now(), chap, sizeof chap);
+			if (strncmp(chap, "Chapter ", 8) != 0) top = chap;
+		}
+		np_line(r, ui_font(UI_F_TITLE), top, y, phase, UI_TEXT, &wait);
+	}
 	y += ui_font_line(UI_F_TITLE) + 10;
 	np_line(r, ui_font(UI_F_MENU), mn->artist, y, phase, UI_TEXT_SOFT, &wait);
 	y += ui_font_line(UI_F_MENU);
@@ -8063,8 +8145,11 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	}
 
 	ui_text(r, fs, musec_is_book()
-	        ? (state ? "A: play    L1/R1: file    Left/Right: seek"
-	                 : "A: pause    L1/R1: file    Left/Right: seek")
+	        ? (musec_chapters() > 1
+	           ? (state ? "A: play    L1/R1: chapter    Left/Right: seek    Y: speed"
+	                    : "A: pause    L1/R1: chapter    Left/Right: seek    Y: speed")
+	           : (state ? "A: play    L1/R1: file    Left/Right: seek    Y: speed"
+	                    : "A: pause    L1/R1: file    Left/Right: seek    Y: speed"))
 	        : (state ? "A: play    L1/R1: track    Left/Right: seek    Y: mode"
 	                 : "A: pause    L1/R1: track    Left/Right: seek    Y: mode"),
 	        TORTOS_SCREEN_W / 2, TORTOS_SCREEN_H - 72, 0, UI_TEXT_DIM);
@@ -8101,7 +8186,7 @@ static muse_exit muse_now_screen(app *a)
 {
 	struct {
 		mu_state st;
-		int at, len, index, count, mode;
+		int at, len, index, count, mode, chapter, speed;
 		bool lock;
 		char title[128], artist[128], album[128];
 		SDL_Texture *tex;
@@ -8144,8 +8229,12 @@ static muse_exit muse_now_screen(app *a)
 		 * which made one button mean two things a screen apart; it is left
 		 * free in Muse for something that needs it. Eric's call, 2026-09-19. */
 		if (a->in.pressed[IN_ACCEPT])       musec_toggle();
-		/* Not on a book, which plays in order whatever the mode says. */
-		if (a->in.pressed[IN_Y] && !musec_is_book()) muse_cycle_mode();
+		/* The mode, on music; on a book, which plays in order whatever the
+		 * mode says, its speed. */
+		if (a->in.pressed[IN_Y]) {
+			if (musec_is_book()) book_cycle_speed();
+			else                 muse_cycle_mode();
+		}
 		if (in_repeat(&a->in, IN_L1))       musec_prev();
 		if (in_repeat(&a->in, IN_R1))       musec_next();
 		if (in_repeat(&a->in, IN_LEFT))     musec_seek_by(-seek_step(&a->in, IN_LEFT));
@@ -8160,7 +8249,11 @@ static muse_exit muse_now_screen(app *a)
 		np_cover(a, ml_album_of(&g_muse, musec_track(mn->index)));
 		/* What the mode will actually play next. Repeat one says so with
 		 * its mark, and "Next:" naming the same song reads as a mistake. */
-		if ((musec_is_book() || musec_mode() != MUQ_REPEAT_ONE) && (nt = musec_upcoming()))
+		/* In a book with chapters, the next chapter, until the last. */
+		if (musec_is_book() && musec_chapters() > 1 &&
+		    musec_chapter_now() + 1 < musec_chapters())
+			chapter_label(musec_chapter_now() + 1, next, sizeof next);
+		else if ((musec_is_book() || musec_mode() != MUQ_REPEAT_ONE) && (nt = musec_upcoming()))
 			ml_track_name(strrchr(nt, '/') ? strrchr(nt, '/') + 1 : nt,
 			              next, sizeof next);
 
@@ -8180,6 +8273,8 @@ static muse_exit muse_now_screen(app *a)
 		shown.tex = g_np.tex;
 		shown.mode = musec_is_book() ? -1 : (int)musec_mode();
 		shown.lock = plat_hold_switch();
+		shown.chapter = musec_chapter_now();
+		shown.speed = (int)(musec_speed() * 100 + 0.5);
 		for (b = 0; b < IN_COUNT && !touched; b++)
 			touched = a->in.pressed[b] || a->in.down[b];
 		now = plat_now_ms();
@@ -8344,6 +8439,7 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 					/* A book's file from its start: choosing one is choosing
 					 * where to listen from, and the place moves with it. */
 					muse_play(paths, al->n, sel, 0, al->book,
+					          al->book ? book_speed(album) : 1.0,
 					          g_muse.artists[art].name, al->name);
 					free(paths);
 				}
@@ -8427,7 +8523,7 @@ static muse_exit muse_book(app *a, int al)
 		if (!paths) return MUSE_BACK;
 		for (i = 0; i < b->n; i++) paths[i] = g_muse.tracks[b->first + i].path;
 		fprintf(stderr, "muse: %s from file %d at %.1f\n", b->name, start + 1, at);
-		muse_play(paths, b->n, start, at, true,
+		muse_play(paths, b->n, start, at, true, book_speed(al),
 		          g_muse.artists[muse_artist_of(al)].name, b->name);
 		free(paths);
 	}

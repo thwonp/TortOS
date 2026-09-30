@@ -27,6 +27,7 @@ typedef struct {
 	mu_state state;
 	char     title[128], artist[128], album[128];
 	double   at, len;
+	double   speed;                 /* 1.0 but on a book set otherwise */
 	/* Where in the queue, and how long it is. The PLAY order's place, so
 	 * shuffled it counts the order being heard rather than album order. */
 	int      index, count;
@@ -46,18 +47,37 @@ void musec_poll(void);
  * on repeat is not a way anyone listens to one. The mode is left as it was
  * set, for the music after it. */
 void musec_play(const char *const *paths, int n, int start, double at, bool book,
-                const char *artist, const char *album);
+                double speed, const char *artist, const char *album);
 
 /* Whether the queue is a book. */
 bool musec_is_book(void);
+
+/* A book's speed, 0.5 to 2.0 with the pitch kept - the daemon's SPEED. Set on
+ * the playing queue at once and carried by every PLAY after it: the daemon
+ * treats a PLAY with no speed as 1x, so a speed the launcher did not repeat
+ * would be lost at the next file. */
+void   musec_set_speed(double x);
+double musec_speed(void);
+
+/* The chapters of the file playing, as the daemon read them from it (an
+ * M4B's; a folder of MP3s has none, its files are its parts). A book with more
+ * than one moves by chapter on L1 and R1 - see musec_next. */
+int         musec_chapters(void);
+double      musec_chapter_at(int i);
+const char *musec_chapter_title(int i);
+/* The chapter the playing position is in, or -1 with none. */
+int         musec_chapter_now(void);
 
 /* True once each time a queue plays out to its end - the last track ended by
  * itself, not stopped or replaced. A book that does has been finished. */
 bool musec_take_ran_out(void);
 
 void musec_toggle(void);       /* pause or resume */
+/* The next and previous track - or, in a book whose file has chapters, the
+ * next chapter and the start of this one (or the one before, within three
+ * seconds of its start), falling back to the files at either end. */
 void musec_next(void);
-void musec_prev(void);         /* to the start of this track, or the one before */
+void musec_prev(void);
 void musec_seek_by(double delta);
 void musec_stop(void);
 
