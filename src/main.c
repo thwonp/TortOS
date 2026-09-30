@@ -8661,15 +8661,15 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	/* Row 0 is the modifier (global, diatom's ADR-0038); the action rows
 	 * follow it, action i at row i + 1; on the GKD, Rewind Speed is last. */
 	enum { MOD_ROW = 0, FIRST_ACT = 1, ROWS = HK_SCREEN_ROWS + 1 };
-	int btn_for_row[HK_ROW_COUNT];
+	int trig_for_row[HK_ROW_COUNT];
 	menu_row rows[ROWS];
-	char vals[HK_ROW_COUNT][8];
+	char vals[HK_ROW_COUNT][32];
 	const char *const *mod_wire, *const *mod_label;
 	int nmods = plat_hotkey_modifiers(&mod_wire, &mod_label);
 	int mod = 0, sel = 0, done = 0, i;
 	char spec[128];
 
-	hk_parse(plat_hotkey_map(tag), btn_for_row);
+	hk_parse(plat_hotkey_map(tag), trig_for_row);
 #if defined(PLATFORM_GKD)
 	const int RW_ROW = FIRST_ACT + HK_ROW_COUNT;
 	int rw = 0, every = db_get_int(db_dev(), "rewindspeed", 5);
@@ -8709,25 +8709,28 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			} else if (d) {
 				/* Skip candidates another row already holds, rather than
 				 * landing on one and clearing that row out from under it -
-				 * cycling past a taken button while looking for a further
+				 * cycling past a taken trigger while looking for a further
 				 * one used to steal it with no way to tell "passing
 				 * through" from "selecting". A row is freed the same way
-				 * it is claimed: cycle it to None first. */
+				 * it is claimed: cycle it to None first. Stick triggers
+				 * are skipped too where there is no stick. Stopgap list;
+				 * plorpos-gkd.43.3 replaces it with press-to-bind. */
 				int act = sel - FIRST_ACT;
-				int nb = btn_for_row[act];
+				int nt = trig_for_row[act];
 				int tries;
 
-				for (tries = 0; tries < HK_BTN_COUNT; tries++) {
-					nb = (nb + d + HK_BTN_COUNT) % HK_BTN_COUNT;
-					if (nb == 0) break;
+				for (tries = 0; tries < HK_TRIG_COUNT; tries++) {
+					nt = (nt + d + HK_TRIG_COUNT) % HK_TRIG_COUNT;
+					if (nt == 0) break;
+					if (hk_trig_stick(nt) && !plat_has_stick()) continue;
 					for (i = 0; i < HK_ROW_COUNT; i++)
-						if (i != act && btn_for_row[i] == nb) break;
-					if (i == HK_ROW_COUNT) break;   /* nb is free */
+						if (i != act && trig_for_row[i] == nt) break;
+					if (i == HK_ROW_COUNT) break;   /* nt is free */
 				}
-				btn_for_row[act] = nb;
+				trig_for_row[act] = nt;
 			}
 			if (d) {
-				hk_serialize(btn_for_row, spec, sizeof spec);
+				hk_serialize(trig_for_row, spec, sizeof spec);
 				if (sel != MOD_ROW) plat_hotkey_set(tag, spec);
 				/* Live, not only persisted: this screen is only ever open
 				 * mid-session (reached from the in-game menu), so the
@@ -8750,7 +8753,10 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 		rows[MOD_ROW] = (menu_row){ "Hotkey Modifier", mod_label[mod], true };
 		for (i = 0; i < HK_ROW_COUNT; i++)
-			snprintf(vals[i], sizeof vals[i], "%s", HK_BTN_NAME[btn_for_row[i]]);
+			snprintf(vals[i], sizeof vals[i], "%s%s%s",
+			         hk_trig_mod(trig_for_row[i]) ? mod_label[mod] : "",
+			         hk_trig_mod(trig_for_row[i]) ? " + " : "",
+			         HK_TRIG_NAME[trig_for_row[i]]);
 		for (i = 0; i < HK_ROW_COUNT; i++)
 			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[i], vals[i], true };
 #if defined(PLATFORM_GKD)

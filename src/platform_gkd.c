@@ -51,6 +51,7 @@ const char *const plat_child_env[] = {
 const char plat_child_libpath[] = "";
 
 bool plat_is_brick_pro(void) { return false; }
+bool plat_has_stick(void) { return true; }
 /* Home turns the volume keys into brightness keys, as it does in a game. */
 const char *plat_bright_keys(void) { return "Home+Vol"; }
 

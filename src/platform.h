@@ -49,6 +49,9 @@ const char *plat_bright_keys(void);
 extern const char *const plat_child_env[];
 extern const char plat_child_libpath[];
 
+/* A stick whose directions can be hotkey triggers (diatom ADR-0039). */
+bool plat_has_stick(void);
+
 typedef enum {
 	IN_LEFT, IN_RIGHT, IN_UP, IN_DOWN,
 	IN_ACCEPT, IN_BACK, IN_X, IN_Y,
