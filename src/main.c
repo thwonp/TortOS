@@ -6255,6 +6255,23 @@ static int menu_shelf_width(app *a)
 
 	n = menu_build(a, SCREEN_SYSTEMS, a->sys_cursor, rows, &bufs, &heading);
 	w = menu_measure(rows, n, heading);
+	/* And the plorpOS menu's two settings submenus, whose rows stood in it
+	 * until plorpos-z0d.1 and set this width - Mute Switch's "muse button
+	 * lock" the widest. Measured here so the frame did not narrow under
+	 * every panel when they moved a level down. */
+	{
+		char ss[WIFI_SSID_MAX];
+		sys_ui u;
+		int mw;
+
+		menu_ui(a, SCREEN_SYSTEMS, 0, &u, ss, sizeof ss);
+		n = sys_menu_system_build(&u, rows, &bufs, &heading);
+		mw = menu_measure(rows, n, heading);
+		if (mw > w) w = mw;
+		n = sys_menu_ui_build(&u, rows, &heading);
+		mw = menu_measure(rows, n, heading);
+		if (mw > w) w = mw;
+	}
 
 	/* Every value that can be cycled on this menu, at its widest, so the
 	 * panel does not resize under the row being cycled. Sort By joined
