@@ -148,8 +148,9 @@ void screen_yield(bool to_game)
  * diatom reads the same nodes the same way. The map is diatom's padmap: the
  * face buttons are NOT crossed as on the Brick (BTN_EAST is the A printed on
  * the shell), MODE is Menu, the stick is a second d-pad, and Home is only a
- * modifier - held, it turns the volume keys into brightness keys. L2/R2 and
- * the stick click mean nothing on the shelf. */
+ * modifier - held, it turns the volume keys into brightness keys. L2/R2, the
+ * stick click, Home and the stick's own directions are reported too, but only
+ * the Hotkeys screen's press-to-bind listens (plorpos-gkd.43.3). */
 static int fd_pad = -1, fd_keys = -1;
 static bool home_down;
 /* The d-pad and the stick each keep their own state, so letting go of one
@@ -163,6 +164,8 @@ static const struct { int code; in_button b; } padmap[] = {
 	{ BTN_TL,     IN_L1     }, { BTN_TR,     IN_R1   },
 	{ BTN_SELECT, IN_SELECT }, { BTN_START,  IN_START },
 	{ BTN_MODE,   IN_MENU   },
+	{ BTN_TL2,    IN_L2     }, { BTN_TR2,    IN_R2   },
+	{ BTN_THUMBL, IN_L3     },
 };
 
 /* Range -900..899, right = +X, up = -Y. Half travel to press, a third to let
@@ -248,13 +251,15 @@ static void pad_read(in_state *st)
 		case BTN_DPAD_RIGHT: pad_dir[1] = down; continue;
 		case BTN_DPAD_UP:    pad_dir[2] = down; continue;
 		case BTN_DPAD_DOWN:  pad_dir[3] = down; continue;
-		case BTN_TRIGGER_HAPPY1: home_down = down; continue;
+		case BTN_TRIGGER_HAPPY1: home_down = down; set_btn(st, IN_HOME, down); continue;
 		}
 		for (size_t k = 0; k < sizeof padmap / sizeof padmap[0]; k++)
 			if (padmap[k].code == ev.code) set_btn(st, padmap[k].b, down);
 	}
-	for (int i = 0; i < 4; i++)
+	for (int i = 0; i < 4; i++) {
 		set_btn(st, (in_button)(IN_LEFT + i), pad_dir[i] || stick_dir[i]);
+		set_btn(st, (in_button)(IN_SLEFT + i), stick_dir[i]);
+	}
 }
 
 /* A press goes to volume or brightness by whether Home is held at the time;
