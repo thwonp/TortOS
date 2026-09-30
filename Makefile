@@ -29,7 +29,7 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
         hooks storeprobe deploy restart logs
 
 ifeq ($(PLATFORM),gkd)
-all: build/gkd/tortos.elf
+all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl
 else
 all: build/tortos.elf
 endif
@@ -131,21 +131,26 @@ build/tortos.elf: $(SRC_BRICK) $(wildcard src/*.h) tools/setbright.c mk/cross.mk
 		fi; \
 	done
 
-# The GKD: the launcher alone. No setbright (it serves the Brick's boot
-# animation), no Muse yet (gkd.25), no btplayer (gkd.9). Same toolchain: its
-# glibc is older than the device's 2.40, which is the direction that works.
+# The GKD: the launcher and Muse. No setbright (it serves the Brick's boot
+# animation), no btplayer (gkd.9). Same toolchain: its glibc is older than the
+# device's 2.40, which is the direction that works. Muse links against the
+# GKD's own FFmpeg 6.0.1 and reaches PipeWire through ALSA's "default", which
+# ROCKNIX's pipewire-alsa plugin provides - no source change from the Brick.
 build/gkd/ss_creds.h: FORCE
 	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/gkd creds
 
-build/gkd/tortos.elf: $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk build/gkd/ss_creds.h
+# Grouped (&:), so that any one of the three missing runs the build.
+build/gkd/tortos.elf build/gkd/muse build/gkd/musectl &: \
+                      $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk build/gkd/ss_creds.h \
+                      $(wildcard src/muse/*.c) $(wildcard src/muse/*.h) tools/musectl.c
 	@docker image inspect $(IMAGE) > /dev/null 2>&1 || { \
 		echo "toolchain image missing; run: make toolchain" >&2; exit 1; }
 	@[ -d sysroot-gkd/usr/include/SDL2 ] || { \
 		echo "no GKD sysroot; run: mk/fetch-gkd-sysroot.sh (needs the GKD over ssh)" >&2; exit 1; }
 	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work -w /work $(IMAGE) \
 		make -f mk/cross.mk PLATFORM=gkd BUILD=build/gkd SYSROOT=/work/sysroot-gkd \
-		VERSION=$(VERSION) creds build/gkd/tortos.elf
-	@# The same staleness check as the Brick's, for the same reason.
+		VERSION=$(VERSION) creds build/gkd/tortos.elf build/gkd/muse build/gkd/musectl
+	@# The same staleness checks as the Brick's, for the same reason.
 	@for src in $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk build/gkd/ss_creds.h; do \
 		if [ "$$src" -nt build/gkd/tortos.elf ]; then \
 			echo "STALE: build/gkd/tortos.elf is older than $$src" >&2; \
@@ -153,6 +158,15 @@ build/gkd/tortos.elf: $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk build/gkd/ss_cr
 			exit 1; \
 		fi; \
 	done
+	@for src in $(wildcard src/muse/*.c) $(wildcard src/muse/*.h); do \
+		if [ "$$src" -nt build/gkd/muse ]; then \
+			echo "STALE: build/gkd/muse is older than $$src" >&2; \
+			echo "  the container did not rebuild. rm build/gkd/muse and try again." >&2; \
+			exit 1; \
+		fi; \
+	done
+	@[ tools/musectl.c -nt build/gkd/musectl ] && { \
+		echo "STALE: build/gkd/musectl is older than tools/musectl.c" >&2; exit 1; } || true
 
 # The check binaries are rebuilt every time, deliberately.
 #

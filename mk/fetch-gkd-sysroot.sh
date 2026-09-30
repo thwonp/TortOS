@@ -1,7 +1,8 @@
 #!/bin/sh
 # The GKD 350H Ultra's sysroot, for `make PLATFORM=gkd`: the device's own SDL2,
-# SDL2_image and SDL2_ttf (and whatever they pull in) from ROCKNIX's /usr/lib
-# over ssh, plus the matching upstream headers, hash-pinned. The same idea as
+# SDL2_image and SDL2_ttf, and FFmpeg for Muse (and whatever they pull in) from
+# ROCKNIX's /usr/lib over ssh, plus the matching upstream headers, hash-pinned.
+# The same idea as
 # mk/fetch-sysroot.sh for the Brick; the pull and the dependency closure are
 # diatom's tools/fetch-gkd-sysroot.sh, which has built its GKD port since
 # gkd.2.
@@ -28,6 +29,14 @@ IMG_VER=2.8.2
 IMG_SHA=8f486bbfbcf8464dd58c9e5d93394ab0255ce68b51c5a966a918244820a76ddc
 TTF_VER=2.20.2
 TTF_SHA=9dc71ed93487521b107a2c4a9ca6bf43fb62f6bddd5c26b055e6b91418a22053
+# FFmpeg, for Muse. ROCKNIX ships 6.0.1 (libavcodec.so.60.3.100), not the
+# Brick's 6.1: the same sonames, other minor versions. These headers declare
+# exactly the device's libraries - avcodec and avformat 60.3.100, avfilter
+# 9.3.100, avutil 58.2.100, swresample 4.10.100, checked 2026-09-29. They are
+# struct layouts, so a mismatch would be a wrong offset at runtime, not a link
+# error (see mk/fetch-sysroot.sh). Hash of ffmpeg.org's tarball, 2026-09-29.
+FF_VER=6.0.1
+FF_SHA=375fd8abab657d18578554927d23abfc9cb3b6794bd9839330230cf5f9fcea26
 
 dev() { ssh -o ConnectTimeout=5 "$GKD" "$@"; }
 dev true 2> /dev/null || { echo "no GKD over ssh at $GKD" >&2; exit 1; }
@@ -45,6 +54,12 @@ echo "pulling SDL from the GKD"
 for base in SDL2-2.0 SDL2_image-2.0 SDL2_ttf-2.0; do
 	pull "lib$base.so.0"
 	ln -sf "lib$base.so.0" "$LIB/lib${base%-2.0}.so"   # what -lSDL2 etc. find
+done
+echo "pulling FFmpeg from the GKD"
+for so in libavformat.so.60 libavcodec.so.60 libavutil.so.58 \
+          libswresample.so.4 libavfilter.so.9; do
+	pull "$so"
+	ln -sf "$so" "$LIB/${so%%.so.*}.so"
 done
 
 # Every NEEDED of every library here, until nothing is missing. glibc's own
@@ -94,12 +109,40 @@ for h in SDL.h SDL_image.h SDL_ttf.h; do
 	[ -f "$INC/$h" ] || { echo "no $h extracted" >&2; exit 1; }
 done
 
+f="$DL/ffmpeg-$FF_VER.tar.gz"
+[ -f "$f" ] || curl -sSfL -o "$f" "https://ffmpeg.org/releases/ffmpeg-$FF_VER.tar.gz"
+got=$(sha256sum "$f" | cut -d' ' -f1)
+[ "$got" = "$FF_SHA" ] || { echo "ffmpeg: hash mismatch: $got" >&2; rm -f "$f"; exit 1; }
+rm -rf "${DL:?}/ffmpeg-$FF_VER"
+tar -xzf "$f" -C "$DL"
+for d in libavcodec libavformat libavutil libswresample libavfilter; do
+	mkdir -p "$OUT/usr/include/$d"
+	cp "$DL/ffmpeg-$FF_VER/$d"/*.h "$OUT/usr/include/$d/"
+done
+# The two headers FFmpeg's configure writes, for aarch64, as in
+# mk/fetch-sysroot.sh.
+cat > "$OUT/usr/include/libavutil/avconfig.h" << 'EOF'
+/* Written by mk/fetch-gkd-sysroot.sh in place of FFmpeg's configure: aarch64. */
+#ifndef AVUTIL_AVCONFIG_H
+#define AVUTIL_AVCONFIG_H
+#define AV_HAVE_BIGENDIAN 0
+#define AV_HAVE_FAST_UNALIGNED 1
+#endif
+EOF
+cat > "$OUT/usr/include/libavutil/ffversion.h" << EOF
+/* Written by mk/fetch-gkd-sysroot.sh in place of FFmpeg's configure. */
+#ifndef AVUTIL_FFVERSION_H
+#define AVUTIL_FFVERSION_H
+#define FFMPEG_VERSION "$FF_VER"
+#endif
+EOF
+
 {
 	echo "generated: $(date +%Y-%m-%d)"
 	echo "device:    $GKD ($(dev hostname))"
 	echo "kernel:    $(dev uname -r)"
 	echo "glibc:     $(dev /usr/lib/libc.so.6 | head -1)"
-	echo "headers:   SDL2 $SDL_VER, SDL2_image $IMG_VER, SDL2_ttf $TTF_VER (upstream, sha256-pinned)"
+	echo "headers:   SDL2 $SDL_VER, SDL2_image $IMG_VER, SDL2_ttf $TTF_VER, FFmpeg $FF_VER (upstream, sha256-pinned)"
 } > "$OUT/PROVENANCE"
 echo "done:"
 ls "$LIB"

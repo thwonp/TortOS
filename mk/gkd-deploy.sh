@@ -42,6 +42,11 @@ case $WHAT in elf)
 	swap "$ROOT/build/gkd/tortos.elf" tortos.elf
 	put "$ROOT/config/systems.cfg" "$GKD:$P/"
 	echo "  + launcher"
+	# Muse runs until it is told to quit or dies; the launcher starts the new
+	# one the next time it finds no socket.
+	swap "$ROOT/build/gkd/muse" muse
+	swap "$ROOT/build/gkd/musectl" musectl
+	echo "  + muse, musectl"
 esac
 case $WHAT in res)
 	put "$ROOT/res/cards/"* "$GKD:$P/cards/"
