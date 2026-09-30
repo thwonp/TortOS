@@ -251,7 +251,7 @@ const char *plat_turbo_map(const char *tag)
  * seeding a binding the player never asked for is not what "opt-in" means.
  * A tag with no hotkey.<tag> row plays exactly as it always has. */
 #define HOTKEY_MAX 16
-static struct { char tag[8]; char map[64]; } hotkeys[HOTKEY_MAX];
+static struct { char tag[8]; char map[128]; } hotkeys[HOTKEY_MAX];
 static int nhotkeys = -1;                     /* -1 = not read yet */
 
 static bool hotkey_row(const char *key, const char *value, void *ctx)

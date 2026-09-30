@@ -33,6 +33,18 @@ int main(void)
 	hk_serialize(b, out, sizeof out);
 	ck(!strcmp(out, "l2:ff,r2:rewind,x:savestate,y:loadstate"), "byte for byte");
 
+	printf("display/filter rows and the L1/R1/A/B buttons (plorpos-gkd.22):\n");
+	hk_parse("l1:ff,r1:rewind,a:savestate,b:loadstate,x:display,y:filter", b);
+	ck(!strcmp(HK_BTN_NAME[b[0]], "L1"), "ff row -> L1");
+	ck(!strcmp(HK_BTN_NAME[b[1]], "R1"), "rewind row -> R1");
+	ck(!strcmp(HK_BTN_NAME[b[2]], "A"),  "savestate row -> A");
+	ck(!strcmp(HK_BTN_NAME[b[3]], "B"),  "loadstate row -> B");
+	ck(!strcmp(HK_BTN_NAME[b[4]], "X"),  "display row -> X");
+	ck(!strcmp(HK_BTN_NAME[b[5]], "Y"),  "filter row -> Y");
+	hk_serialize(b, out, sizeof out);
+	ck(!strcmp(out, "l1:ff,r1:rewind,a:savestate,b:loadstate,x:display,y:filter"),
+	   "all six round-trip byte for byte");
+
 	printf("empty spec means every row is None:\n");
 	hk_parse("", b);
 	ck(!strcmp(HK_BTN_NAME[b[0]], "None"), "ff row -> None");
@@ -54,7 +66,7 @@ int main(void)
 	ck(!strcmp(HK_BTN_NAME[b[2]], "X"), "savestate row still parsed");
 	{
 		int i, any = 0;
-		for (i = 0; i < HK_ROW_COUNT; i++) if (b[i] == 1 /* L2 */) any = 1;
+		for (i = 0; i < HK_ROW_COUNT; i++) if (b[i] == 3 /* L2 */) any = 1;
 		ck(!any, "l2:turbo bound nothing - turbo is not a hotkey action");
 	}
 

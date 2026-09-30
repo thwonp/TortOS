@@ -5,20 +5,20 @@
  * Diatom's own hotkeys.c (its sibling ADR-0035), this side is a plain
  * left/right cycling menu, the same shape Display Mode already is.
  *
- * Four fixed rows (fast-forward, rewind, quicksave, quickload), each bound
- * to at most one of a short candidate button list. The candidates are
- * exactly what Diatom's display_chord does NOT already claim under SELECT
- * (l1/r1/a) - see diatom's ADR-0035 - so a binding made here can never be
- * one Diatom would refuse. */
+ * Six fixed rows (fast-forward, rewind, quicksave, quickload, display mode,
+ * screen filter), each bound to at most one of the face buttons and
+ * shoulders - exactly the set Diatom's hotkeys_set accepts (its ADR-0035,
+ * revisited for plorpos-gkd.22), so a binding made here can never be one
+ * Diatom would refuse. */
 #ifndef TORTOS_HKBIND_H
 #define TORTOS_HKBIND_H
 
 #include <stddef.h>
 
-extern const char *const HK_BTN_NAME[];      /* "None", "L2", "R2", "X", "Y" */
-#define HK_BTN_COUNT 5
+extern const char *const HK_BTN_NAME[];      /* "None", "L1", "R1", ... "Y" */
+#define HK_BTN_COUNT 9
 extern const char *const HK_ACTION_LABEL[];  /* "Fast-Forward", "Rewind", ... */
-#define HK_ROW_COUNT 4
+#define HK_ROW_COUNT 6
 
 /* Parses a stored or live spec ("l2:ff,x:savestate") into one button index
  * (0..HK_BTN_COUNT-1, 0 = None) per action row. A fragment that names an
