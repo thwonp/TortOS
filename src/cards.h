@@ -106,7 +106,7 @@ static inline int cards_step(int i, int d)
  * Written down because it is worth more as one rule than as two conventions
  * that happen to agree. Anything that reads as backwards in one direction
  * should be checked against this before being corrected: ui_rail_v inverts
- * its position on purpose, and so does cf_draw_cube's rotation sign.
+ * its position on purpose.
  *
  * Which way a shelf runs. Its own setting rather than more entries in the
  * table above, because it is orthogonal to the art: all three themes read
@@ -119,22 +119,13 @@ typedef struct {
 	const char *id;
 	const char *name;
 	bool vertical;
-	/* One surface instead of two: up and down turn to another system, left
-	 * and right move through that system's games. There is no entering and
-	 * no going back, because what you are looking at is already the thing
-	 * you can act on. Implies `vertical` - the system axis is still the
-	 * vertical one - so anything asking "which way do systems run" keeps
-	 * working without knowing this mode exists. */
-	bool both;
 } card_dir;
 
 static const card_dir CARD_DIRS[] = {
-	{ "horizontal", "Horizontal", false, false },
-	{ "vertical",   "Vertical",   true,  false },
-	/* Stored as "both" and shown as "Cubic": the id and the field name say
-	 * what it does - two axes on one surface - and the label says what it
-	 * looks like, which is the thing a person is choosing between. */
-	{ "both",       "Cubic",      true,  true  },
+	{ "horizontal", "Horizontal", false },
+	{ "vertical",   "Vertical",   true  },
+	/* "both" (Cubic) was removed 2026-09-30 (plorpos-gkd.29). A stored "both"
+	 * is an unknown id and reads as the default, Horizontal. */
 };
 #define CARD_DIR_COUNT ((int)(sizeof CARD_DIRS / sizeof CARD_DIRS[0]))
 

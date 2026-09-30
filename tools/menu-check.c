@@ -940,14 +940,7 @@ static void card_sets(void)
 	ck(cards_index(NULL) == 0, "and so does none at all");
 
 	printf("which way the shelves run:\n");
-	ck(CARD_DIR_COUNT == 3, "three directions");
-	/* Both is the two-axis surface, and it runs its systems vertically. A
-	 * mode that says otherwise would send the system turn along the axis its
-	 * games are already using. */
-	ck(CARD_DIRS[2].both && CARD_DIRS[2].vertical,
-	   "Both is vertical as well, since systems still run that way");
-	ck(!CARD_DIRS[0].both && !CARD_DIRS[1].both,
-	   "and it is the only one that merges the two shelves");
+	ck(CARD_DIR_COUNT == 2, "two directions");
 	ck(!strcmp(CARD_DIRS[0].id, CARDS_DIR_DEFAULT),
 	   "the first is the default one");
 	ck(!CARD_DIRS[0].vertical, "which is the horizontal row the shelf has always been");
@@ -956,7 +949,8 @@ static void card_sets(void)
 	/* Same rule as the themes: the setting outlives what it names. */
 	ck(cards_dir_index("sideways") == 0, "an unknown id falls back to horizontal");
 	ck(cards_dir_index(NULL) == 0, "and so does none at all");
-	ck(cards_dir_step(0, 1) == 1 && cards_dir_step(2, 1) == 0, "stepping wraps");
+	ck(cards_dir_index("both") == 0, "a stored Cubic reads as horizontal");
+	ck(cards_dir_step(0, 1) == 1 && cards_dir_step(1, 1) == 0, "stepping wraps");
 	ck(cards_dir_step(0, -1) == CARD_DIR_COUNT - 1, "in both directions");
 
 	printf("stepping through them:\n");

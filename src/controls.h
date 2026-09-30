@@ -34,7 +34,7 @@ typedef enum {
 } ctl_page;
 
 /* Which way the shelves run - UI Direction, as cards.h stores it. */
-typedef enum { CTL_HORIZONTAL, CTL_VERTICAL, CTL_CUBIC } ctl_dir;
+typedef enum { CTL_HORIZONTAL, CTL_VERTICAL } ctl_dir;
 
 /* Room for the longest page and its footer, with a little spare. */
 #define CTL_MAX_ROWS 10

@@ -102,12 +102,12 @@ matters to you - a card is the one part of this that gets reformatted.
 
 | | |
 |---|---|
-| **Left/Right** | move along the row, when the shelf runs horizontally. In `Cubic`, always the games |
-| **Up/Down** | move along the shelf when it runs vertically - **up advances**. In `Cubic`, always the systems |
-| **the other axis** | jump to the previous / next initial (games). Not in `Cubic`, where both axes are taken |
+| **Left/Right** | move along the row, when the shelf runs horizontally |
+| **Up/Down** | move along the shelf when it runs vertically - **up advances** |
+| **the other axis** | jump to the previous / next initial (games) |
 | **L1/R1** | jump a screenful (games) |
-| **A** | open a system, or start a game. In `Cubic`, start it |
-| **B** | back to the systems row. In `Cubic`, this system's menu |
+| **A** | open a system, or start a game |
+| **B** | back to the systems row |
 | **X** | game info for the card under the cursor |
 | **Y** | favorite it - Favorites is a shelf of its own. Nothing on Muse's shelf |
 | **Volume rocker** | volume, everywhere, including in game |
@@ -116,7 +116,6 @@ matters to you - a card is the one part of this that gets reformatted.
 | **Right stick, stick clicks** (Brick Pro) | nothing, by design: the bundled cores are all digital |
 | **MENU** (on the systems row) | the TortOS menu - settings that are about the firmware |
 | **MENU** (inside a system) | that system's menu, below |
-| **MENU** (in `Cubic`) | always the TortOS menu; B is the system's |
 | **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Cheevos, Sleep, Hotkeys, Reset, Quit |
 | **MENU** (inside any menu) | closes the whole menu, however deep in it you are. B goes back one screen |
 | **SELECT** | Muse, the music and audiobook player, from anywhere but a running game - the in-game menu included. Again to close it |
@@ -150,7 +149,7 @@ than any one console:
 | **Suspend Timeout** | how long a sleeping device waits for POWER before it suspends |
 | **Mute Switch** | what the side switch does: `mute`, or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
 | **UI Theme** | `Plain Jane` or `Fancy Pants` - which art the shelves wear |
-| **UI Direction** | `Horizontal`, `Vertical` or `Cubic` - see below |
+| **UI Direction** | `Horizontal` or `Vertical` - see below |
 | **Scraping** | **Box Art**: fetch what the whole library is missing. **ScreenScraper**: the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build`. **Import gamelist.xml metadata**: see below |
 | **Cheevos** | the RetroAchievements account, or `sign in` |
 | **Controls** | every button and what it does, a page per place |
@@ -447,19 +446,7 @@ dropping in a folder - no code and no configuration.
 of left and right, flat and unrotated and all one size, with the one under the
 cursor filling most of the screen and its neighbors pushed off the top and
 bottom edges. It is laid out the way `Horizontal` is and moves at the row's
-pace; only `Cubic` turns a solid.
-
-`Cubic` turns that cube both ways and merges the two shelves into one surface.
-**Up and down change system, left and right move through that system's
-games.** There is no entering and no going back, because what you are looking
-at is already the thing you can act on - so B, which has nothing to return to,
-opens the system's menu instead, and MENU is always the firmware's.
-
-Every face is a game. Turning to another system shows the game you were last
-on in it: each system keeps its own place, so glancing at one costs you
-nothing. Two rails, because there are two positions to be in - systems down
-the left, games along the bottom - with `n / total` and the system's name on
-the bottom line.
+pace.
 
 Vertically the shelf runs **A at the bottom to Z at the top**, and up
 advances. The origin is the bottom left and the index grows with x and with

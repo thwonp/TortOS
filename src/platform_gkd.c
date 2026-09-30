@@ -108,7 +108,7 @@ bool plat_video_init(void)
 	}
 	plat_geometry_init(ren);
 	/* The same two lines as the Brick's, for the same reasons: vsync is a
-	 * request, and the cube needs render targets. */
+	 * request, and render targets are worth knowing about. */
 	SDL_RendererInfo info;
 	if (SDL_GetRendererInfo(ren, &info) == 0) {
 		fprintf(stderr, "renderer: %s, driver: %s, output %dx%d, vsync %s\n",

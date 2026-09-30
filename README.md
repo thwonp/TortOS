@@ -56,9 +56,8 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 
 <table>
   <tr>
-    <td align="center" colspan="2"><img src="res/readme/systems.png" width="240" alt="The consoles row"><br><sub>Scroll horizontally</sub></td>
-    <td align="center" colspan="2"><img src="res/readme/vertical.png" width="240" alt="The shelf standing on end"><br><sub>Vertically</sub></td>
-    <td align="center" colspan="2"><img src="res/readme/cubic.png" width="240" alt="The cube"><br><sub>Or as a cube</sub></td>
+    <td align="center" colspan="3"><img src="res/readme/systems.png" width="240" alt="The consoles row"><br><sub>Scroll horizontally</sub></td>
+    <td align="center" colspan="3"><img src="res/readme/vertical.png" width="240" alt="The shelf standing on end"><br><sub>Or vertically</sub></td>
   </tr>
   <tr>
     <td align="center" colspan="2"><img src="res/readme/info.png" width="240" alt="A game's details"><br><sub>A game's details, one button away</sub></td>
@@ -85,7 +84,7 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 
 ## Features
 
-- **Three ways to browse:** a row of covers, a column, or a cube that turns both ways.
+- **Two ways to browse:** a row of covers, or a column.
 - **Two looks:** Plain Jane cards, or Fancy Pants photos of each console.
 - **RetroAchievements:** sign in on the device. A game's achievements download once and then work offline, and anything you unlock offline is sent later.
 - **Box art the Brick finds itself,** from libretro's collection with no account, or from ScreenScraper with a free one, which brings each game's year, genre and synopsis too. Or add your own.
@@ -187,8 +186,6 @@ None of them is a driver, and none replaces anything the system needs to run.
 | **POWER** | Turn off |
 
 **In a game,** MENU opens Continue, Save, Load, Display, Cheevos, Reset and Quit, and SELECT in that menu opens Muse. While music plays the game is silent, and pausing the music brings its sound back. X and Y are turbo A and B, except on Genesis and SNES, where they're the controller's own buttons. POWER saves the game and turns the Brick off.
-
-**On the cube,** up and down change console, left and right move through its games, and B opens that console's menu.
 
 **In Muse,** A opens an album, plays a track or pauses it, L1 and R1 change track, left and right skip ten seconds (hold them to go faster: a minute a step after a second, five after three), and B goes back. A on a book carries on where you left it, and in a book with chapters L1 and R1 move by chapter. On Now Playing, Y changes the play mode for music: in order, repeat all, repeat one or shuffle. On a book, which always plays in order, Y changes the speed instead: 1x up to 2x, and 0.75x, kept for each book.
 
