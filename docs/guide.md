@@ -116,7 +116,7 @@ matters to you - a card is the one part of this that gets reformatted.
 | **Right stick, stick clicks** (Brick Pro) | nothing, by design: the bundled cores are all digital |
 | **MENU** (on the systems row) | the plorpOS menu - settings that are about the firmware |
 | **MENU** (inside a system) | that system's menu, below |
-| **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Cheevos, Sleep, Hotkeys, Reset, Quit |
+| **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Cheevos, Hotkeys, Reset, Quit |
 | **MENU** (inside any menu) | closes the whole menu, however deep in it you are. B goes back one screen |
 | **SELECT** | Muse, the music and audiobook player, from anywhere but a running game - the in-game menu included. Again to close it |
 | **POWER** | a tap sleeps: the screen goes dark at once, and the device suspends after the **Suspend Timeout**; a tap wakes it. A hold powers off. In a game, the game is saved first either way |

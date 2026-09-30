@@ -7278,7 +7278,6 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 	u.dmode  = DMODES[a->view[a->sys_cursor].dmode].label;
 	u.earned = chv_earned();
 	u.total  = chv_count();
-	u.sleep_supported = plat_sleep_supported();
 	return gm_rows(&u, out, b);
 }
 
@@ -9314,12 +9313,6 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	case GM_CHEEVOS:
 		cheevos_screen(a, c->bg, false);
 		break;
-	case GM_SLEEP:
-		/* The same sleep as a tap: sleep_cycle checkpoints the game first. */
-		if (sleep_cycle(a)) break;
-		plat_note_power_pressed();          /* no suspend: power off instead */
-		plat_resident_line("STOP");
-		return MENU_DONE;
 	case GM_HOTKEYS: {
 		sysview *sv = &a->view[a->sys_cursor];
 		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
