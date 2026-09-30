@@ -5144,9 +5144,14 @@ static void hare_head(char *out, size_t n, const char *addr, const char *pin)
 static int hare_rows(menu_row *out, const char *who, const char *moved,
                      const char *now)
 {
-	out[0] = (menu_row){ "Browsers",    who,   false };
-	out[1] = (menu_row){ "Transferred", moved, false };
-	out[2] = (menu_row){ "Now",         now,   false };
+	out[0] = (menu_row){ "Browsers", who,   false };
+	/* "In / out", not "Transferred": the longest label on the panel beside
+	 * "12 KB in / 41 MB out" scrolled on every real session - just browsing
+	 * moves bytes both ways, so both numbers are never zero - and a still
+	 * caught it mid-word. Rendered 2026-09-30, this fits even at
+	 * "1.2 GB / 413.5 MB". Backlog 37. */
+	out[1] = (menu_row){ "In / out", moved, false };
+	out[2] = (menu_row){ "Now",      now,   false };
 	return 3;
 }
 
@@ -5324,7 +5329,7 @@ static void xfer_screen(app *a)
 
 			human_bytes(hin,  sizeof hin,  total_in);
 			human_bytes(hout, sizeof hout, total_out);
-			snprintf(moved, sizeof moved, "%s in / %s out", hin, hout);
+			snprintf(moved, sizeof moved, "%s / %s", hin, hout);
 		} else {
 			snprintf(moved, sizeof moved, "nothing yet");
 		}
@@ -10936,7 +10941,7 @@ static void take_shot(app *a)
 		            "37 found, 2 missing, 61 already", true);
 	if (shot_hare)
 		hare_preview(a, shot_hare_addr, "4071", shot_hare_who,
-		             "12 KB in / 41 MB out", shot_hare_head);
+		             "12 KB / 41 MB", shot_hare_head);
 	/* The synopsis card, from the card's own games table - so a shot of it is a
 	 * picture of real scraped text rather than a fixture. */
 	if (shot_syn) {
