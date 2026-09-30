@@ -8628,7 +8628,9 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
  * one Diatom would refuse. Display and filter were a fixed SELECT+L1/R1/A
  * chord until plorpos-gkd.22.
  *
- * Six fixed rows, cycled left and right the way Display Mode already is -
+ * A Hotkey Modifier row (global - which key is held for all of them, diatom's
+ * ADR-0038) above six fixed action rows, cycled left and right the way
+ * Display Mode already is -
  * not a "press any button to capture it" flow, which this codebase has
  * never built anywhere and would have been the highest-risk new interaction
  * to write with no way to run it. A button already bound to one row is
@@ -8656,17 +8658,28 @@ static const char *const RW_NAME[] = { "1x", "2x", "3x", "5x", "10x", "Disabled"
 
 static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 {
+	/* Row 0 is the modifier (global, diatom's ADR-0038); the action rows
+	 * follow it, action i at row i + 1; on the GKD, Rewind Speed is last. */
+	enum { MOD_ROW = 0, FIRST_ACT = 1, ROWS = HK_SCREEN_ROWS + 1 };
 	int btn_for_row[HK_ROW_COUNT];
-	menu_row rows[HK_SCREEN_ROWS];
+	menu_row rows[ROWS];
 	char vals[HK_ROW_COUNT][8];
-	int sel = 0, done = 0, i;
+	const char *const *mod_wire, *const *mod_label;
+	int nmods = plat_hotkey_modifiers(&mod_wire, &mod_label);
+	int mod = 0, sel = 0, done = 0, i;
+	char spec[128];
+
+	hk_parse(plat_hotkey_map(tag), btn_for_row);
 #if defined(PLATFORM_GKD)
+	const int RW_ROW = FIRST_ACT + HK_ROW_COUNT;
 	int rw = 0, every = db_get_int(db_dev(), "rewindspeed", 5);
 
 	while (rw < RW_COUNT - 1 && RW_EVERY[rw] != every) rw++;
 #endif
-
-	hk_parse(plat_hotkey_map(tag), btn_for_row);
+	{
+		const char *cur = plat_hotkey_modifier();
+		while (mod < nmods - 1 && strcmp(mod_wire[mod], cur)) mod++;
+	}
 
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
@@ -8674,8 +8687,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	while (!done && !want_quit) {
 		plat_input_poll(&a->in);
 
-		if (in_repeat(&a->in, IN_UP))   sel = (sel + HK_SCREEN_ROWS - 1) % HK_SCREEN_ROWS;
-		if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % HK_SCREEN_ROWS;
+		if (in_repeat(&a->in, IN_UP))   sel = (sel + ROWS - 1) % ROWS;
+		if (in_repeat(&a->in, IN_DOWN)) sel = (sel + 1) % ROWS;
 
 		{
 			int d = 0;
@@ -8683,40 +8696,45 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			if (in_repeat(&a->in, IN_LEFT))  d = -1;
 			if (in_repeat(&a->in, IN_RIGHT)) d = 1;
 #if defined(PLATFORM_GKD)
-			if (d && sel == HK_ROW_COUNT) {
+			if (d && sel == RW_ROW) {
 				rw = (rw + d + RW_COUNT) % RW_COUNT;
 				db_set_int(db_dev(), "rewindspeed", RW_EVERY[rw]);
 				plat_resident_line("SETREWINDSPEED\tevery=%d", RW_EVERY[rw]);
 				d = 0;
 			}
 #endif
-			if (d) {
+			if (d && sel == MOD_ROW) {
+				mod = (mod + d + nmods) % nmods;
+				plat_hotkey_modifier_set(mod_wire[mod]);
+			} else if (d) {
 				/* Skip candidates another row already holds, rather than
 				 * landing on one and clearing that row out from under it -
 				 * cycling past a taken button while looking for a further
 				 * one used to steal it with no way to tell "passing
 				 * through" from "selecting". A row is freed the same way
 				 * it is claimed: cycle it to None first. */
-				int nb = btn_for_row[sel];
-				char spec[128];
+				int act = sel - FIRST_ACT;
+				int nb = btn_for_row[act];
 				int tries;
 
 				for (tries = 0; tries < HK_BTN_COUNT; tries++) {
 					nb = (nb + d + HK_BTN_COUNT) % HK_BTN_COUNT;
 					if (nb == 0) break;
 					for (i = 0; i < HK_ROW_COUNT; i++)
-						if (i != sel && btn_for_row[i] == nb) break;
+						if (i != act && btn_for_row[i] == nb) break;
 					if (i == HK_ROW_COUNT) break;   /* nb is free */
 				}
-				btn_for_row[sel] = nb;
-
+				btn_for_row[act] = nb;
+			}
+			if (d) {
 				hk_serialize(btn_for_row, spec, sizeof spec);
-				plat_hotkey_set(tag, spec);
+				if (sel != MOD_ROW) plat_hotkey_set(tag, spec);
 				/* Live, not only persisted: this screen is only ever open
 				 * mid-session (reached from the in-game menu), so the
 				 * change should take hold without the player having to
 				 * quit and relaunch to see it. */
-				plat_resident_line("SETHOTKEYS\thotkeys=%s", spec);
+				plat_resident_line("SETHOTKEYS\thotkeys=%s\tmodifier=%s",
+				                   spec, mod_wire[mod]);
 			}
 		}
 
@@ -8730,16 +8748,17 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			}
 		}
 
+		rows[MOD_ROW] = (menu_row){ "Hotkey Modifier", mod_label[mod], true };
 		for (i = 0; i < HK_ROW_COUNT; i++)
 			snprintf(vals[i], sizeof vals[i], "%s", HK_BTN_NAME[btn_for_row[i]]);
 		for (i = 0; i < HK_ROW_COUNT; i++)
-			rows[i] = (menu_row){ HK_ACTION_LABEL[i], vals[i], true };
+			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[i], vals[i], true };
 #if defined(PLATFORM_GKD)
-		rows[HK_ROW_COUNT] = (menu_row){ "Rewind Speed", RW_NAME[rw], true };
+		rows[RW_ROW] = (menu_row){ "Rewind Speed", RW_NAME[rw], true };
 #endif
 
 		chv_backdrop(a, bg, false);
-		menu_draw(a, "Hotkeys", rows, HK_SCREEN_ROWS, sel, 0, MENU_ACCENT);
+		menu_draw(a, "Hotkeys", rows, ROWS, sel, 0, MENU_ACCENT);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}

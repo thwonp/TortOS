@@ -241,6 +241,49 @@ void plat_hotkey_set(const char *tag, const char *spec)
 	}
 }
 
+/* ---- the hotkey modifier: one key, chosen per device, held for every binding
+ * above (diatom's ADR-0038, plorpos-gkd.43.1). Global, not per system, so the
+ * muscle memory is the same in every game. The first entry is the default.
+ * Stick Click is the Brick Pro's; on the plain Brick that index is a front
+ * brightness key. */
+#if defined(PLATFORM_GKD)
+/* The GKD's free Home key and its stick click as well (ADR-0037). */
+static const char *const HKMOD_WIRE[]  = { "menu", "home", "l3", "select" };
+static const char *const HKMOD_LABEL[] = { "Menu", "Home", "Stick Click", "Select" };
+#else
+static const char *const HKMOD_WIRE[]  = { "menu", "select", "l3" };
+static const char *const HKMOD_LABEL[] = { "Menu", "Select", "Stick Click" };
+#endif
+
+int plat_hotkey_modifiers(const char *const **wire, const char *const **label)
+{
+	*wire = HKMOD_WIRE;
+	*label = HKMOD_LABEL;
+#if defined(PLATFORM_GKD)
+	return 4;
+#else
+	return plat_is_brick_pro() ? 3 : 2;
+#endif
+}
+
+/* The stored choice if this device offers it, else the default - never NULL. */
+const char *plat_hotkey_modifier(void)
+{
+	static char cur[16];
+	const char *const *wire, *const *label;
+	int i, n = plat_hotkey_modifiers(&wire, &label);
+
+	db_get_str(db_dev(), "hkmod", cur, sizeof cur, wire[0]);
+	for (i = 0; i < n; i++)
+		if (!strcmp(cur, wire[i])) return wire[i];
+	return wire[0];
+}
+
+void plat_hotkey_modifier_set(const char *wire)
+{
+	db_set_str(db_dev(), "hkmod", wire);
+}
+
 void paths_init(void)
 {
 	const char *v;
@@ -723,7 +766,8 @@ bool plat_resident_send(const char *tag, const char *core, const char *rom,
 			const char *hk = plat_hotkey_map(tag);
 			fprintf(stderr, "hotkey: %s %s\n", tag ? tag : "?",
 			        hk && *hk ? hk : "(none)");
-			dsend("SETHOTKEYS\thotkeys=%s", hk ? hk : "");
+			dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s", hk ? hk : "",
+			      plat_hotkey_modifier());
 		}
 #if defined(PLATFORM_GKD)
 		/* The player's rewind speed (plorpos-gkd.40): Diatom resets it to

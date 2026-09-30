@@ -184,6 +184,13 @@ const char *plat_turbo_map(const char *tag);
 const char *plat_hotkey_map(const char *tag);
 void        plat_hotkey_set(const char *tag, const char *spec);
 
+/* The hotkey modifier (diatom's ADR-0038): the choices this device offers as
+ * parallel wire-name/label arrays (count returned, first = default), the
+ * stored choice (validated, never NULL), and setting it. Global, db_dev. */
+int         plat_hotkey_modifiers(const char *const **wire, const char *const **label);
+const char *plat_hotkey_modifier(void);
+void        plat_hotkey_modifier_set(const char *wire);
+
 /* Where Diatom is actually drawing the game, from its DISPLAY message. False
  * until it has said, which is the standalone path and the first moments of a
  * launch. Cached rather than asked for: Diatom reports it from the one place
