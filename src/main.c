@@ -8284,7 +8284,7 @@ static void muse_shelf_screen(app *a, bool now)
 {
 	int prev_screen = a->screen, prev_sys = a->sys_cursor;
 	bool vert = CARD_DIRS[g_dir].vertical;
-	in_button back = vert ? IN_DOWN : IN_LEFT, fwd = vert ? IN_UP : IN_RIGHT;
+	in_button back = vert ? IN_UP : IN_LEFT, fwd = vert ? IN_DOWN : IN_RIGHT;
 	in_button jup = vert ? IN_LEFT : IN_UP, jdn = vert ? IN_RIGHT : IN_DOWN;
 	sysview *v;
 	int muse = -1, i, playing;
@@ -9825,12 +9825,10 @@ static void update_systems(app *a)
 	/* The direction is carried through, not inferred from the cursor: on a
 	 * shelf of two, moving from either card to the other is one step in BOTH
 	 * directions, and only the press says which. */
-	/* The d-pad axis follows the shelf, and vertically the list runs UPWARD:
-	 * the first system at the bottom, the last at the top, so up advances.
-	 * Down-is-next is the convention for a list on a page; a stack is read
-	 * from the bottom, and this shelf is a stack. */
-	in_button back = CARD_DIRS[g_dir].vertical ? IN_DOWN : IN_LEFT;
-	in_button fwd  = CARD_DIRS[g_dir].vertical ? IN_UP : IN_RIGHT;
+	/* The d-pad axis follows the shelf. Vertically the list runs down the
+	 * screen, first at the top, so down advances - see cards.h. */
+	in_button back = CARD_DIRS[g_dir].vertical ? IN_UP : IN_LEFT;
+	in_button fwd  = CARD_DIRS[g_dir].vertical ? IN_DOWN : IN_RIGHT;
 	int dir = 0;
 
 	if (in_repeat(&a->in, back)) { a->sys_cursor = (a->sys_cursor - 1 + n) % n; dir = -1; }
@@ -9932,7 +9930,7 @@ static void update_games(app *a)
 	 * letter jump always runs across it. Turning the shelf turns the d-pad
 	 * with it and nothing is left doing two jobs. */
 	bool vert = CARD_DIRS[g_dir].vertical;
-	in_button back = vert ? IN_DOWN : IN_LEFT, fwd = vert ? IN_UP : IN_RIGHT;
+	in_button back = vert ? IN_UP : IN_LEFT, fwd = vert ? IN_DOWN : IN_RIGHT;
 	in_button jup = vert ? IN_LEFT : IN_UP, jdn = vert ? IN_RIGHT : IN_DOWN;
 	int dir = 0;
 

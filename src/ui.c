@@ -664,7 +664,7 @@ static unsigned rail_hue_at(float x, int count, float blend,
  *
  * `t0` and `dir` say where the strip's origin is relative to the rectangle:
  * the horizontal rail counts from the track's left edge, the vertical one from
- * its BOTTOM, because that is where its first item sits.
+ * its top, because that is where its first item sits.
  *
  * Runs of one color are filled as one rectangle, so a rail nobody is moving -
  * and every rail whose items share a color, which is every games rail - still
@@ -683,7 +683,7 @@ static void rail_seg(SDL_Renderer *r, const SDL_Rect *track, SDL_Rect seg,
 		unsigned rgb = held;
 
 		if (k < len && hue) {
-			int t = vertical ? track->y + track->h - 1 - (q.y + k)
+			int t = vertical ? q.y + k - track->y
 			                 : q.x + k - track->x;
 
 			/* THE PIXEL'S CENTER, NOT ITS NEAR EDGE, and the half is
@@ -793,7 +793,7 @@ void ui_rail_v(SDL_Renderer *r, int screen_w, int screen_h, float index, int cou
 	int w = UI_BAR_H, x = 23;
 	int track_y = 90, track_h = screen_h - track_y * 2;
 	SDL_Rect track;
-	int seg_h, off, lap, end;
+	int seg_h, off, lap;
 	float o, fl, step, blend;
 
 	(void)screen_w;
@@ -805,22 +805,16 @@ void ui_rail_v(SDL_Renderer *r, int screen_w, int screen_h, float index, int cou
 	lap = (int)(fl + 0.5f);
 	step = fl / (float)count;
 	blend = rail_blend(index);
-	/* Inverted: the first item sits at the BOTTOM and the last at the top, so
-	 * the indicator travels the same way the shelf does. A rail that runs
-	 * top-down under a shelf that runs bottom-up moves opposite the thumb.
-	 * Which is all the inversion is - the offset is still measured from the
-	 * first item, it is just subtracted from the far end rather than added to
-	 * the near one. */
-	end = track_y + track_h - seg_h;
+	/* Top-down, like the shelf beside it: the first item at the top. */
 	track = (SDL_Rect){ x, track_y, w, track_h };
 
 	SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
 	SDL_SetRenderDrawColor(r, 255, 255, 255, 16);
 	SDL_RenderFillRect(r, &track);
-	rail_seg(r, &track, (SDL_Rect){ x, end - off, w, seg_h },
+	rail_seg(r, &track, (SDL_Rect){ x, track_y + off, w, seg_h },
 	         true, step, blend, count, rgb, hue, ctx);
 	if (off > track_h - seg_h)
-		rail_seg(r, &track, (SDL_Rect){ x, end - off + lap, w, seg_h },
+		rail_seg(r, &track, (SDL_Rect){ x, track_y + off - lap, w, seg_h },
 		         true, step, blend, count, rgb, hue, ctx);
 }
 

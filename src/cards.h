@@ -95,18 +95,16 @@ static inline int cards_step(int i, int d)
 	return i < 0 ? i + n : i;
 }
 
-/* THE ORIGIN IS THE BOTTOM LEFT, and the index grows with x and with y.
+/* THE ORIGIN IS THE TOP LEFT, and the index grows rightward and downward:
+ * index 0 at the left of the row, and at the top of the vertical shelf, so
+ * down advances there the way right does here. cf_draw, ui_rail_v and the
+ * d-pad all follow it.
  *
- * Screens number rows downward, so the vertical shelf looks inverted to
- * anyone who assumes that: the first item is at the BOTTOM, the last at the
- * top, and up advances. It is not inverted, it is Cartesian, and it is the
- * same rule the horizontal shelf has always followed - index 0 at the left,
- * growing rightward, in cf_draw and in the rail alike.
- *
- * Written down because it is worth more as one rule than as two conventions
- * that happen to agree. Anything that reads as backwards in one direction
- * should be checked against this before being corrected: ui_rail_v inverts
- * its position on purpose.
+ * Until 2026-09-30 (plorpos-gkd.45) the vertical keys and rail ran bottom-up,
+ * a rule left over from when Vertical was a cube, while cf_draw had long
+ * stacked the cards top-down - so the next card came in from below on UP,
+ * which read as inverted. Anything that reads as backwards in one direction
+ * should be checked against this rule before being corrected.
  *
  * Which way a shelf runs. Its own setting rather than more entries in the
  * table above, because it is orthogonal to the art: all three themes read
