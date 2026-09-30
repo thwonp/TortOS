@@ -81,7 +81,7 @@ static int pages_naming(const char *button)
 	for (p = 0; p < CTL_PAGES; p++) {
 		int here = 0;
 
-		for (d = CTL_HORIZONTAL; d <= CTL_CUBIC; d++) {
+		for (d = CTL_HORIZONTAL; d <= CTL_VERTICAL; d++) {
 			menu_row rows[CTL_MAX_ROWS];
 			int n = ctl_rows((ctl_page)p, (ctl_dir)d, rows), i;
 
@@ -120,7 +120,7 @@ static void no_page_repeats(void)
 
 	printf("no page says a button twice\n");
 	for (p = 0; p < CTL_PAGES; p++)
-		for (d = CTL_HORIZONTAL; d <= CTL_CUBIC; d++) {
+		for (d = CTL_HORIZONTAL; d <= CTL_VERTICAL; d++) {
 			menu_row rows[CTL_MAX_ROWS];
 			int n = ctl_rows((ctl_page)p, (ctl_dir)d, rows), i, j;
 
@@ -143,7 +143,7 @@ static void rows_fit(void)
 
 	printf("rows that sit still\n");
 	for (p = 0; p < CTL_PAGES; p++)
-		for (d = CTL_HORIZONTAL; d <= CTL_CUBIC; d++) {
+		for (d = CTL_HORIZONTAL; d <= CTL_VERTICAL; d++) {
 			menu_row rows[CTL_MAX_ROWS];
 			int n = ctl_rows((ctl_page)p, (ctl_dir)d, rows), i;
 			int rules = 0, notes = 0;
@@ -193,15 +193,12 @@ static void rows_fit(void)
 		}
 }
 
-/* UI Direction is the whole reason the shelf page takes one: the axes swap,
- * and in Cubic both are taken so there is no letter jump at all. */
+/* UI Direction is the whole reason the shelf page takes one: the axes swap. */
 static void direction_changes_the_shelf(void)
 {
-	menu_row h[CTL_MAX_ROWS], v[CTL_MAX_ROWS], c[CTL_MAX_ROWS];
+	menu_row h[CTL_MAX_ROWS], v[CTL_MAX_ROWS];
 	int nh = ctl_rows(CTL_MOVING, CTL_HORIZONTAL, h);
 	int nv = ctl_rows(CTL_MOVING, CTL_VERTICAL, v);
-	int nc = ctl_rows(CTL_MOVING, CTL_CUBIC, c), i;
-	int jump = 0;
 
 	printf("the moving page follows UI Direction\n");
 	ck(nh == nv, "horizontal and vertical list the same buttons");
@@ -211,11 +208,6 @@ static void direction_changes_the_shelf(void)
 	   "vertical moves up and down");
 	ck(!strcmp(h[1].value, "Jump by letter") && !strcmp(v[1].value, "Jump by letter"),
 	   "and the other axis jumps by letter");
-	for (i = 0; i < nc; i++)
-		if (c[i].value && !ROW_IS_NOTE(c[i]) && strstr(c[i].value, "Jump"))
-			jump = 1;
-	ck(!jump, "Cubic has no letter jump: both axes are taken");
-	ck(nc > 0, "Cubic has a page at all");
 }
 
 static void pages_are_named(void)

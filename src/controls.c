@@ -36,12 +36,8 @@ static int moving(ctl_dir dir, menu_row *out)
 {
 	int n = 0;
 
-	/* Which axis does what is the whole of UI Direction. Cubic takes both -
-	 * systems on one, games on the other - so it has no letter jump. */
-	if (dir == CTL_CUBIC) {
-		out[n++] = (menu_row){ "Up/Down",    "Console",        false };
-		out[n++] = (menu_row){ "Left/Right", "Game",           false };
-	} else if (dir == CTL_VERTICAL) {
+	/* Which axis does what is the whole of UI Direction. */
+	if (dir == CTL_VERTICAL) {
 		out[n++] = (menu_row){ "Up/Down",    "Move",           false };
 		out[n++] = (menu_row){ "Left/Right", "Jump by letter", false };
 	} else {
@@ -52,16 +48,12 @@ static int moving(ctl_dir dir, menu_row *out)
 	return n;
 }
 
-static int shelf(ctl_dir dir, menu_row *out)
+static int shelf(menu_row *out)
 {
 	int n = 0;
 
-	out[n++] = (menu_row){ "A", dir == CTL_CUBIC ? "Start the game"
-	                                             : "Open or play",   false };
-	/* On the cube there is nowhere to go back to - the cube IS the shelf - so
-	 * B is the console's menu there instead. */
-	out[n++] = (menu_row){ "B", dir == CTL_CUBIC ? "Console's menu"
-	                                             : "Back",           false };
+	out[n++] = (menu_row){ "A", "Open or play", false };
+	out[n++] = (menu_row){ "B", "Back",         false };
 	out[n++] = (menu_row){ "X", "Game details", false };
 	out[n++] = (menu_row){ "Y", "Favorite",     false };
 	return n;
@@ -132,7 +124,7 @@ int ctl_rows(ctl_page p, ctl_dir dir, menu_row *out)
 	int n;
 
 	switch (p) {
-	case CTL_SHELF:    n = shelf(dir, out);  break;
+	case CTL_SHELF:    n = shelf(out);       break;
 	case CTL_GAME:     n = game(out);        break;
 	case CTL_MUSE:     n = muse(out);        break;
 	case CTL_ANYWHERE: n = anywhere(out);    break;

@@ -92,26 +92,10 @@ extern const cf_layout CF_LAYOUT_GAMES;
 /* The systems row again, one at a time and flat. Systems only: box art keeps
  * the angled row. */
 extern const cf_layout CF_LAYOUT_SINGLE;
-/* The same idea for the games shelf, whose text sits differently. */
-extern const cf_layout CF_LAYOUT_GAME_FACE;
-/* Muse's shelf, row and column and cube face: square frames for album covers.
+/* Muse's shelf, row and column: square frames for album covers.
  * See coverflow.c. */
 extern const cf_layout CF_LAYOUT_ALBUMS;
 extern const cf_layout CF_LAYOUT_ALBUMS_V;
-extern const cf_layout CF_LAYOUT_ALBUM_FACE;
-
-/* Turn two full-screen faces of a cube about a horizontal axis.
- *
- * `frac` is how far between them, 0 to 1: at 0 the near face is square on and
- * the far one is edge-on and invisible, at 1 they have swapped. The faces are
- * whole screens rendered offscreen, so whatever is on them - art, name, count,
- * reflection - turns together without any of it needing to know.
- *
- * Faces darken as they turn away. A cube whose sides stay evenly lit reads as
- * two flat pictures sliding past each other rather than as one solid. */
-void cf_draw_cube(SDL_Renderer *r, SDL_Texture *near_face, SDL_Texture *far_face,
-                  float frac, int screen_w, int screen_h, bool yaw,
-                  unsigned near_rgb, unsigned far_rgb);
 
 /* Where the focused card sits on screen, so the caller can put a glow behind
  * it and lay text out against it without duplicating the geometry. */
@@ -145,9 +129,9 @@ typedef struct {
 	 * travel is the only thing that can settle it sensibly. */
 	int last_dir;
 	/* Per-shelf timing. Zero means the default, which is what a card row
-	 * wants; the cube sets its own because it turns a whole screen through a
-	 * right angle rather than sliding a card a few hundred pixels, and the
-	 * same duration spent on the two is not the same thing to look at. */
+	 * wants; Vertical sets its own because it slides a whole screen rather
+	 * than a card a few hundred pixels, and the same duration spent on the
+	 * two is not the same thing to look at. */
 	float anim_ms;
 	cf_ease ease;
 	/* Whether to skip ahead rather than queue when told to move again while
@@ -233,13 +217,6 @@ void cf_set_cursor(coverflow *cf, int cursor, int count);
  * two has both neighbors one step away, so it is the only size where the
  * shortest-path arithmetic cannot work out which way to turn. */
 void cf_set_cursor_dir(coverflow *cf, int cursor, int count, int dir);
-/* Advance the animation without drawing anything.
- *
- * The vertical shelves turn a cube instead of laying out a row, so they never
- * call cf_draw and would otherwise leave `pos` frozen. Same clock, same
- * easing, same wrap handling - only the drawing differs. */
-void cf_tick(coverflow *cf, int count);
-
 /* Step animation and draw. Returns true while still animating. */
 bool cf_draw(coverflow *cf, SDL_Renderer *r, int screen_w, int screen_h,
              int count, cf_tex_fn get_tex, void *ctx, const cf_layout *lay);

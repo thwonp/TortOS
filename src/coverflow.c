@@ -11,7 +11,7 @@
  * reflect is the reflection baseline as a multiple of the card half-height,
  * measured below the card center (see draw_card). */
 /* Flat, with the neighbors half off the edge - horizontal only, because the
- * vertical shelves turn a cube and never call cf_draw at all.
+ * the vertical shelves have their own layouts.
  *
  * NO YAW, because the art already has an angle. The console photographs are
  * shot in 3/4 view, so a coverflow yaw laid on top of them is a second
@@ -67,19 +67,6 @@ const cf_layout CF_LAYOUT_SINGLE = {
 	.side_alpha = 255, .strips = 16,
 };
 
-/* One game filling a cube face. The GAMES proportions rather than the SINGLE
- * ones, because the games shelf writes its title at y=40 and that clearance
- * was measured against a card of this size and position. Borrowing the
- * systems' face layout put the art's top edge at y=38 and the title landed on
- * the box art. Only `step` differs from the row: wide enough that the
- * neighbors a face must not show are off the screen entirely. */
-const cf_layout CF_LAYOUT_GAME_FACE = {
-	.size = 0.60f, .aspect = 0.72f, .step = 3.20f, .side_scale = 1.00f,
-	.center_y = 0.47f, .tilt = 0.0f, .reflect = 1.52f,
-	.side_alpha = 255, .strips = 16,
-	.equal_area = true,
-};
-
 /* The games row: box art, so the cards are taller and there are more of them
  * in view. The title is drawn above the row, which is why it sits slightly
  * lower than the systems row. */
@@ -89,7 +76,7 @@ const cf_layout CF_LAYOUT_GAME_FACE = {
  * the way the horizontal row does, so it stops trying and gives the whole
  * screen to one. The neighbors are not shrunk or faded, they are simply put
  * past the edge by a step wider than the screen - the same thing
- * CF_LAYOUT_SINGLE does for a cube face, on the other axis.
+ * CF_LAYOUT_SINGLE does, on the other axis.
  *
  * The card frame is taller than the art is: 0.88 is 668px tall and 0.78 aspect
  * makes it 521 wide, and a square console photograph contained in that ends at
@@ -138,12 +125,6 @@ const cf_layout CF_LAYOUT_ALBUMS_V = {
 	.size = 0.60f, .aspect = 1.00f, .step = 1.50f, .side_scale = 1.00f,
 	.center_y = 0.54f, .tilt = 0.0f, .reflect = 1.52f,
 	.vertical = true, .side_alpha = 255, .strips = 16,
-};
-
-const cf_layout CF_LAYOUT_ALBUM_FACE = {
-	.size = 0.60f, .aspect = 1.00f, .step = 3.20f, .side_scale = 1.00f,
-	.center_y = 0.54f, .tilt = 0.0f, .reflect = 1.52f,
-	.side_alpha = 255, .strips = 16,
 };
 
 void cf_focus_rect(const cf_layout *lay, int screen_w, int screen_h, SDL_Rect *out)
@@ -270,7 +251,7 @@ void cf_set_cursor_dir(coverflow *cf, int cursor, int count, int dir)
 	 * Every press adds to `target` whether it came from a key repeat or from
 	 * a fast thumb, so a shelf whose animation is slower than the input can
 	 * be given work it will still be playing out long after the button is
-	 * released - measured at 13 items behind on the cube. Rate-limiting the
+	 * released - measured at 13 items behind on a slow shelf. Rate-limiting the
 	 * repeat does not help, because nothing stops a person pressing faster
 	 * than the limit.
 	 *
@@ -713,150 +694,4 @@ bool cf_draw(coverflow *cf, SDL_Renderer *r, int screen_w, int screen_h,
 void cf_set_cursor(coverflow *cf, int cursor, int count)
 {
 	cf_set_cursor_dir(cf, cursor, count, 0);
-}
-
-void cf_tick(coverflow *cf, int count)
-{
-	step_anim(cf, count);
-}
-
-/* One face of the cube.
- *
- * The face is a plane at radius R from an axis sitting R behind the screen,
- * turned by `phi`; every point is rotated about that axis and divided through
- * by depth. Strips run across the face along whichever direction depth varies
- * once it turns, so a pitched face is sliced into bands and a yawed one into
- * columns. The two are the same arithmetic with the axes swapped, which is
- * why it is one function: a second copy would drift the moment either is
- * retuned.
- *
- * The cube is as deep as the screen is long on the turning axis - a pitch
- * turns a screen-height cube, a yaw a screen-width one - so a face arrives
- * square on with nothing left over. */
-static void cube_face(SDL_Renderer *r, SDL_Texture *tex, float phi,
-                      int screen_w, int screen_h, bool yaw, float scale)
-{
-	/* SDL_RenderGeometry maps a texture affinely across each triangle, so a
-	 * strongly foreshortened quad shears along its diagonal - the texture
-	 * slides against the geometry as the face turns away. Slicing into
-	 * strips keeps every triangle near planar and the shear disappears; the
-	 * only question is how many.
-	 *
-	 * 32 over a screen is about a 24px band, and it is nearly free: the fill
-	 * is the same however it is cut, and the cost of a turn is rendering the
-	 * two faces to their targets, not compositing them. Raise it if a slow
-	 * turn still crawls at the leading edge, which is where the divisor
-	 * changes fastest and the shear shows first. */
-	const int N = 32;
-	float span = yaw ? (float)screen_w : (float)screen_h;
-	float R = span * 0.5f;
-	/* The single number that decides whether this reads as a turn or a
-	 * slide. At 1.7x the screen it is near enough orthographic that faces
-	 * translate without foreshortening. */
-	float F = span * 0.85f;
-	float still = (yaw ? (float)screen_h : (float)screen_w) * 0.5f;
-	float cx = screen_w * 0.5f, cy = screen_h * 0.5f;
-	float cs = cosf(phi), sn = sinf(phi);
-	float lit = 0.45f + 0.55f * cosf(phi);
-	Uint8 k;
-	int i;
-
-	if (cosf(phi) <= 0.0f) return;   /* turned past edge-on: facing away */
-	if (lit < 0.0f) lit = 0.0f;
-	k = (Uint8)(255.0f * lit);
-
-	for (i = 0; i < N; i++) {
-		float t0 = (float)i / N, t1 = (float)(i + 1) / N;
-		float a0 = -R + t0 * 2.0f * R, a1 = -R + t1 * 2.0f * R;
-		/* The face lies at -R from the axis, i.e. toward the viewer. */
-		float ra0 = a0 * cs + R * sn, rz0 = a0 * sn - R * cs;
-		float ra1 = a1 * cs + R * sn, rz1 = a1 * sn - R * cs;
-		float s0 = F / (F + R + rz0), s1 = F / (F + R + rz1);
-		/* `scale` shrinks the whole face about the screen center - the cube
-		 * backing away during a turn, not a change of shape. Named for what
-		 * it does because `k` is already the face's lighting below. */
-		float p0 = (yaw ? cx : cy) + ra0 * s0 * scale;
-		float p1 = (yaw ? cx : cy) + ra1 * s1 * scale;
-		float q0 = still * s0 * scale, q1 = still * s1 * scale;
-		float xy[8], uv[8];
-		SDL_Color col[4] = { { k, k, k, 255 }, { k, k, k, 255 },
-		                     { k, k, k, 255 }, { k, k, k, 255 } };
-
-		if (yaw) {
-			/* Columns: the strip spans the full height at two x. */
-			xy[0] = p0; xy[1] = cy - q0;
-			xy[2] = p1; xy[3] = cy - q1;
-			xy[4] = p1; xy[5] = cy + q1;
-			xy[6] = p0; xy[7] = cy + q0;
-			uv[0] = t0; uv[1] = 0; uv[2] = t1; uv[3] = 0;
-			uv[4] = t1; uv[5] = 1; uv[6] = t0; uv[7] = 1;
-		} else {
-			/* Bands: the strip spans the full width at two y. */
-			xy[0] = cx - q0; xy[1] = p0;
-			xy[2] = cx + q0; xy[3] = p0;
-			xy[4] = cx + q1; xy[5] = p1;
-			xy[6] = cx - q1; xy[7] = p1;
-			uv[0] = 0; uv[1] = t0; uv[2] = 1; uv[3] = t0;
-			uv[4] = 1; uv[5] = t1; uv[6] = 0; uv[7] = t1;
-		}
-		render_quad(r, tex, xy, uv, col);
-	}
-}
-
-
-void cf_draw_cube(SDL_Renderer *r, SDL_Texture *near_face, SDL_Texture *far_face,
-                  float frac, int screen_w, int screen_h, bool yaw,
-                  unsigned near_rgb, unsigned far_rgb)
-{
-	float q = 1.5707963f;   /* a quarter turn: the faces are at right angles */
-	/* Advancing rolls the face being left out the way the button points -
-	 * up for a pitch, right for a yaw - and brings the next in from the
-	 * opposite edge. Screen y runs down where Cartesian y runs up, which is
-	 * the whole reason the two signs differ. */
-	float phi = (yaw ? frac : -frac) * q;
-	float far_phi = yaw ? phi - q : phi + q;
-	/* Center depth of each: the face more nearly square-on is the nearer
-	 * one, and has to be drawn last. Fixed order is right for half a turn. */
-	float dn = 1.0f - cosf(phi), df = 1.0f - cosf(far_phi);
-
-	/* Opaque. These are whole screens, one genuinely in front of the other,
-	 * and blending lets the far face show through the near one wherever the
-	 * near one is dark - which is most of a face. */
-	if (near_face) SDL_SetTextureBlendMode(near_face, SDL_BLENDMODE_NONE);
-	if (far_face)  SDL_SetTextureBlendMode(far_face, SDL_BLENDMODE_NONE);
-
-	/* THE CUBE BACKS AWAY WHILE IT TURNS. At rest a face fills the screen
-	 * exactly, which is the whole design - but it also means the turn is seen
-	 * through a window the same size as the object, so its top and bottom
-	 * edges are always off screen and there is nothing to say it is a solid
-	 * rather than two pictures crossfading. Pulling back mid-turn brings the
-	 * whole silhouette into view and puts it back by the time it lands.
-	 *
-	 * Which means the screen has to be CLEARED, for the first time: until now
-	 * the faces covered every pixel and whatever was behind them could not be
-	 * seen. It is cleared here rather than at the four call sites, all of
-	 * which draw the cube as the entire frame. */
-	float k = 1.0f - 0.18f * sinf(frac * 3.1415927f);
-
-	if (k < 0.999f) {
-		SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
-		SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
-		SDL_RenderClear(r);
-	}
-
-	if (dn >= df) {
-		if (near_face) cube_face(r, near_face, phi, screen_w, screen_h, yaw, k);
-		if (far_face)  cube_face(r, far_face, far_phi, screen_w, screen_h, yaw, k);
-	} else {
-		if (far_face)  cube_face(r, far_face, far_phi, screen_w, screen_h, yaw, k);
-		if (near_face) cube_face(r, near_face, phi, screen_w, screen_h, yaw, k);
-	}
-
-	/* NO EDGE LINES. The cube used to be outlined in the system's accent,
-	 * softened across the vertical pair so its sides glowed rather than being
-	 * ruled, fading in and out with the pull-back. Tried both ways on the
-	 * device 2026-09-13 and the solid reads better bare: the faces already
-	 * say where the cube's edges are, and drawing them said it twice. */
-	(void)far_rgb;
-	(void)near_rgb;
 }
