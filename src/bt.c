@@ -24,7 +24,11 @@
 static const char *bonds(void)
 {
 	const char *b = getenv("TORTOS_BT_BONDS");
+#if defined(PLATFORM_GKD)
+	return b && *b ? b : "/storage/.cache/bluetooth";   /* ROCKNIX's build */
+#else
 	return b && *b ? b : "/etc/lib/bluetooth";
+#endif
 }
 
 /* AA:BB:CC:DD:EE:FF and nothing else. Everything that reaches bluetoothctl as
@@ -218,7 +222,7 @@ int bt_sweep_cache(const char *root)
 
 /* The TrimUI radio. The GKD has Bluetooth too (hci0 exists there), but not
  * these scripts, so it takes the host stubs until gkd.9 gives it its own. */
-#if defined(__linux__) && !defined(PLATFORM_GKD)
+#if defined(__linux__)
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -320,6 +324,43 @@ static int btctl(char *out, size_t cap, int timeout_s, const char *a, const char
 	return run(argv, out, cap, timeout_s);
 }
 
+#if defined(PLATFORM_GKD)
+/* ROCKNIX's own switch, so the stack is on or off the way ROCKNIX leaves it:
+ * `enable` starts bluetoothd and its agent and records the setting its
+ * autostart reads at boot, `disable` the reverse, `save` tars the bonds to
+ * the card, which `restore` unpacks at every start - so a bond not saved
+ * before a power loss would be gone. */
+static bool rocknix_bt(const char *verb)
+{
+	char out[512];
+	char *argv[] = { (char *)"/usr/bin/rocknix-bluetooth", (char *)verb, NULL };
+	return run(argv, out, sizeof out, BT_ACT_S) == 0;
+}
+
+/* Off on the GKD means no bluetoothd, and bluetoothctl then waits for one
+ * rather than failing - so ask /proc first, which forks nothing. */
+static bool bluetoothd_running(void)
+{
+	DIR *d = opendir("/proc");
+	struct dirent *e;
+	bool found = false;
+
+	if (!d) return false;
+	while (!found && (e = readdir(d))) {
+		char path[300], comm[32] = "";
+		FILE *f;
+
+		if (e->d_name[0] < '1' || e->d_name[0] > '9') continue;
+		snprintf(path, sizeof path, "/proc/%s/comm", e->d_name);
+		if (!(f = fopen(path, "r"))) continue;
+		found = fgets(comm, sizeof comm, f) && !strcmp(comm, "bluetoothd\n");
+		fclose(f);
+	}
+	closedir(d);
+	return found;
+}
+#endif
+
 /* One call for all of them. See bt.h for the two cheaper-looking sources this
  * replaced and why each was wrong. */
 int bt_mark_connected_now(bt_device *list, int n)
@@ -336,6 +377,9 @@ bt_state bt_status(void)
 	char out[512];
 
 	if (access("/sys/class/bluetooth/hci0", F_OK) != 0) return BT_NO_ADAPTER;
+#if defined(PLATFORM_GKD)
+	if (!bluetoothd_running()) return BT_POWERED_OFF;
+#endif
 	if (btctl(out, sizeof out, BT_ASK_S, "show", NULL) != 0) return BT_NO_ADAPTER;
 	return strstr(out, "Powered: yes") ? BT_READY : BT_POWERED_OFF;
 }
@@ -538,6 +582,9 @@ bool bt_pair(const char *mac, char *err, size_t n)
 	/* Trusted, or it will not reconnect on its own at the next boot - which
 	 * is the whole reason the bond is worth having. */
 	btctl(out, sizeof out, BT_ASK_S, "trust", mac);
+#if defined(PLATFORM_GKD)
+	rocknix_bt("save");
+#endif
 	return true;
 }
 
@@ -565,8 +612,12 @@ bool bt_connect(const char *mac, char *err, size_t n)
 
 bool bt_power(bool on)
 {
+#if defined(PLATFORM_GKD)
+	return rocknix_bt(on ? "enable" : "disable");
+#else
 	char out[512];
 	return btctl(out, sizeof out, BT_ASK_S, "power", on ? "on" : "off") == 0;
+#endif
 }
 
 bool bt_disconnect(const char *mac)
@@ -628,11 +679,19 @@ bool bt_forget(const char *mac)
 	if (info_says(mac, "Paired: yes")) return false;
 	forget_cache(mac);
 	publish_soon();
+#if defined(PLATFORM_GKD)
+	rocknix_bt("save");
+#endif
 	return true;
 }
 
 bool bt_asoundrc(const char *tortos_dir, const char *userdata_dir)
 {
+#if defined(PLATFORM_GKD)
+	/* No bluealsa and no .asoundrc: PipeWire makes the sink itself. */
+	(void)tortos_dir; (void)userdata_dir;
+	return true;
+#else
 	char script[512];
 	char *argv[6];
 	pid_t pid;
@@ -665,6 +724,7 @@ bool bt_asoundrc(const char *tortos_dir, const char *userdata_dir)
 	}
 	if (waitpid(pid, &st, 0) != pid) return false;
 	return WIFEXITED(st) && WEXITSTATUS(st) == 0;
+#endif
 }
 
 #else   /* not __linux__ */
