@@ -314,6 +314,39 @@ void plat_hotkey_set(const char *tag, const char *spec)
 		snprintf(hotkeys[i].map, sizeof hotkeys[0].map, "%s", spec ? spec : "");
 	}
 }
+
+/* ---- the hotkey modifier: one key, chosen per device, held for every binding
+ * above (diatom's ADR-0038, plorpos-gkd.43.1). Global, not per system, so the
+ * muscle memory is the same in every game. The first entry is the default.
+ * Stick Click is the Brick Pro's; on the plain Brick that index is a front
+ * brightness key. */
+static const char *const HKMOD_WIRE[]  = { "menu", "select", "l3" };
+static const char *const HKMOD_LABEL[] = { "Menu", "Select", "Stick Click" };
+
+int plat_hotkey_modifiers(const char *const **wire, const char *const **label)
+{
+	*wire = HKMOD_WIRE;
+	*label = HKMOD_LABEL;
+	return plat_is_brick_pro() ? 3 : 2;
+}
+
+/* The stored choice if this device offers it, else the default - never NULL. */
+const char *plat_hotkey_modifier(void)
+{
+	static char cur[16];
+	const char *const *wire, *const *label;
+	int i, n = plat_hotkey_modifiers(&wire, &label);
+
+	db_get_str(db_dev(), "hkmod", cur, sizeof cur, wire[0]);
+	for (i = 0; i < n; i++)
+		if (!strcmp(cur, wire[i])) return wire[i];
+	return wire[0];
+}
+
+void plat_hotkey_modifier_set(const char *wire)
+{
+	db_set_str(db_dev(), "hkmod", wire);
+}
 const char *P_FONT = "/mnt/SDCARD/TortOS/menu.ttf";
 
 void paths_init(void)
@@ -1049,7 +1082,8 @@ bool plat_resident_send(const char *tag, const char *core, const char *rom,
 			const char *hk = plat_hotkey_map(tag);
 			fprintf(stderr, "hotkey: %s %s\n", tag ? tag : "?",
 			        hk && *hk ? hk : "(none)");
-			dsend("SETHOTKEYS\thotkeys=%s", hk ? hk : "");
+			dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s", hk ? hk : "",
+			      plat_hotkey_modifier());
 		}
 
 		/* The launcher owns levels while it draws (Diatom's ADR-0020), and
