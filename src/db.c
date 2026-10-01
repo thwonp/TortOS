@@ -133,6 +133,10 @@ static const db_default library_defaults[] = {
 	{ "coreopt..mgba_sgb_borders",  "OFF" },
 	{ "coreopt.GB.mgba_gb_model",   "Game Boy" },
 	{ "coreopt.GB.mgba_gb_colors",  "DMG Green" },
+	/* Neo Geo boots the Universe BIOS: FBNeo takes the newest one in
+	 * Bios/neogeo.zip (4.0 first). A game with no BIOS dipswitch keeps its
+	 * own default BIOS - FBNeo hides the option for it. */
+	{ "coreopt.NEOGEO.fbneo-neogeo-mode", "UNIBIOS" },
 #if defined(PLATFORM_GKD)
 	/* PlayStation 3D at twice the resolution, on the GKD only: a 1600-wide
 	 * panel shows the difference and its A72s can afford it. The Brick's

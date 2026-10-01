@@ -31,6 +31,19 @@ Commons `File:Sony-PlayStation-5501-Console-FL.png` (public domain, own work),
 processed the same way - trimmed to its alpha, longest side 369. The original
 is kept outside the repository with the others.
 
+NEOGEO.png joined on 2026-10-01: Evan Amos's Neo Geo AES, from Commons
+`File:Neo-Geo-AES-FL.png` (public domain, own work), processed the same way -
+trimmed to its alpha, longest side 369.
+
+## ARCADE.png
+
+Not a console and not by Evan Amos. Arcade is every board FBNeo knows, so
+there is no one machine to photograph; it carries a drawing of a cabinet
+instead. From Commons `File:Simple_arcade_cabinet.png` by publicdomainq,
+released under CC0 1.0 (no attribution required, recorded anyway). Trimmed to
+its alpha and centred in the 384 canvas with the longest side 369, because it
+is taller than wide, like GB and GBC.
+
 FAVORITES.png is not one of these photographs, and nothing above applies to
 it. Favorites is a shelf rather than a console, so there is no hardware to
 photograph and it carries a heart instead. It was generated rather than shot,
