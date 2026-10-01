@@ -304,6 +304,11 @@ bool ra_hash_rom(const char *path, const char *tag, char *out)
 
 	if (!path || !tag || !out) return false;
 	out[0] = '\0';
+	/* A PlayStation disc is hundreds of MB and this reads the whole file into
+	 * memory - fatal on the Brick - for a hash RetroAchievements would not
+	 * recognise anyway: discs are hashed by their boot executable. No PS set
+	 * can be fetched until that is written (plorpos-gkd.49). */
+	if (!strcmp(tag, "PS")) return false;
 
 	if (is_zip(path)) {
 		data = zip_largest(path, &len);

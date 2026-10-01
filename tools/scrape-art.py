@@ -52,6 +52,7 @@ LIBRETRO = {
     "NES": ["Nintendo - Nintendo Entertainment System",
             "Nintendo - Family Computer Disk System"],
     "SNES": ["Nintendo - Super Nintendo Entertainment System"],
+    "PlayStation": ["Sony - PlayStation"],
     "Game Boy": ["Nintendo - Game Boy"],
     "Game Boy Color": ["Nintendo - Game Boy Color"],
     "Game Boy Advance": ["Nintendo - Game Boy Advance"],
