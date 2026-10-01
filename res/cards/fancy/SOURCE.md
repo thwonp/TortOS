@@ -26,6 +26,11 @@ NES.png is an NES and not a Famicom, SNES.png a SNES, GENESIS.png a Genesis
 Model 2, PCE.png a TurboGrafx-16. They were imported under Japanese short
 codes (FC, SFC, MD) that describe the code, not the photograph.
 
+PS.png joined on 2026-10-01: Evan Amos's SCPH-5501, the US model, from
+Commons `File:Sony-PlayStation-5501-Console-FL.png` (public domain, own work),
+processed the same way - trimmed to its alpha, longest side 369. The original
+is kept outside the repository with the others.
+
 FAVORITES.png is not one of these photographs, and nothing above applies to
 it. Favorites is a shelf rather than a console, so there is no hardware to
 photograph and it carries a heart instead. It was generated rather than shot,
