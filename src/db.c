@@ -127,12 +127,18 @@ static const db_default library_defaults[] = {
 	{ "turbo.GBA",  "x:a~3,y:b~3" },
 	{ "turbo.GG",   "x:a~3,y:b~3" },
 
-	/* Core options, from config/coreopts.cfg. The segment after "coreopt." is
-	 * the system tag and an EMPTY one means global, which is why the first key
-	 * has two dots. A tagged entry overrides a global of the same name. */
+	/* Core options. The segment after "coreopt." is the system tag and an
+	 * EMPTY one means global, which is why the first key has two dots. A
+	 * tagged entry overrides a global of the same name. */
 	{ "coreopt..mgba_sgb_borders",  "OFF" },
 	{ "coreopt.GB.mgba_gb_model",   "Game Boy" },
 	{ "coreopt.GB.mgba_gb_colors",  "DMG Green" },
+#if defined(PLATFORM_GKD)
+	/* PlayStation 3D at twice the resolution, on the GKD only: a 1600-wide
+	 * panel shows the difference and its A72s can afford it. The Brick's
+	 * A53s run pcsx_rearmed at native resolution, as NextUI ships it. */
+	{ "coreopt.PS.pcsx_rearmed_neon_enhancement_enable", "enabled" },
+#endif
 };
 
 const db_default *db_defaults(db_scope scope, size_t *count)
