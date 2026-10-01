@@ -77,6 +77,7 @@ static const struct { const char *folder, *remote, *remote2; } MAP[] = {
 	{ "NES",              "Nintendo - Nintendo Entertainment System",
 	                      "Nintendo - Family Computer Disk System" },
 	{ "SNES",             "Nintendo - Super Nintendo Entertainment System", NULL },
+	{ "PlayStation",      "Sony - PlayStation", NULL },
 	{ "Game Boy",         "Nintendo - Game Boy", NULL },
 	{ "Game Boy Color",   "Nintendo - Game Boy Color", NULL },
 	{ "Game Boy Advance", "Nintendo - Game Boy Advance", NULL },
