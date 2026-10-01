@@ -30,7 +30,7 @@ static void ck(int cond, const char *what)
  * D-pad axes are named as pairs because that is how they are pressed, and
  * written with no air around the slash - "L1/R1", not "L1 / R1". */
 static const char *const BUTTONS[] = {
-	"Up/Down", "Left/Right", "A", "B", "X", "Y", "L1/R1", "X/Y",
+	"Up/Down", "Left/Right", "A", "B", "X", "Y", "L1/R1", "X/Y/L2/R2",
 	"MENU", "SELECT", "POWER", "Volume rocker", "F1/F2",
 };
 #define NBUTTONS ((int)(sizeof BUTTONS / sizeof BUTTONS[0]))

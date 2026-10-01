@@ -17,6 +17,13 @@ they did everywhere before this existed.
 The shipped values are compiled into the launcher and seed the database on
 first run. `tortos.elf --dump` prints them.
 
+**Game Boy Advance also has turbo L and R, on L2 and R2,** and none of the above
+applies to it: that is mGBA's own Turbo L and Turbo R, which the core declares on
+the RetroPad's L2 and R2 and Diatom passes straight through. Found upstream
+2026-09-30 and checked in a GBA game by Eric. It is not in the settings database and has no speed to
+set here. On Game Boy and Game Boy Color, also mGBA, there is no L or R, so the
+two buttons do nothing.
+
 ## Why only nine
 
 **Turbo needs two spare face buttons, and Genesis and SNES leave fewer.**
