@@ -45,13 +45,16 @@ The SDL2 libraries TortOS links against are the device's own, in
 | `genesis_plus_gx_libretro.so` | Genesis, Master System, Game Gear | **Non-commercial** |
 | `mednafen_ngp_libretro.so` | Neo Geo Pocket, Neo Geo Pocket Color | GPL-2.0 (Beetle NeoPop, Mednafen-derived) |
 | `pcsx_rearmed_libretro.so` | PlayStation | GPL-2.0 (built from libretro/pcsx_rearmed source, `mk/build-pcsx-rearmed.sh`) |
+| `fbneo_libretro.so` | Arcade, Neo Geo | **Non-commercial**, FBNeo's own license plus MAME's; full text in `LICENSE-FBNeo.txt` (built from libretro/FBNeo source with one patch, `mk/build-fbneo.sh`) |
 
-**The last two carry a non-commercial restriction.** They are not open source
+**snes9x2010, genesis_plus_gx and fbneo carry a non-commercial restriction.** They are not open source
 under either the OSI or FSF definition and they restrict commercial
 redistribution outright, which constrains what a card carrying them may be
 sold as - hobby redistribution is what every firmware shipping them relies
-on. The reasoning is worked through in diatom's ADR-0023. A card built
-without SNES and the Sega systems carries no such restriction.
+on. The reasoning is worked through in diatom's ADR-0023. FBNeo's license also
+requires its full text on the card, verbatim (`LICENSE-FBNeo.txt`), and its
+source changes published (`mk/patches/fbneo-rotate.patch`). A card built
+without SNES, the Sega systems, Arcade and Neo Geo carries no such restriction.
 
 Core source: the libretro organization and each core's upstream repository
 (https://github.com/libretro).

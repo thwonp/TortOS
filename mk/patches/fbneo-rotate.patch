@@ -1,0 +1,77 @@
+diff --git a/src/burner/libretro/libretro.cpp b/src/burner/libretro/libretro.cpp
+index d62ef55..56a68b6 100644
+--- a/src/burner/libretro/libretro.cpp
++++ b/src/burner/libretro/libretro.cpp
+@@ -79,7 +79,7 @@ INT32 nAudSegLen = 0;
+ 
+ static UINT8* pVidImage              = NULL;
+ static bool bVidImageNeedRealloc     = false;
+-static bool bRotationDone            = false;
++static bool bRotationDone            = true;
+ static int16_t *pAudBuffer           = NULL;
+ static char text_missing_files[2048] = "";
+ static bool bCDEmuStarted                 = false;
+@@ -1493,7 +1493,44 @@ void retro_run()
+ 		pBurnDraw = NULL;
+ 	}
+ 
+-	video_cb(pBurnDraw, nGameWidth, nGameHeight, nBurnPitch);
++	// get flags
++	UINT32 flags = BurnDrvGetFlags();
++
++	if (pBurnDraw && flags & BDF_ORIENTATION_VERTICAL) {
++		int y=0;
++
++		UINT8 *pTMP = (UINT8*)malloc(nGameWidth * nGameHeight * nBurnBpp);
++		memcpy(pTMP, pBurnDraw, nGameWidth * nGameHeight * nBurnBpp);
++
++		int newGameWidth = nGameHeight;
++		int newGameHeight = nGameWidth;
++		int newBurnPitch = newGameWidth * nBurnBpp;
++
++		while (y < newGameHeight) {
++			int x = 0;
++
++			if ( flags & BDF_ORIENTATION_FLIPPED ) {
++				while (x < newGameWidth)
++				{
++					for (int i = 0; i < nBurnBpp; i++)
++						pBurnDraw[x * nBurnBpp + y * newBurnPitch + i] = pTMP[(nGameHeight - x - 1) * nBurnPitch + y * nBurnBpp + i];
++					x++;
++				}
++			} else {
++				while (x < newGameWidth)
++				{
++					for (int i = 0; i < nBurnBpp; i++)
++						pBurnDraw[x * nBurnBpp + y * newBurnPitch + i] = pTMP[x * nBurnPitch + (nGameWidth - y - 1) * nBurnBpp + i];
++					x++;
++				}
++			}
++			y++;
++		}
++		free(pTMP);
++		video_cb(pBurnDraw, newGameWidth, newGameHeight, newBurnPitch);
++	} else {
++		video_cb(pBurnDraw, nGameWidth, nGameHeight, nBurnPitch);
++	}
+ 
+ 	bool updated = false;
+ 	if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated)
+@@ -1511,7 +1548,7 @@ void retro_run()
+ 		// change orientation/geometry if vertical mode was toggled on/off
+ 		if (old_nVerticalMode != nVerticalMode)
+ 		{
+-			SetRotation();
++			//SetRotation();
+ 			struct retro_system_av_info av_info;
+ 			retro_get_system_av_info(&av_info);
+ 			environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &av_info);
+@@ -2219,7 +2256,7 @@ static bool retro_load_game_common()
+ 
+ 		// Initializing display, autorotate if needed
+ 		BurnDrvGetFullSize(&nGameWidth, &nGameHeight);
+-		SetRotation();
++		//SetRotation();
+ 		BurnSetResolution(nNewWidth, nNewHeight);
+ 		SetColorDepth();
+ 
