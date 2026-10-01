@@ -226,6 +226,10 @@ fast, is in [turbo.md](turbo.md).
 Diatom does the pulsing, not the emulator core, which is why it works the same
 on all nine rather than only on the one core that happens to implement turbo.
 
+**On Game Boy Advance, L2 and R2 are turbo L and turbo R.** That one is the
+emulator's own turbo rather than TortOS's, so it is only there on Game Boy
+Advance; on Game Boy and Game Boy Color, which have no L and R, they do nothing.
+
 Volume and brightness draw the same thin line across the top of the screen in
 the launcher, in a game, and in the in-game menu. One firmware, one piece of
 feedback - tinted by which of the two it is, warm for brightness and cyan for
