@@ -49,6 +49,8 @@ LIBRETRO = {
     # exposed it - 23 of one card's 27 missing covers were sitting in
     # "NEC - PC Engine CD - TurboGrafx-CD", 946 entries neither scraper had
     # ever looked at. Sega CD and the Famicom Disk System are the same shape.
+    "Arcade": ["FBNeo - Arcade Games"],
+    "Neo Geo": ["SNK - Neo Geo"],
     "NES": ["Nintendo - Nintendo Entertainment System",
             "Nintendo - Family Computer Disk System"],
     "SNES": ["Nintendo - Super Nintendo Entertainment System"],

@@ -20,14 +20,19 @@
  *
  * TurboGrafx-16 covers its CD games too. They have a separate id for PC Engine
  * CD (114), and asking either one returned the same games with the same covers
- * and prose, so the shelf's single folder needs only the single id. */
+ * and prose, so the shelf's single folder needs only the single id.
+ *
+ * Arcade (75) and Neo Geo (142) were not measured here: taken 2026-10-01 from
+ * Skyscraper's platforms_idmap.csv, which agrees with every id above. */
 static const struct { const char *folder; int id; } SYS[] = {
+	{ "Arcade",               75 },
 	{ "NES",                   3 },
 	{ "Master System",         2 },
 	{ "Game Boy",              9 },
 	{ "Genesis",               1 },
 	{ "TurboGrafx-16",        31 },
 	{ "Game Gear",            21 },
+	{ "Neo Geo",             142 },
 	{ "SNES",                  4 },
 	{ "PlayStation",          57 },
 	{ "Neo Geo Pocket",       25 },

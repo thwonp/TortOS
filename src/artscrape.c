@@ -74,6 +74,10 @@
  * The second collection is only fetched if the first left something unmatched,
  * so a cartridge-only shelf costs exactly what it did before. */
 static const struct { const char *folder, *remote, *remote2; } MAP[] = {
+	/* Arcade art is filed by set under FBNeo's catalog; Neo Geo sets have their
+	 * own. Both are named by the full title, not the set name (plorpos-gkd.56.3). */
+	{ "Arcade",           "FBNeo - Arcade Games", NULL },
+	{ "Neo Geo",          "SNK - Neo Geo", NULL },
 	{ "NES",              "Nintendo - Nintendo Entertainment System",
 	                      "Nintendo - Family Computer Disk System" },
 	{ "SNES",             "Nintendo - Super Nintendo Entertainment System", NULL },

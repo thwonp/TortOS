@@ -309,6 +309,10 @@ bool ra_hash_rom(const char *path, const char *tag, char *out)
 	 * recognise anyway: discs are hashed by their boot executable. No PS set
 	 * can be fetched until that is written (plorpos-gkd.49). */
 	if (!strcmp(tag, "PS")) return false;
+	/* Arcade sets are hashed by their NAME, not their contents, and the zip's
+	 * largest file would be the wrong thing at up to tens of MB. Not written
+	 * yet; until it is, no arcade set can be fetched. */
+	if (!strcmp(tag, "ARCADE") || !strcmp(tag, "NEOGEO")) return false;
 
 	if (is_zip(path)) {
 		data = zip_largest(path, &len);
