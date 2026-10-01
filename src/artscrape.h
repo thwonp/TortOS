@@ -61,8 +61,14 @@
  * cover and is renamed over it only once it has arrived whole, so a game
  * libretro has no art for - a translation, homebrew, a cover added by hand -
  * keeps the one it had. Replace used to delete first and fetch after, and lost
- * exactly those. */
-void art_begin(const systems_cfg *sys, const char *roms_dir, const char *only);
+ * exactly those.
+ *
+ * `fbneo_dat` is FBNeo's set table (fbneodat.h), or NULL. A shelf whose core
+ * is fbneo has zips named for their sets, and libretro files that art under
+ * FBNeo's description of the set instead, so the table is what it is asked
+ * by. The cover is still saved under the set name, where the shelf looks. */
+void art_begin(const systems_cfg *sys, const char *roms_dir, const char *fbneo_dat,
+               const char *only);
 void art_cancel(void);
 
 /* One unit of work, so the caller can draw between them. Returns:

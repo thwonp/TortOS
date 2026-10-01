@@ -15,6 +15,7 @@
 #include "artscrape.h"
 #include "artshrink.h"
 #include "config.h"
+#include "fbneodat.h"
 #include "library.h"
 #include "net.h"
 #include "ss.h"
@@ -77,7 +78,9 @@ static const struct { const char *folder, *remote, *remote2; } MAP[] = {
 	/* Arcade art is filed by set under FBNeo's catalog; Neo Geo sets have their
 	 * own. Both are named by the full title, not the set name (plorpos-gkd.56.3). */
 	{ "Arcade",           "FBNeo - Arcade Games", NULL },
-	{ "Neo Geo",          "SNK - Neo Geo", NULL },
+	/* FBNeo's catalog second: it files every Neo Geo set as well, under
+	 * FBNeo's own names, and the Neo Geo one has 257 covers to its 6,456. */
+	{ "Neo Geo",          "SNK - Neo Geo", "FBNeo - Arcade Games" },
 	{ "NES",              "Nintendo - Nintendo Entertainment System",
 	                      "Nintendo - Family Computer Disk System" },
 	{ "SNES",             "Nintendo - Super Nintendo Entertainment System", NULL },
@@ -346,10 +349,11 @@ static int     g_nnames;      /* what the index held; for the message only */
 static char   *g_dat;
 static bool    g_crc_tried;
 
-typedef struct { char folder[CFG_STR]; char exts[CFG_STR]; } sysrow;
+typedef struct { char folder[CFG_STR]; char exts[CFG_STR]; bool fbneo; } sysrow;
 static sysrow  g_sys[CFG_MAX_SYSTEMS];
 static int     g_nsys;
 static char    g_romdir[LIB_PATH];
+static char    g_fbneo_dat[LIB_PATH];
 
 /* Where the step machine is. Split this way because a request must not be
  * waited for: these are called from a screen's frame loop, which is also
@@ -837,7 +841,8 @@ void art_cancel(void)
 	g_nnames = 0;
 }
 
-void art_begin(const systems_cfg *sys, const char *roms_dir, const char *only)
+void art_begin(const systems_cfg *sys, const char *roms_dir, const char *fbneo_dat,
+               const char *only)
 {
 	int i;
 
@@ -854,6 +859,7 @@ void art_begin(const systems_cfg *sys, const char *roms_dir, const char *only)
 	g_phase = P_SYSTEM;
 	g_nsys = 0;
 	snprintf(g_romdir, sizeof g_romdir, "%s", roms_dir ? roms_dir : "");
+	snprintf(g_fbneo_dat, sizeof g_fbneo_dat, "%s", fbneo_dat ? fbneo_dat : "");
 	if (!sys) return;
 
 	/* A name cut short names a different game, so it is refused rather than
@@ -891,6 +897,7 @@ void art_begin(const systems_cfg *sys, const char *roms_dir, const char *only)
 
 		snprintf(g_sys[g_nsys].folder, CFG_STR, "%s", sys->systems[i].folder);
 		snprintf(g_sys[g_nsys].exts,   CFG_STR, "%s", sys->systems[i].exts);
+		g_sys[g_nsys].fbneo = !strcmp(sys->systems[i].core, "fbneo");
 		g_nsys++;
 	}
 	g_st.systems = g_nsys;
@@ -924,6 +931,25 @@ static bool start_image(const char *remote, const char *name, const char *dest)
 	snprintf(g_pending, sizeof g_pending, "%s", dest);
 	snprintf(g_asked, sizeof g_asked, "%s", name);
 	return net_get_async(url, g_pending, 60);
+}
+
+/* The name to ask libretro for ROM i by: its own, or on an fbneo shelf
+ * FBNeo's description of the set, with the characters libretro's thumbnail
+ * names cannot hold (the nine in the strchr below: a slash, a colon and the
+ * rest) turned to _ as libretro turns them. That is how "1943: The Battle of
+ * Midway (Euro)" is filed: "1943_ The Battle of Midway (Euro).png". */
+static const char *asked(int i)
+{
+	static char buf[NAME_MAX_];
+	const char *d = g_sys[g_si].fbneo && g_fbneo_dat[0]
+	              ? fbneo_desc(g_fbneo_dat, g_roms[i]) : NULL;
+	size_t k;
+
+	if (!d) return g_roms[i];
+	for (k = 0; d[k] && k < sizeof buf - 1; k++)
+		buf[k] = strchr("&*/:`<>?\\|", d[k]) ? '_' : d[k];
+	buf[k] = '\0';
+	return buf;
 }
 
 /* Finish with this system and move to the next, saying why.
@@ -1106,7 +1132,7 @@ int art_step(void)
 
 		snprintf(g_st.now, sizeof g_st.now, "%s", g_roms[g_ri]);
 		mkdir(media, 0777);
-		if (!start_image(remote_nth(g_sys[g_si].folder, 0), g_roms[g_ri], dest)) {
+		if (!start_image(remote_nth(g_sys[g_si].folder, 0), asked(g_ri), dest)) {
 			g_retry[g_nretry++] = g_ri;
 			g_ri++;
 			return 1;
@@ -1195,7 +1221,7 @@ int art_step(void)
 			g_qi++;
 			return 1;
 		}
-		if (!match(g_roms[g_retry[g_qi]], hitbuf, sizeof hitbuf)) {
+		if (!match(asked(g_retry[g_qi]), hitbuf, sizeof hitbuf)) {
 			g_left[g_nleft++] = g_retry[g_qi];
 			snprintf(g_st.now, sizeof g_st.now, "no art for %s",
 			         g_roms[g_retry[g_qi]]);

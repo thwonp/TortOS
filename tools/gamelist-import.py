@@ -19,11 +19,14 @@ its gamelist.xml - so the simplest source is the card itself:
       LD_LIBRARY_PATH=/mnt/SDCARD/TortOS/lib:/usr/trimui/lib \
       ./tortos.elf --meta /tmp/x.meta'
 
-A game that already has metadata on the card is skipped; add --overwrite
-after the file to replace it instead.
+A game that already has metadata on the card is skipped, apart from a title
+it lacks, which is filled in; add --overwrite after the file to replace it
+instead.
 
 FIELD MAPPING (ES gamelist -> TortOS game_meta, src/db.h):
 
+    <name>                      -> title             direct; the shelf shows it
+                                                        in place of the filename
     <desc>                      -> synopsis          direct
     <releasedate> YYYYMMDDT...  -> year               first 4 digits
     <developer>                 -> developer          direct
@@ -38,10 +41,6 @@ FIELD MAPPING (ES gamelist -> TortOS game_meta, src/db.h):
 
 NOT MAPPED, ON PURPOSE:
 
-    <name>       TortOS never reads a title from the db - lib_title() derives
-                 the shelf title from the ROM filename always (src/library.c
-                 ~line 112). Making a cleaned-up <name> appear on the shelf
-                 needs a separate schema+UI change; out of scope here.
     <playcount>, <lastplayed>, <gametime>
                  TortOS's own Play Time (src/stats.c) lives in the `settings`
                  table under "sess.<start>.<clock>.<tag>" keys, not the games
@@ -129,6 +128,7 @@ def parse_gamelist(path):
         if not file:
             continue
         fields = {
+            "title": clean(g.findtext("name")),
             "year": year_from_releasedate(clean(g.findtext("releasedate"))),
             "publisher": clean(g.findtext("publisher")),
             "developer": clean(g.findtext("developer")),
@@ -142,7 +142,7 @@ def parse_gamelist(path):
 
 
 def write_meta(path, records):
-    """The exact wire shape src/main.c's --meta reader expects: nine
+    """The exact wire shape src/main.c's --meta reader expects: ten
     tab-separated fields, a byte count, a newline, that many raw synopsis
     bytes, then one more newline. Written in binary so the byte count always
     matches what was actually written, regardless of platform line-ending
@@ -152,7 +152,8 @@ def write_meta(path, records):
             body = synopsis.encode("utf-8")
             head = "\t".join([folder, file, f["year"], f["publisher"],
                                f["developer"], f["players"], f["genres"],
-                               f["esrb"], f["note"], str(len(body))])
+                               f["esrb"], f["note"], f["title"],
+                               str(len(body))])
             out.write(head.encode("utf-8") + b"\n")
             out.write(body)
             out.write(b"\n")

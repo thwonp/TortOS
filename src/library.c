@@ -92,7 +92,12 @@ static bool folder_launch_file(const char *dirpath, char *out, size_t outsz)
 
 static int game_cmp(const void *pa, const void *pb)
 {
-	return strcasecmp(((const game_entry *)pa)->name, ((const game_entry *)pb)->name);
+	return lib_order(pa, pb);
+}
+
+void lib_sort(game_list *l)
+{
+	if (l->count > 1) qsort(l->items, (size_t)l->count, sizeof *l->items, game_cmp);
 }
 
 /* The display title: `name` up to the first bracketed group that follows a
@@ -106,9 +111,10 @@ static int game_cmp(const void *pa, const void *pb)
  * falls back to the full name for the same reason - an empty card is worse
  * than a noisy one.
  *
- * Sorting and box-art lookup deliberately keep using `name`: two dumps of one
- * game share a title but not a filename, and collapsing them here would make
- * their order arbitrary and point both at the same .media file. */
+ * Box-art lookup deliberately keeps using `name`: two dumps of one game share
+ * a title but not a filename, and the title would point both at the same
+ * .media file. Sorting goes by the title with `name` breaking the tie
+ * (lib_order), which keeps the two in a fixed order. */
 void lib_title(const char *name, char *out, size_t n)
 {
 	const char *cut = NULL, *p;

@@ -93,6 +93,9 @@ void db_each_prefix(db *d, const char *prefix, db_each_fn fn, void *ctx);
 #define GAME_SYNOPSIS_MAX 4096
 
 typedef struct {
+	/* The game's own name, from a gamelist's <name>; empty when no list has
+	 * given one. 256 is library.h's LIB_NAME, the shelf title it fills. */
+	char title[256];
 	char year[8];              /* "1991" - the first four of any date form */
 	char publisher[96];
 	char developer[96];
@@ -107,6 +110,17 @@ typedef struct {
  * from it without asking twice. */
 bool db_game_get(db *d, const char *folder, const char *file, game_meta *out);
 bool db_game_set(db *d, const char *folder, const char *file, const game_meta *m);
+
+/* Every game in a folder that has a title, as (file, title). */
+void db_game_titles(db *d, const char *folder,
+                    void (*fn)(void *ctx, const char *file, const char *title),
+                    void *ctx);
+
+/* One game from an import (a gamelist, or --meta): the whole row when there is
+ * none or when overwrite. Otherwise the row stays as it is, except that a
+ * title it lacks is filled in. 1 written, 0 left alone, -1 failed. */
+int db_game_import(db *d, const char *folder, const char *file,
+                   const game_meta *m, bool overwrite);
 
 /* Inspectable without being editable. Nothing on the device can read a
  * database - there is no sqlite3 binary - and losing the ability to SEE what a
