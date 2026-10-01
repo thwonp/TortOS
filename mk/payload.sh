@@ -68,6 +68,7 @@ cp "$ROOT/res/boot/splash.png" "$P/"      # the pic2fb loading splash, likewise
 cp "$ROOT/res/ssl/cacert.pem" "$P/"
 cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$P/"  # plorpOS terms + Eric Reinsmidt's MIT notice
 cp "$ROOT/THIRD-PARTY-LICENSES.md" "$P/"  # notices for the redistributed software
+cp "$ROOT/LICENSE-FBNeo.txt" "$P/"     # FBNeo requires its full text, verbatim
 cp "$DIATOM_ELF" "$P/diatom"
 cp "$ROOT/vendor/cores/"*.so "$P/cores/"
 

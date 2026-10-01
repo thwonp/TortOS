@@ -13,6 +13,10 @@
 # FLOOR of what the output binary demands, and it must stay at or below the
 # device's 2.33. Bullseye's 2.31 clears that; bookworm's 2.36 would not.
 #
+# g++ is here for FBNeo (mk/build-fbneo.sh), the one C++ core built from
+# source. Bullseye's g++-10 emits at most GLIBCXX_3.4.28, which is exactly the
+# Brick's libstdc++ (6.0.28), so the core links it dynamically like the rest.
+#
 # Pinned by digest, never :latest. The digest is the multi-arch manifest list,
 # so on an arm64 host this runs natively with no emulation.
 #
@@ -34,6 +38,7 @@ RUN printf '%s\n' \
 
 RUN apt-get -o Acquire::Check-Valid-Until=false update && apt-get install -y --no-install-recommends \
         gcc-aarch64-linux-gnu \
+        g++-aarch64-linux-gnu \
         libc6-dev-arm64-cross \
         binutils-aarch64-linux-gnu \
         make \
