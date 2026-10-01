@@ -44,6 +44,7 @@ The SDL2 libraries TortOS links against are the device's own, in
 | `snes9x2010_libretro.so` | SNES | **Non-commercial** |
 | `genesis_plus_gx_libretro.so` | Genesis, Master System, Game Gear | **Non-commercial** |
 | `mednafen_ngp_libretro.so` | Neo Geo Pocket, Neo Geo Pocket Color | GPL-2.0 (Beetle NeoPop, Mednafen-derived) |
+| `pcsx_rearmed_libretro.so` | PlayStation | GPL-2.0 (built from libretro/pcsx_rearmed source, `mk/build-pcsx-rearmed.sh`) |
 
 **The last two carry a non-commercial restriction.** They are not open source
 under either the OSI or FSF definition and they restrict commercial
