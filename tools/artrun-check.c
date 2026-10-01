@@ -293,7 +293,7 @@ static int run(const char *only, art_progress *out)
 
 	g_urls[0] = '\0';
 	g_nreq = 0;
-	art_begin(&sys, g_root, only);
+	art_begin(&sys, g_root, NULL, only);
 	while ((r = art_step()) == 1 && steps < 1000) steps++;
 	art_status(out);
 	return r;
@@ -475,6 +475,49 @@ int main(void)
 
 		g_ss_on = false;
 		g_ss_left = -1;
+	}
+
+	printf("  an arcade set is asked for by FBNeo's name and kept under its own:\n");
+	{
+		char shelf[400], media[420], dat[400], p[512];
+		systems_cfg sys;
+		int steps = 0, r;
+		FILE *f;
+
+		snprintf(shelf, sizeof shelf, "%s/Arcade", g_root);
+		snprintf(media, sizeof media, "%s/.media", shelf);
+		mkdir(shelf, 0755);
+		mkdir(media, 0755);
+		snprintf(p, sizeof p, "%s/mk3.zip", shelf);   write_file(p, "rom");
+		snprintf(p, sizeof p, "%s/1943.zip", shelf);  write_file(p, "rom");
+		snprintf(dat, sizeof dat, "%s/fbneo-titles.tsv", g_root);
+		write_file(dat, "1943\t1943: The Battle of Midway (Euro)\n"
+		                "mk3\tMortal Kombat 3 (rev 2.1)\n");
+
+		memset(&sys, 0, sizeof sys);
+		sys.count = 1;
+		snprintf(sys.systems[0].folder, sizeof sys.systems[0].folder, "Arcade");
+		snprintf(sys.systems[0].exts, sizeof sys.systems[0].exts, "zip");
+		snprintf(sys.systems[0].core, sizeof sys.systems[0].core, "fbneo");
+		g_serve_image = "/Mortal%20Kombat%203%20";
+		g_serve_also = "/1943_%20The%20Battle%20of%20Midway";
+		g_index = NULL;
+		g_urls[0] = '\0';
+		g_nreq = 0;
+		art_begin(&sys, g_root, dat, NULL);
+		while ((r = art_step()) == 1 && steps < 1000) steps++;
+		CHECK(r == 0, "the run did not finish");
+		snprintf(p, sizeof p, "%s/mk3.png", media);
+		f = fopen(p, "rb");
+		CHECK(f != NULL, "no cover saved as mk3.png:\n%s", g_urls);
+		if (f) fclose(f);
+		snprintf(p, sizeof p, "%s/1943.png", media);
+		f = fopen(p, "rb");
+		CHECK(f != NULL, "a colon in the name was not asked for as _:\n%s", g_urls);
+		if (f) fclose(f);
+		CHECK(!strstr(g_urls, "/mk3.png"),
+		      "asked libretro for the set name, which it never files under:\n%s", g_urls);
+		g_serve_image = g_serve_also = NULL;
 	}
 
 	{

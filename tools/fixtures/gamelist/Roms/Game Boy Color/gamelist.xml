@@ -2,7 +2,7 @@
 <gameList>
 	<game id="1" source="ScreenScraper.fr">
 		<path>./Alpha &amp; Omega.gbc</path>
-		<name>Alpha &amp; Omega (ignored)</name>
+		<name> Alpha &amp; Omega	</name>
 		<desc>Line one, caf&#233; &#x2019;quoted&#x2019;.
 Line two &lt;b&gt;.</desc>
 		<rating>0.85</rating>

@@ -18,6 +18,7 @@
  */
 #include "../src/db.h"
 
+#include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -177,8 +178,84 @@ static void the_games_table(void)
 	ck(db_game_get(lib, "Genesis", "Gunstar Heroes (USA).zip", &got) &&
 	   !strcmp(got.year, "1994"), "and replaces rather than duplicating");
 
+	/* A title comes only from a gamelist. A scrape, which carries none, must
+	 * not take it away; a gamelist that names the game again replaces it. */
+	snprintf(m.title, sizeof m.title, "Gunstar Heroes");
+	ck(db_game_set(lib, "Genesis", "Gunstar Heroes (USA).zip", &m) &&
+	   db_game_get(lib, "Genesis", "Gunstar Heroes (USA).zip", &got) &&
+	   !strcmp(got.title, "Gunstar Heroes"), "a title is kept with the row");
+	m.title[0] = '\0';
+	snprintf(m.year, sizeof m.year, "1995");
+	ck(db_game_set(lib, "Genesis", "Gunstar Heroes (USA).zip", &m) &&
+	   db_game_get(lib, "Genesis", "Gunstar Heroes (USA).zip", &got) &&
+	   !strcmp(got.title, "Gunstar Heroes") && !strcmp(got.year, "1995"),
+	   "a write with no title keeps the one there, and still writes the rest");
+	snprintf(m.title, sizeof m.title, "Gunstar Heroes!");
+	ck(db_game_set(lib, "Genesis", "Gunstar Heroes (USA).zip", &m) &&
+	   db_game_get(lib, "Genesis", "Gunstar Heroes (USA).zip", &got) &&
+	   !strcmp(got.title, "Gunstar Heroes!"), "a new title replaces the old one");
+	m.title[0] = '\0';
+	ck(db_game_set(lib, "Genesis", "Sonic.zip", &m) &&
+	   db_game_get(lib, "Genesis", "Sonic.zip", &got) && got.title[0] == '\0',
+	   "a new row with no title has none, not a neighbour's");
+
 	db_close(dev);
 	db_close(lib);
+}
+
+/* A card's database from before titles: the games table as it was, with a
+ * row in it. Written with sqlite directly, because db.c only ever creates the
+ * current schema. */
+static bool write_old_library(void)
+{
+	static const char OLD[] =
+		"CREATE TABLE games(folder TEXT NOT NULL, file TEXT NOT NULL,"
+		" year TEXT, publisher TEXT, developer TEXT, players TEXT, genres TEXT,"
+		" esrb TEXT, note TEXT, synopsis TEXT, scraped INTEGER,"
+		" PRIMARY KEY(folder, file));"
+		"INSERT INTO games(folder,file,year) VALUES('SNES','Zelda.sfc','1991');";
+	int (*op)(const char *, void **);
+	int (*ex)(void *, const char *, void *, void *, char **);
+	int (*cl)(void *);
+	void *h = dlopen("libsqlite3.so.0", RTLD_NOW), *conn = NULL;
+	bool ok;
+
+	if (!h) h = dlopen("libsqlite3.so", RTLD_NOW);
+	if (!h) return false;
+	op = (int (*)(const char *, void **))dlsym(h, "sqlite3_open");
+	ex = (int (*)(void *, const char *, void *, void *, char **))dlsym(h, "sqlite3_exec");
+	cl = (int (*)(void *))dlsym(h, "sqlite3_close");
+	ok = op && ex && cl && op(LIB, &conn) == 0 && ex(conn, OLD, NULL, NULL, NULL) == 0;
+	if (cl && conn) cl(conn);
+	return ok;
+}
+
+/* Opening it is the migration: the row survives and can carry a title. */
+static void an_old_library_gains_titles(void)
+{
+	db *lib;
+	game_meta m, got;
+
+	printf("a library from before titles:\n");
+	scrub();
+	if (!write_old_library()) { ck(0, "the old schema is written"); return; }
+	lib = db_open(LIB, DB_LIBRARY);
+	ck(lib != NULL, "opens");
+	if (!lib) return;
+	ck(db_game_get(lib, "SNES", "Zelda.sfc", &got) && !strcmp(got.year, "1991") &&
+	   got.title[0] == '\0', "keeps its row, with no title yet");
+	memset(&m, 0, sizeof m);
+	snprintf(m.year, sizeof m.year, "1991");
+	snprintf(m.title, sizeof m.title, "The Legend of Zelda: A Link to the Past");
+	ck(db_game_set(lib, "SNES", "Zelda.sfc", &m) &&
+	   db_game_get(lib, "SNES", "Zelda.sfc", &got) &&
+	   !strcmp(got.title, m.title), "and takes one");
+	db_close(lib);
+	lib = db_open(LIB, DB_LIBRARY);
+	ck(lib && db_game_get(lib, "SNES", "Zelda.sfc", &got) && !strcmp(got.title, m.title),
+	   "a second open, which finds the column already there, changes nothing");
+	if (lib) db_close(lib);
+	scrub();
 }
 
 static void the_scopes_stay_apart(void)
@@ -468,6 +545,7 @@ int main(void)
 	round_trips();
 	a_lost_database_self_heals();
 	the_games_table();
+	an_old_library_gains_titles();
 	the_scopes_stay_apart();
 	boot_env_says_what_the_shell_needs();
 	prefix_scan();

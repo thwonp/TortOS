@@ -19,7 +19,8 @@
  * tag for the reason `display.<TAG>` is: renaming a folder or reordering
  * systems.cfg must not hand a system somebody else's setting.
  *
- * EVERY ORDER FALLS BACK TO NAME. Two games with no play time, or copied onto
+ * EVERY ORDER FALLS BACK TO NAME - the shown title, then the filename
+ * (lib_order). Two games with no play time, or copied onto
  * the card in the same second, must not trade places between two draws of the
  * same shelf - a list that reshuffles when nothing changed reads as broken
  * even when the top of it is right. The fallback is what makes the order a
@@ -71,9 +72,7 @@ static inline bool sort_needs_stats(int order)
 
 static int sort_by_name(const void *pa, const void *pb)
 {
-	const game_entry *a = pa, *b = pb;
-
-	return strcasecmp(a->name, b->name);
+	return lib_order(pa, pb);
 }
 
 /* The three numeric orders, all shaped the same: bigger first, name breaks a

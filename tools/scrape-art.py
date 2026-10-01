@@ -50,7 +50,9 @@ LIBRETRO = {
     # "NEC - PC Engine CD - TurboGrafx-CD", 946 entries neither scraper had
     # ever looked at. Sega CD and the Famicom Disk System are the same shape.
     "Arcade": ["FBNeo - Arcade Games"],
-    "Neo Geo": ["SNK - Neo Geo"],
+    # FBNeo's catalog second: it files every Neo Geo set as well, under
+    # FBNeo's own names, and the Neo Geo one has 257 covers to its 6,456.
+    "Neo Geo": ["SNK - Neo Geo", "FBNeo - Arcade Games"],
     "NES": ["Nintendo - Nintendo Entertainment System",
             "Nintendo - Family Computer Disk System"],
     "SNES": ["Nintendo - Super Nintendo Entertainment System"],
@@ -73,7 +75,7 @@ LIBRETRO = {
 
 
 def systems_from_cfg(path):
-    """(folder, extensions) per system, in shelf order, out of systems.cfg.
+    """(folder, extensions, core) per system, in shelf order, out of systems.cfg.
 
     The extensions matter: a ROM folder also holds .media/, and may hold a
     stray text file or a disc folder. Treating every file as a ROM makes the
@@ -84,7 +86,7 @@ def systems_from_cfg(path):
             f = line.rstrip("\n").split("|")
             if len(f) > 7 and f[0] == "sys":
                 exts = {e.strip().lower() for e in f[7].split(",") if e.strip()}
-                out.append((f[2], exts))
+                out.append((f[2], exts, f[3]))
     except OSError as e:
         sys.exit(f"scrape-art: cannot read {path}: {e}")
     return out
@@ -99,6 +101,25 @@ def norm(s):
     s = re.sub(r"\([^)]*\)", " ", s)
     s = re.sub(r"[^a-z0-9]+", " ", s.lower())
     return " ".join(s.split())
+
+
+def fbneo_titles():
+    """res/fbneo-titles.tsv as {set: FBNeo's description}. An fbneo shelf's
+    zips are named for their sets, and libretro files that art under the
+    description instead (src/fbneodat.h)."""
+    out = {}
+    with open(os.path.join(ROOT, "res", "fbneo-titles.tsv"), encoding="utf-8") as f:
+        for line in f:
+            k, _, v = line.rstrip("\n").partition("\t")
+            if k and v:
+                out[k] = v
+    return out
+
+
+def libretro_name(title):
+    """A title as libretro files its thumbnail: these nine characters cannot
+    be in a filename there, and libretro writes _ for each."""
+    return re.sub(r'[&*/:`<>?\\|]', "_", title)
 
 
 def get(url, timeout=60):
@@ -149,8 +170,9 @@ def main():
 
     got = missing = skipped = 0
     unmapped = []
+    fbneo = fbneo_titles() if any(t[2] == "fbneo" for t in wanted) else {}
 
-    for folder, exts in wanted:
+    for folder, exts, core in wanted:
         d = os.path.join(a.roms, folder)
         if not os.path.isdir(d):
             continue
@@ -181,7 +203,7 @@ def main():
         failed = False
         for remote in remotes:
             try:
-                got = index(remote)
+                listed = index(remote)
             except (urllib.error.URLError, OSError) as e:
                 # Distinguished on purpose: a TLS or network failure is not
                 # "this game has no art", and reporting it as one is how a
@@ -189,9 +211,9 @@ def main():
                 print(f"  {folder:<20} INDEX FAILED ({remote}): {e}")
                 failed = True
                 break
-            for n in got:
+            for n in listed:
                 origin.setdefault(n, remote)
-            names.extend(got)
+            names.extend(listed)
         if failed:
             continue
 
@@ -207,7 +229,10 @@ def main():
             if os.path.exists(dest) and not a.force:
                 n_skip += 1
                 continue
-            hit = base if base in exact else (by.get(norm(base)) or [None])[0]
+            ask = base
+            if core == "fbneo" and base.lower() in fbneo:
+                ask = libretro_name(fbneo[base.lower()])
+            hit = ask if ask in exact else (by.get(norm(ask)) or [None])[0]
             if not hit:
                 n_miss += 1
                 print(f"    no art: {folder}/{base}")

@@ -32,7 +32,7 @@ typedef struct {
 
 /* Every system's Roms/<folder>/gamelist.xml, or miyoogamelist.xml when there
  * is no gamelist.xml. A game that already has a row is skipped unless
- * overwrite. */
+ * overwrite, apart from a title it lacks (db_game_import). */
 void gl_import(db *d, const char *roms, const systems_cfg *sys, bool overwrite,
                gl_result *r);
 

@@ -26,7 +26,7 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
         check check-cheevos check-hare check-httpd check-idle check-rahash \
         check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
         check-db check-stats check-sort check-bt check-backlog check-ss check-hkbind \
-        hooks storeprobe deploy restart logs
+        check-titles hooks storeprobe deploy restart logs
 
 ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl
@@ -42,7 +42,7 @@ CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
          check-db check-stats check-sort check-bt check-backlog check-ss \
          check-muselib check-musequeue check-museart check-controls check-hkbind \
-         check-gamelist check-logpack
+         check-gamelist check-logpack check-titles
 
 check:
 	@fail=0; for c in $(CHECKS); do \
@@ -300,11 +300,12 @@ check-artscrape: build-native/artscrape-check
 	@ART_SCORING=1 ./build-native/artscrape-check
 	@python3 tools/artscrape-check.py
 
-build-native/artscrape-check: tools/artscrape-check.c src/artscrape.c src/artscrape.h src/urlenc.c
+build-native/artscrape-check: tools/artscrape-check.c src/artscrape.c src/artscrape.h src/urlenc.c \
+                              src/fbneodat.c
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g -Isrc \
 	      -DTORTOS_VERSION='"check"' \
-	      -o $@ tools/artscrape-check.c src/artscrape.c src/net.c src/urlenc.c
+	      -o $@ tools/artscrape-check.c src/artscrape.c src/net.c src/urlenc.c src/fbneodat.c
 
 # Replace fetches over a cover rather than deleting it first. The real scraper
 # against a stubbed network, so a hit and a miss are both pinned with no device
@@ -312,10 +313,11 @@ build-native/artscrape-check: tools/artscrape-check.c src/artscrape.c src/artscr
 check-artrun: build-native/artrun-check
 	@./build-native/artrun-check
 
-build-native/artrun-check: tools/artrun-check.c src/artscrape.c src/artscrape.h src/urlenc.c FORCE
+build-native/artrun-check: tools/artrun-check.c src/artscrape.c src/artscrape.h src/urlenc.c \
+                           src/fbneodat.c FORCE
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g -Isrc -DSS_BUSY_WAIT=0 -DART_QUIET \
-	      -o $@ tools/artrun-check.c src/artscrape.c src/urlenc.c
+	      -o $@ tools/artrun-check.c src/artscrape.c src/urlenc.c src/fbneodat.c
 
 # The two hashers - one C for the device, one Python for the host tools - over
 # every ROM in the library. A wrong rule does not crash; it produces a hash RA
@@ -481,6 +483,19 @@ check-sort: build-native/sort-check
 	if [ $$s -eq 77 ]; then \
 		echo "  install sqlite3 - the launcher needs it, not just this check" >&2; \
 	fi; exit $$s
+
+check-titles: build-native/titles-check
+	@./build-native/titles-check; s=$$?; \
+	if [ $$s -eq 77 ]; then \
+		echo "  install sqlite3 - the launcher needs it, not just this check" >&2; \
+	fi; exit $$s
+
+build-native/titles-check: tools/titles-check.c src/titles.c src/titles.h src/fbneodat.c \
+                           src/library.c src/library.h src/db.c src/db.h src/atomic.c FORCE
+	@mkdir -p build-native
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
+	      -o $@ tools/titles-check.c src/titles.c src/fbneodat.c src/library.c src/db.c \
+	         src/atomic.c
 
 build-native/sort-check: tools/sort-check.c src/sort.h src/library.h src/stats.c \
                          src/stats.h src/db.c src/atomic.c FORCE

@@ -170,6 +170,7 @@ static const char GAMES_SCHEMA[] =
 	"CREATE TABLE IF NOT EXISTS games("
 	"  folder TEXT NOT NULL,"
 	"  file TEXT NOT NULL,"
+	"  title TEXT,"
 	"  year TEXT,"
 	"  publisher TEXT,"
 	"  developer TEXT,"
@@ -206,6 +207,11 @@ db *db_open(const char *path, db_scope scope)
 	}
 	if (!run(d, SCHEMA)) { db_close(d); return NULL; }
 	if (scope == DB_LIBRARY && !run(d, GAMES_SCHEMA)) { db_close(d); return NULL; }
+	/* A card's database from before titles has no title column. Adding it is
+	 * the whole migration, and trying it on every open is simpler than asking
+	 * first: on a database that already has it, sqlite refuses with
+	 * "duplicate column name" and nothing changes. */
+	if (scope == DB_LIBRARY) run(d, "ALTER TABLE games ADD COLUMN title TEXT;");
 
 	/* The device database holds the RetroAchievements session token, so it
 	 * asks for 0600. Sidecars included: a -wal holding the same pages at 0644
@@ -334,6 +340,39 @@ bool db_del(db *d, const char *key)
 
 /* --- the games table ------------------------------------------------------ */
 
+void db_game_titles(db *d, const char *folder,
+                    void (*fn)(void *ctx, const char *file, const char *title),
+                    void *ctx)
+{
+	sqlite3_stmt *st = NULL;
+
+	if (!d || !folder || !fn) return;
+	if (sq_prepare(d->h, "SELECT file,title FROM games WHERE folder=? AND title<>'';",
+	               -1, &st, NULL) != SQ_OK)
+		return;
+	sq_bind_text(st, 1, folder, -1, SQ_TRANSIENT);
+	while (sq_step(st) == SQ_ROW) {
+		const unsigned char *file = sq_column_text(st, 0), *title = sq_column_text(st, 1);
+
+		if (file && title) fn(ctx, (const char *)file, (const char *)title);
+	}
+	sq_finalize(st);
+}
+
+int db_game_import(db *d, const char *folder, const char *file,
+                   const game_meta *m, bool overwrite)
+{
+	game_meta had;
+
+	if (overwrite || !db_game_get(d, folder, file, &had))
+		return db_game_set(d, folder, file, m) ? 1 : -1;
+	/* A row a scrape wrote before titles existed still wants one, and
+	 * without this an import that fills gaps would never give it. */
+	if (had.title[0] || !m->title[0]) return 0;
+	snprintf(had.title, sizeof had.title, "%s", m->title);
+	return db_game_set(d, folder, file, &had) ? 1 : -1;
+}
+
 static void col_str(sqlite3_stmt *st, int i, char *out, size_t n)
 {
 	const unsigned char *v = sq_column_text(st, i);
@@ -348,7 +387,8 @@ bool db_game_get(db *d, const char *folder, const char *file, game_meta *out)
 	if (out) memset(out, 0, sizeof *out);
 	if (!d || !folder || !file || !out) return false;
 	if (sq_prepare(d->h,
-	               "SELECT year,publisher,developer,players,genres,esrb,note,synopsis"
+	               "SELECT year,publisher,developer,players,genres,esrb,note,synopsis,"
+	               "title"
 	               " FROM games WHERE folder=? AND file=?;", -1, &st, NULL) != SQ_OK)
 		return false;
 	sq_bind_text(st, 1, folder, -1, SQ_TRANSIENT);
@@ -362,6 +402,7 @@ bool db_game_get(db *d, const char *folder, const char *file, game_meta *out)
 		col_str(st, 5, out->esrb,      sizeof out->esrb);
 		col_str(st, 6, out->note,      sizeof out->note);
 		col_str(st, 7, out->synopsis,  sizeof out->synopsis);
+		col_str(st, 8, out->title,     sizeof out->title);
 		got = true;
 	}
 	sq_finalize(st);
@@ -375,11 +416,20 @@ bool db_game_set(db *d, const char *folder, const char *file, const game_meta *m
 
 	if (!d || !folder || !file || !m) return false;
 	/* INSERT OR REPLACE for the same reason db_set_str uses it: the device
-	 * ships sqlite 3.12.2, which predates ON CONFLICT. */
+	 * ships sqlite 3.12.2, which predates ON CONFLICT.
+	 *
+	 * An empty title keeps the one the row already has. A gamelist is the only
+	 * source of titles; a ScreenScraper reply and a --meta record from an older
+	 * importer carry none, and a whole-row replace would otherwise blank the
+	 * shelf name a gamelist gave. The VALUES are evaluated before the old row
+	 * is replaced, so the subquery still sees it. */
 	if (sq_prepare(d->h,
 	               "INSERT OR REPLACE INTO games(folder,file,year,publisher,developer,"
-	               "players,genres,esrb,note,synopsis,scraped)"
-	               " VALUES(?,?,?,?,?,?,?,?,?,?,?);", -1, &st, NULL) != SQ_OK)
+	               "players,genres,esrb,note,synopsis,scraped,title)"
+	               " VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,"
+	               "COALESCE(NULLIF(?12,''),"
+	               "(SELECT title FROM games WHERE folder=?1 AND file=?2)));",
+	               -1, &st, NULL) != SQ_OK)
 		return false;
 	sq_bind_text(st,  1, folder,        -1, SQ_TRANSIENT);
 	sq_bind_text(st,  2, file,          -1, SQ_TRANSIENT);
@@ -395,6 +445,7 @@ bool db_game_set(db *d, const char *folder, const char *file, const game_meta *m
 	 * told from one that was never written. Not in game_meta: nothing on a
 	 * screen asks for it. */
 	sq_bind_int(st, 11, (int)time(NULL));
+	sq_bind_text(st, 12, m->title,      -1, SQ_TRANSIENT);
 	ok = sq_step(st) == SQ_DONE;
 	sq_finalize(st);
 	return ok;

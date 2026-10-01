@@ -58,6 +58,7 @@ cp "$ROOT/res/fonts/menu.ttf" "$P/"       # the UI face, and the in-game menu's
 # rather than being kept in the repo twice: the launcher reads $P/menu.ttf and
 # a browser asks for /web/menu.ttf.
 cp "$ROOT/res/web/"* "$P/res/web/"
+cp "$ROOT/res/fbneo-titles.tsv" "$P/res/"   # Arcade and Neo Geo titles (src/titles.c)
 cp "$ROOT/res/fonts/menu.ttf" "$P/res/web/menu.ttf"
 cp "$ROOT/res/boot/tortos-boot.mp4" "$P/"
 cp "$ROOT/res/boot/bootlogo.bmp" "$P/"    # u-boot splash, applied on first boot

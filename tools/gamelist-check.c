@@ -86,6 +86,7 @@ static void fixture_values(const char *roms)
 	m = find("Alpha & Omega.gbc");
 	ck(m != NULL, "entity in <path> decoded");
 	if (m) {
+		ck(!strcmp(m->title, "Alpha & Omega"), "title from <name>, decoded and trimmed");
 		ck(!strcmp(m->year, "1999"), "year is the first four digits");
 		ck(!strcmp(m->publisher, "Rock & Roll Inc."), "publisher decoded and trimmed");
 		ck(!strcmp(m->developer, "Dev Tabbed"), "a tab in a field becomes a space");
@@ -104,6 +105,7 @@ static void fixture_values(const char *roms)
 		ck(!strcmp(m->note, ""), "rating 0 is unrated, not 0");
 		ck(!strcmp(m->year, ""), "a releasedate with no year gives none");
 		ck(!strcmp(m->genres, ""), "self-closing <genre/> is empty");
+		ck(!strcmp(m->title, ""), "no <name> is no title");
 	}
 	m = find("Gamma.gbc");
 	ck(m != NULL && !m->synopsis[0], "game with only a path");
@@ -128,26 +130,40 @@ static void import(const char *roms)
 
 	scrub();
 	ck(db_init(DEV, LIB, NULL), "databases open");
+	/* Delta already has a row with no title - a ScreenScraper hit from
+	 * before titles, say. */
+	memset(&m, 0, sizeof m);
+	snprintf(m.publisher, sizeof m.publisher, "kept");
+	db_game_set(db_lib(), "Game Boy", "Delta.gb", &m);
 	gl_import(db_lib(), roms, &sys, false, &r);
 	ck(r.lists == 2 && r.wrote == 4 && r.skipped == 0 && r.bad == 0,
-	   "first import writes all four");
+	   "first import writes all four, Delta's title included");
 	ck(r.unreadable == 1 && !strcmp(r.first_unreadable, "SNES"),
 	   "the SNES file is reported, not fatal");
 	ck(db_game_get(db_lib(), "Game Boy", "Delta.gb", &m) &&
-	   !strcmp(m.year, "1992"), "miyoogamelist.xml used when there is no gamelist.xml");
+	   !strcmp(m.title, "Delta"), "miyoogamelist.xml used when there is no gamelist.xml");
+	ck(!strcmp(m.publisher, "kept") && !strcmp(m.year, ""),
+	   "a title fills its gap and nothing else on the row moves");
 
-	/* Something already there - a ScreenScraper hit, say - is left alone. */
-	snprintf(m.publisher, sizeof m.publisher, "kept");
-	db_game_set(db_lib(), "Game Boy", "Delta.gb", &m);
+	/* Something already there is left alone, a title included. */
+	db_game_get(db_lib(), "Game Boy Color", "Alpha & Omega.gbc", &m);
+	snprintf(m.title, sizeof m.title, "Old");
+	db_game_set(db_lib(), "Game Boy Color", "Alpha & Omega.gbc", &m);
 	gl_import(db_lib(), roms, &sys, false, &r);
 	ck(r.wrote == 0 && r.skipped == 4, "second import skips all four");
 	ck(db_game_get(db_lib(), "Game Boy", "Delta.gb", &m) &&
 	   !strcmp(m.publisher, "kept"), "a skipped row is untouched");
+	ck(db_game_get(db_lib(), "Game Boy Color", "Alpha & Omega.gbc", &m) &&
+	   !strcmp(m.title, "Old"), "and so is a title it already had");
 
 	gl_import(db_lib(), roms, &sys, true, &r);
 	ck(r.wrote == 4 && r.skipped == 0, "overwrite writes all four");
 	ck(db_game_get(db_lib(), "Game Boy", "Delta.gb", &m) &&
 	   !strcmp(m.publisher, ""), "overwrite replaces the row");
+	ck(db_game_get(db_lib(), "Game Boy Color", "Alpha & Omega.gbc", &m) &&
+	   !strcmp(m.title, "Alpha & Omega"), "the title with it");
+	ck(db_game_get(db_lib(), "Game Boy Color", "Beta.gbc", &m) && !m.title[0],
+	   "and a game the list gives no name keeps none");
 	db_shutdown();
 	scrub();
 }
@@ -173,16 +189,16 @@ static void parity(const char *roms, const char *meta)
 	ck(f != NULL, "script output readable");
 	if (!f) return;
 	while (fgets(head, sizeof head, f)) {
-		char *fld[10], *p = head, what[512];
+		char *fld[11], *p = head, what[512];
 		const game_meta *m;
 		size_t len;
 		int i;
 
-		for (i = 0; i < 9 && (fld[i] = p) && (p = strchr(p, '\t')); i++)
+		for (i = 0; i < 10 && (fld[i] = p) && (p = strchr(p, '\t')); i++)
 			*p++ = '\0';
-		if (i < 9) { ck(0, "script record has ten fields"); break; }
-		fld[9] = p;
-		len = strtoul(fld[9], NULL, 10);
+		if (i < 10) { ck(0, "script record has eleven fields"); break; }
+		fld[10] = p;
+		len = strtoul(fld[10], NULL, 10);
 		if (len >= sizeof syn || fread(syn, 1, len, f) != len) {
 			ck(0, "script synopsis readable");
 			break;
@@ -206,6 +222,7 @@ static void parity(const char *roms, const char *meta)
 		ck(same(m->name, fld[n]), what);
 		FIELD(year, 2) FIELD(publisher, 3) FIELD(developer, 4)
 		FIELD(players, 5) FIELD(genres, 6) FIELD(esrb, 7) FIELD(note, 8)
+		FIELD(title, 9)
 #undef FIELD
 		snprintf(what, sizeof what, "%s/%s: synopsis", fld[0], fld[1]);
 		ck(same(m->synopsis, syn), what);

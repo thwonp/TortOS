@@ -198,6 +198,8 @@ int gl_parse(const char *xml, size_t len, gl_game_fn fn, void *ctx)
 		if (!file[0]) continue;
 
 		memset(&m, 0, sizeof m);
+		field(b, e, "name", m.title, sizeof m.title);
+		clean(m.title);
 		/* First four digits of an ES releasedate (YYYYMMDDT000000); any other
 		 * shape is a game with no known year. */
 		field(b, e, "releasedate", raw, sizeof raw);
@@ -260,16 +262,10 @@ typedef struct {
 static void import_one(void *ctx, const char *file, const game_meta *m)
 {
 	import_ctx *c = ctx;
+	int got = db_game_import(c->d, c->folder, file, m, c->overwrite);
 
-	if (!c->overwrite) {
-		game_meta had;
-
-		if (db_game_get(c->d, c->folder, file, &had)) {
-			c->r->skipped++;
-			return;
-		}
-	}
-	if (db_game_set(c->d, c->folder, file, m)) c->r->wrote++;
+	if (got > 0) c->r->wrote++;
+	else if (got == 0) c->r->skipped++;
 	else c->r->bad++;
 }
 

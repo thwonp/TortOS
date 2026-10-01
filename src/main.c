@@ -21,6 +21,7 @@
 #include "gamelist.h"
 #include "stats.h"
 #include "sort.h"
+#include "titles.h"
 #include "coverflow.h"
 #include "library.h"
 #include "platform.h"
@@ -5292,6 +5293,15 @@ static void gi_gather(app *a, int owner, const game_entry *g, game_info *gi)
 	}
 }
 
+/* FBNeo's set table on the card, for the shelf titles and the art names. */
+static const char *fbneo_dat(void)
+{
+	static char p[CFG_STR * 2];
+
+	if (!p[0]) snprintf(p, sizeof p, "%s/res/fbneo-titles.tsv", P_ROOT);
+	return p;
+}
+
 /* `only` names one system's folder, or NULL for the whole library.
  *
  * One system is worth having for the FIRST run on a card, where it is the
@@ -5432,9 +5442,9 @@ static void art_screen(app *a, const char *only, const char *one,
 				one.count = 1;
 				break;
 			}
-		art_begin(&one, P_ROMS, stem);
+		art_begin(&one, P_ROMS, fbneo_dat(), stem);
 	} else {
-		art_begin(&a->sys, P_ROMS, NULL);
+		art_begin(&a->sys, P_ROMS, fbneo_dat(), NULL);
 	}
 
 	while (!done && !want_quit && a->running) {
@@ -5905,6 +5915,23 @@ static void bt_screen(app *a)
  * menu_list_fit at entry, because the answer moves with Text Size. */
 #define STATS_VISIBLE 8
 
+/* The title a game's shelf shows, so a gamelist's name reads the same in the
+ * play-time list as on the card; NULL when the game is not on the card. */
+static const char *shelf_title(const app *a, const char *tag, const char *file)
+{
+	int k, j;
+
+	for (k = 0; k < a->sys.count; k++) {
+		const game_list *gl = &a->view[k].list;
+
+		if (strcmp(a->sys.systems[k].tag, tag)) continue;
+		for (j = 0; j < gl->count; j++)
+			if (!strcmp(gl->items[j].file, file)) return gl->items[j].title;
+		return NULL;
+	}
+	return NULL;
+}
+
 /* Returns true if it sent the player to a shelf, so the menu above it closes
  * rather than redrawing over a screen that has moved on. */
 static bool stats_screen(app *a)
@@ -5951,7 +5978,7 @@ static bool stats_screen(app *a)
 		rows[shown++] = (menu_row){ labels[0], total_val, false };
 
 		for (i = top; i < ngames && shown <= vis; i++) {
-			const char *tag, *file;
+			const char *tag, *file, *shelf;
 			long secs;
 			int launches;
 			const char *dot;
@@ -5974,6 +6001,10 @@ static bool stats_screen(app *a)
 					}
 				if (!found)
 					snprintf(labels[shown], sizeof labels[0], "%s", tag);
+			} else if ((shelf = shelf_title(a, tag, file))) {
+				/* Cut to the row, as lib_title cuts the fallback below. */
+				snprintf(labels[shown], sizeof labels[0], "%.*s",
+				         (int)sizeof labels[0] - 1, shelf);
 			} else {
 			/* The extension is noise in a list of names. Last dot only, so a
 			 * title with dots of its own keeps them. */
@@ -6556,6 +6587,10 @@ static void gamelist_import_screen(app *a)
 	gl_import(db_lib(), P_ROMS, &a->sys, pick == 1, &r);
 	fprintf(stderr, "gamelist: %d list(s), %d written, %d skipped, %d rejected, "
 	        "%d unreadable\n", r.lists, r.wrote, r.skipped, r.bad, r.unreadable);
+	/* A list's names are the shelves' titles, and a shelf takes its titles
+	 * when it is scanned (titles_apply). An import adds and removes no game,
+	 * so every system stays where it was and this menu can stay open. */
+	if (r.wrote) rescan_all(a);
 
 	if (!r.lists && !r.unreadable) {
 		rows[n++] = (menu_row){ "No gamelist.xml in any system folder", NULL, false };
@@ -10183,7 +10218,7 @@ static void build_favorites_shelf(app *a)
 	for (i = 1; i < n; i++) {
 		game_entry t = items[i];
 		int to = owner[i], j = i - 1;
-		while (j >= 0 && strcasecmp(items[j].name, t.name) > 0) {
+		while (j >= 0 && lib_order(&items[j], &t) > 0) {
 			items[j + 1] = items[j];
 			owner[j + 1] = owner[j];
 			j--;
@@ -10463,6 +10498,9 @@ static void scan_all(app *a)
 	for (int i = 0; i < a->sys.count; i++) {
 		sysview *v = &a->view[i];
 		lib_scan(P_ROMS, a->sys.systems[i].folder, a->sys.systems[i].exts, &v->list);
+		/* Both shelves on fbneo are named by set, Arcade and Neo Geo alike. */
+		titles_apply(&v->list, db_lib(), a->sys.systems[i].folder,
+		             strcmp(a->sys.systems[i].core, "fbneo") ? NULL : fbneo_dat());
 		if (v->list.count > 0) {
 			v->tex = calloc((size_t)v->list.count, sizeof *v->tex);
 			v->tw = calloc((size_t)v->list.count, sizeof *v->tw);
@@ -11123,15 +11161,21 @@ int main(int argc, char *argv[])
 	 * adb, not a screen, and nothing here presents.
 	 *
 	 * A record is a tab-separated header - folder, file, year, publisher,
-	 * developer, players, genres, esrb, note, and the synopsis length in bytes
-	 * - then that many bytes of synopsis and a newline. COUNTED RATHER THAN
+	 * developer, players, genres, esrb, note, title, and the synopsis length
+	 * in bytes - then that many bytes of synopsis and a newline. COUNTED RATHER THAN
 	 * ESCAPED, because the synopsis is the one field with newlines in it and 42
 	 * of the 78 replies this card's games got have them; an escape is a second
 	 * thing to get right at both ends.
 	 *
 	 * A game that already has a row is left alone unless --overwrite follows
 	 * the file: a gamelist.xml import should fill gaps, not replace what a
-	 * ScreenScraper hit already wrote (TortOS-1v7.4.1). */
+	 * ScreenScraper hit already wrote (TortOS-1v7.4.1). A title the row lacks
+	 * is one of those gaps (db_game_import).
+	 *
+	 * The title came in after the format did, and a record from either side
+	 * of that change is rejected by the other rather than misread: an old
+	 * record is one field short, and a new one gives an old reader a length
+	 * that is not a number. */
 	if (argc > 2 && !strcmp(argv[1], "--meta")) {
 		char dev[CFG_STR * 2], lib[CFG_STR * 2], head[1024];
 		FILE *f = fopen(argv[2], "rb");
@@ -11151,12 +11195,12 @@ int main(int argc, char *argv[])
 		}
 		while (fgets(head, sizeof head, f)) {
 			game_meta m = { 0 };
-			char *fld[10], *p = head;
+			char *fld[11], *p = head;
 			size_t want, take;
 			long len;
 			int i;
 
-			for (i = 0; i < 9; i++) {
+			for (i = 0; i < 10; i++) {
 				char *t = strchr(p, '\t');
 
 				if (!t) break;
@@ -11164,8 +11208,8 @@ int main(int argc, char *argv[])
 				fld[i] = p;
 				p = t + 1;
 			}
-			if (i < 9) { bad++; continue; }
-			fld[9] = p;
+			if (i < 10) { bad++; continue; }
+			fld[10] = p;
 			/* A length that is not a length means the file is not what it says
 			 * and every byte after it is at an unknown offset. Stop, rather
 			 * than write whatever the rest happens to parse as.
@@ -11173,13 +11217,13 @@ int main(int argc, char *argv[])
 			 * Checked digit by digit rather than left to strtol, which reads
 			 * "nine" as 0 - a perfectly valid length, and the row lands with
 			 * its synopsis quietly gone and the reader none the wiser. */
-			for (p = fld[9]; *p >= '0' && *p <= '9'; p++)
+			for (p = fld[10]; *p >= '0' && *p <= '9'; p++)
 				;
-			if (p == fld[9] || (*p != '\n' && *p != '\r' && *p != '\0')) {
+			if (p == fld[10] || (*p != '\n' && *p != '\r' && *p != '\0')) {
 				bad++;
 				break;
 			}
-			len = strtol(fld[9], NULL, 10);
+			len = strtol(fld[10], NULL, 10);
 			if (len < 0 || len > 1 << 20) { bad++; break; }
 			want = (size_t)len;
 			take = want < sizeof m.synopsis ? want : sizeof m.synopsis - 1;
@@ -11188,16 +11232,6 @@ int main(int argc, char *argv[])
 			for (want -= take; want > 0; want--)
 				if (fgetc(f) == EOF) break;
 			fgetc(f);                            /* the record's newline */
-			/* Checked only now, with the whole record read, so the next
-			 * header is still where the file says it is. */
-			if (!overwrite) {
-				game_meta had;
-
-				if (db_game_get(db_lib(), fld[0], fld[1], &had)) {
-					skipped++;
-					continue;
-				}
-			}
 			snprintf(m.year,      sizeof m.year,      "%s", fld[2]);
 			snprintf(m.publisher, sizeof m.publisher, "%s", fld[3]);
 			snprintf(m.developer, sizeof m.developer, "%s", fld[4]);
@@ -11205,8 +11239,14 @@ int main(int argc, char *argv[])
 			snprintf(m.genres,    sizeof m.genres,    "%s", fld[6]);
 			snprintf(m.esrb,      sizeof m.esrb,      "%s", fld[7]);
 			snprintf(m.note,      sizeof m.note,      "%s", fld[8]);
-			if (db_game_set(db_lib(), fld[0], fld[1], &m)) wrote++;
-			else bad++;
+			snprintf(m.title,     sizeof m.title,     "%s", fld[9]);
+			/* Decided only now, with the whole record read, so the next
+			 * header is still where the file says it is. */
+			switch (db_game_import(db_lib(), fld[0], fld[1], &m, overwrite)) {
+			case 1:  wrote++;   break;
+			case 0:  skipped++; break;
+			default: bad++;     break;
+			}
 		}
 		fclose(f);
 		printf("%d written, %d skipped, %d rejected\n", wrote, skipped, bad);
@@ -11271,7 +11311,7 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "scrape: %s, ScreenScraper %s\n",
 		        only_sys ? only_sys : "every shelf",
 		        ss_signed_in() ? "signed in" : "not signed in");
-		art_begin(only_sys ? &one : &all, P_ROMS, NULL);
+		art_begin(only_sys ? &one : &all, P_ROMS, fbneo_dat(), NULL);
 		while ((r = art_step()) == 1) {
 			art_status(&st);
 			/* One line per thing it turns to, not per step: a step is mostly

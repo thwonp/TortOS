@@ -4,18 +4,20 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <strings.h>
 
 #define LIB_NAME 256
 #define LIB_PATH 544
 
 typedef struct {
 	char name[LIB_NAME];  /* the filename without its extension. Box art is
-	                       * looked up by this and the shelf is sorted by it,
-	                       * so it stays exactly as the file is named. */
-	char title[LIB_NAME]; /* what the shelf shows: `name` with the trailing
-	                       * region and dump tags cut off, so a card says
-	                       * "Chrono Trigger" rather than the cataloging that
-	                       * follows it. */
+	                       * looked up by this, so it stays exactly as the
+	                       * file is named. */
+	char title[LIB_NAME]; /* what the shelf shows and sorts by: a gamelist's
+	                       * name for the game, else (Arcade, Neo Geo) FBNeo's,
+	                       * else `name` with the trailing region and dump tags
+	                       * cut off, so a card says "Chrono Trigger" rather
+	                       * than the cataloging that follows it. titles.c. */
 	char file[LIB_PATH];  /* launch path relative to Roms/<folder>: a filename,
 	                       * or "<folder>/<disc>" for a disc-folder game */
 	/* The ROM's mtime, for the recently-added sort order.
@@ -59,6 +61,19 @@ bool lib_is_disc(const char *name);
 bool lib_scan(const char *roms_root, const char *folder, const char *exts,
               game_list *out);
 void lib_free(game_list *l);
+
+/* The order a shelf is read in: by title, and by name where two titles are
+ * the same - two dumps of one game share a title, and without the name their
+ * order would be whatever qsort left. Every order falls back to this. */
+static inline int lib_order(const game_entry *a, const game_entry *b)
+{
+	int c = strcasecmp(a->title, b->title);
+
+	return c ? c : strcasecmp(a->name, b->name);
+}
+
+/* Into lib_order, after the titles change (titles_apply). */
+void lib_sort(game_list *l);
 
 /* The display title for a ROM's name: everything up to the first bracketed
  * group that follows a space, so "Contra (USA)" reads as "Contra". Exposed

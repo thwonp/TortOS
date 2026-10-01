@@ -2,6 +2,7 @@
 <gameList>
 	<game>
 		<path>./Delta.gb</path>
+		<name>Delta</name>
 		<desc>From a miyoogamelist.</desc>
 		<releasedate>1992</releasedate>
 	</game>
