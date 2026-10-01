@@ -235,8 +235,14 @@ static void windows_cut_on_a_boundary(void)
 	ck(stats_window_start(STATS_ALL, now) == 0, "all time starts at zero");
 	ck(stats_window_start(STATS_TODAY, now) >= stats_window_start(STATS_WEEK, now),
 	   "today starts no earlier than this week");
-	ck(stats_window_start(STATS_WEEK, now) >= stats_window_start(STATS_MONTH, now),
-	   "this week starts no earlier than this month");
+	/* Not "this week starts no earlier than this month": weeks straddle
+	 * months and years, so on the first days of a month the week began in
+	 * the last one. That assertion failed on Thursday 2026-10-01, whose week
+	 * began on Sunday 27 September. What is always true is that the week began less than seven days before
+	 * today: six days and an hour at most, across a clock change. */
+	ck(stats_window_start(STATS_TODAY, now) - stats_window_start(STATS_WEEK, now)
+	       < 7L * 24 * 3600,
+	   "this week began less than seven days before today");
 	ck(stats_window_start(STATS_MONTH, now) >= stats_window_start(STATS_YEAR, now),
 	   "this month starts no earlier than this year");
 	ck(stats_window_start(STATS_YEAR, now) <= now, "this year has begun");
