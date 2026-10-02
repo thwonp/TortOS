@@ -355,7 +355,6 @@ start_resident() {
 		"$TORTOS_DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" \
 		--cores "$CORES_PATH" \
 		--save "$SDCARD/Saves" --system "$SDCARD/Bios" >> "$LOG" 2>&1 &
-	echo $! > /tmp/diatom.pid
 }
 # BEFORE start_resident, and that order is the whole point: alsa-lib caches its
 # config at the first PCM open, so a definition written afterwards is invisible
