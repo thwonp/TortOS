@@ -882,13 +882,20 @@ static void native_rows(void)
 	menu_row rows[GMN_ROWS];
 	int got[GMN_ROWS], n;
 
-	n = gm_native_rows(rows);
+	n = gm_native_rows(false, rows);
 	printf("native PICO-8 menu:\n");
-	ck(n == 3, "three rows");
+	ck(n == 4, "four rows");
 	ck(!strcmp(rows[GMN_CONTINUE].label, "Continue") &&
 	   !strcmp(rows[GMN_RESET].label, "Reset") &&
-	   !strcmp(rows[GMN_QUIT].label, "Quit"), "Continue, Reset, Quit");
+	   !strcmp(rows[GMN_SPLORE].label, "Splore") &&
+	   !strcmp(rows[GMN_QUIT].label, "Quit"), "Continue, Reset, Splore, Quit");
 	ck(reachable(rows, n, got, GMN_ROWS) == GMN_ROWS, "every row is a stop");
+
+	/* In Splore itself the row stays, greyed: Reset is the same thing. */
+	n = gm_native_rows(true, rows);
+	ck(n == 4 && !rows[GMN_SPLORE].live, "in Splore: Splore greyed, still there");
+	ck(reachable(rows, n, got, GMN_ROWS) == 3 && got[2] == GMN_QUIT,
+	   "in Splore: Continue, Reset, Quit are the stops");
 }
 
 /* The save slots, and the one constant that survived a rename by being written

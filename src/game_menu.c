@@ -115,11 +115,12 @@ int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 	return GM_ROWS;
 }
 
-int gm_native_rows(menu_row *out)
+int gm_native_rows(bool in_splore, menu_row *out)
 {
-	static const char *label[GMN_ROWS] = { "Continue", "Reset", "Quit" };
+	static const char *label[GMN_ROWS] = { "Continue", "Reset", "Splore", "Quit" };
 	int i;
 
 	for (i = 0; i < GMN_ROWS; i++) out[i] = (menu_row){ label[i], NULL, true };
+	out[GMN_SPLORE].live = !in_splore;
 	return GMN_ROWS;
 }

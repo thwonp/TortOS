@@ -167,6 +167,8 @@ typedef struct {
 	idle_clock idle;            /* Auto Off's clock - src/idle.h */
 	bool game_on;               /* a game is loaded in Diatom: launch()'s wait
 	                             * loop, the game menu and its screens */
+	bool pico8_splore;          /* the native PICO-8 running is Splore */
+	bool to_splore;             /* its menu asked for Splore next (.50.21) */
 	SDL_Renderer *r;
 } app;
 
@@ -9641,6 +9643,7 @@ static void respawn_resident(app *a)
 typedef struct {
 	run_choice choice;
 	int        frames;     /* built so far: the second build follows the first present */
+	bool       in_splore;
 } nm_ctx;
 
 /* Also where the press-to-menu time is said: the second build comes right
@@ -9655,7 +9658,7 @@ static int nm_build(void *ctx, menu_row *rows, int max, const char **heading)
 		fprintf(stderr, "native menu: up %u ms after the press\n",
 		        plat_run_menu_age_ms());
 	*heading = NULL;       /* no title, as the in-game menu */
-	return gm_native_rows(rows);
+	return gm_native_rows(c->in_splore, rows);
 }
 
 /* Black: no picture of the game behind it - grim takes 260 ms, and the menu
@@ -9683,17 +9686,19 @@ static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
 {
 	nm_ctx *c = ctx;
 
-	(void)a;
 	if (key != IN_ACCEPT) return MENU_STAY;
+	/* Splore is a Quit that launch() follows with Splore: the child is
+	 * ended the same way, so plat_run need not know. */
+	a->to_splore = sel == GMN_SPLORE;
 	c->choice = sel == GMN_RESET ? RUN_RESET
-	          : sel == GMN_QUIT  ? RUN_QUIT : RUN_CONTINUE;
+	          : sel == GMN_QUIT || sel == GMN_SPLORE ? RUN_QUIT : RUN_CONTINUE;
 	return MENU_DONE;
 }
 
 static run_choice native_menu(void *ctx)
 {
 	app *a = ctx;
-	nm_ctx c = { RUN_CONTINUE, 0 };
+	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore };
 	menu_style st = { 0 };
 
 	if (!plat_video_init() || !plat_input_init()) return RUN_QUIT;
@@ -9926,6 +9931,8 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	}
 	fprintf(stderr, "pico8_64: display %s %s %s\n", dmode,
 	        n > flags ? argv[flags] : "-", n > flags ? argv[flags + 1] : "");
+	a->pico8_splore = splore;
+	a->to_splore = false;
 	if (splore) argv[n++] = (char *)"-splore";
 	else { argv[n++] = (char *)"-run"; argv[n++] = (char *)rom; }
 	argv[n] = NULL;
@@ -10248,19 +10255,35 @@ static void launch(app *a)
 		/* Played time counts here too, begun and ended around plat_run,
 		 * less any sleep. No stats_tick checkpoints while it runs, so a
 		 * power cut mid-session loses that session's time. */
-		stats_begin(s->tag, romfile, plat_now_ms());
-		fprintf(stderr, "pico8_64 exited %d\n",
-		        run_pico8(a, pico8, s->folder, rom, is_splore(s, romfile),
-		                  DMODES[a->view[o].dmode].name));
-		stats_asleep(plat_run_asleep_ms());
-		stats_end(NULL, plat_now_ms());
-		if (!a->running) return;
+		/* romfile points into the shelf, which the rescan below frees. */
+		char from[LIB_PATH];
+		bool splore = is_splore(s, romfile);
+
+		snprintf(from, sizeof from, "%s", romfile);
+		for (;;) {
+			stats_begin(s->tag, splore ? SPLORE : from, plat_now_ms());
+			fprintf(stderr, "pico8_64 exited %d\n",
+			        run_pico8(a, pico8, s->folder, rom, splore,
+			                  DMODES[a->view[o].dmode].name));
+			stats_asleep(plat_run_asleep_ms());
+			stats_end(NULL, plat_now_ms());
+			if (!a->running) return;
+			/* The cart's menu asked for Splore (plorpos-gkd.50.21). */
+			if (!a->to_splore) break;
+			fprintf(stderr, "pico8_64: %s -> Splore\n", from);
+			splore = true;
+		}
 		/* Splore is left on the shelf it was opened from, now with the
-		 * carts played in it. The rescan rebuilds the views, so v again;
-		 * Splore is still first, where the cursor comes back to. */
-		if (is_splore(s, romfile) && splore_keep(s->folder) > 0) {
+		 * carts played in it. The rescan rebuilds the views, so v again,
+		 * and puts every cursor first - on Splore, where a Splore opened
+		 * from the shelf comes back to. One opened from a cart's menu
+		 * comes back to that cart. */
+		if (splore && splore_keep(s->folder) > 0) {
 			rescan_all(a);
 			v = &a->view[a->sys_cursor];
+			for (int i = 0; i < v->list.count; i++)
+				if (!strcmp(v->list.items[i].file, from)) { v->cursor = i; break; }
+			cf_reset(&v->cf, v->cursor);
 		}
 	} else if (!resident) {
 		/* One game per process, the old way: the fallback for a resident that
