@@ -717,6 +717,14 @@ static struct {
 	SDL_Texture *tex;
 } g_np = { .album = -1 };
 
+static void np_forget(void)
+{
+	if (g_np.tex) SDL_DestroyTexture(g_np.tex);
+	g_np.tex = NULL;
+	g_np.album = -1;
+	g_np.done = false;
+}
+
 static SDL_Texture *sys_get_tex(void *ctx, int i, int *w, int *h, float *cb)
 {
 	app *a = ctx;
@@ -1194,6 +1202,12 @@ static void free_all_textures(app *a)
 				a->view[i].tex[k] = NULL;
 			}
 	}
+	/* The Now Playing cover too. Native PICO-8's menu and run_alone drop the
+	 * renderer after this, and a cover kept across that was the old
+	 * renderer's texture, still marked done, so it was never loaded again:
+	 * Now Playing without its art until the album changed (plorpos-gkd.65).
+	 * Loading it again is one decode, about 15 ms. */
+	np_forget();
 }
 
 
@@ -7816,14 +7830,6 @@ static SDL_Texture *load_cover(SDL_Renderer *r, const char *path)
 	SDL_FreeSurface(s);
 	if (t) SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
 	return t;
-}
-
-static void np_forget(void)
-{
-	if (g_np.tex) SDL_DestroyTexture(g_np.tex);
-	g_np.tex = NULL;
-	g_np.album = -1;
-	g_np.done = false;
 }
 
 /* Bring the Now Playing cover up to date with album `al`, which may be -1 for
