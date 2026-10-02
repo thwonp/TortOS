@@ -14,7 +14,7 @@ index 3158b96..4f9e629 100644
  
  function __z8_strlen(s)
 diff --git a/source/vm.cpp b/source/vm.cpp
-index 63a6a63..5d665e1 100644
+index 63a6a63..d43f492 100644
 --- a/source/vm.cpp
 +++ b/source/vm.cpp
 @@ -171,17 +171,17 @@ bool _initializeLuaState(lua_State* luaState) {
@@ -44,7 +44,7 @@ index 63a6a63..5d665e1 100644
  
  
      return true;
-@@ -1509,11 +1509,17 @@ size_t Vm::serializeLuaState(char* dest) {
+@@ -1509,11 +1509,23 @@ size_t Vm::serializeLuaState(char* dest) {
  }
  
  void Vm::deserializeLuaState(const char* src, size_t len) {
@@ -59,6 +59,12 @@ index 63a6a63..5d665e1 100644
 -	if (lua_pcall(_luaState, 1, 0, 0) != 0) {
 +	int status = lua_pcall(_luaState, 1, 0, 0);
 +	lua_gc(_luaState, LUA_GCRESTART, 0);
++	// GCRESTART zeroes the GC's debt, so everything the restore allocated -
++	// a whole Lua heap - would never be paid for. Rewind restores every
++	// frame: the old heaps pile up as garbage the GC thinks it does not owe
++	// (Celeste: +170 MB per second of rewind, then multi-second collections).
++	// Collect it now while it is all fresh garbage.
++	lua_gc(_luaState, LUA_GCCOLLECT, 0);
 +	if (status != 0) {
  		std::string e = lua_tostring(_luaState, -1);
  		lua_pop(_luaState, 1);

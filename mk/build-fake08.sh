@@ -18,7 +18,11 @@
 #   back RAM and the game drew itself over it. Re-enabled, the restore then
 #   corrupted the heap: eris hooks half-built protos into objects the
 #   incremental GC has already marked, so a GC step mid-restore frees them
-#   (found with ASan). The patch holds the GC for the restore. It also
+#   (found with ASan). The patch holds the GC for the restore, then runs a
+#   full collection: restarting the GC zeroes its debt, so without one every
+#   restored heap was garbage nothing paid for - rewind (a restore a frame)
+#   grew Celeste by ~170 MB a second until the GKD swapped and OOM-killed
+#   diatom (plorpos-gkd.50.9). It also
 #   points the registry's __PICO8_SANDBOX (z8lua's nil-global fallback) at
 #   the restored sandbox: the cart coroutine sets it on its first frame, which
 #   a restore skips, so a resumed cart in a reused core ran the previous
@@ -38,7 +42,7 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${1:-/tmp/tortos-fake08}
 PIN=814991a2571ad3970e386cef48f3b148aa1c27b9   # jtothebell/fake-08 master, 2026-06-13
-SHA=16ddc401dc5c6079353de6e54d4fdf855914e713aef698d35962367041324af5
+SHA=0d3f707786716e79b000e1275b695b50d0e62f67292bd78ba18bf242bf6ebef6
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
 
