@@ -753,6 +753,12 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir)
 				ms_since_term = 0;
 			}
 		}
+		/* The launcher itself told to quit: the child goes the same way, or
+		 * the signal waits on a game nobody is ending (plorpos-gkd.58). */
+		if (g_terminating && ms_since_term < 0) {
+			kill(pid, SIGTERM);
+			ms_since_term = 0;
+		}
 		if (ms_since_term >= 0) {
 			ms_since_term += 100;
 			if (ms_since_term > 3000) {

@@ -9707,7 +9707,10 @@ static void launch(app *a)
 		}
 	}
 
-	if (!resident) {
+	/* Not when quitting: the resident died because the launcher is ending the
+	 * game, and starting it again the slow way would swallow the quit
+	 * (plorpos-gkd.58). */
+	if (!resident && !want_quit) {
 		/* One game per process, the old way: the fallback for a resident that
 		 * is missing or has died. Diatom standalone IS the one-shot mode -
 		 * same binary, no socket - so the fallback stopped being a different
