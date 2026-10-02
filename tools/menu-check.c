@@ -856,6 +856,22 @@ static void ingame_rows(void)
 	   "the rows either side of it still work");
 }
 
+/* Native PICO-8's: the in-game menu's order, less what a frozen process
+ * cannot be asked for. */
+static void native_rows(void)
+{
+	menu_row rows[GMN_ROWS];
+	int got[GMN_ROWS], n;
+
+	n = gm_native_rows(rows);
+	printf("native PICO-8 menu:\n");
+	ck(n == 3, "three rows");
+	ck(!strcmp(rows[GMN_CONTINUE].label, "Continue") &&
+	   !strcmp(rows[GMN_RESET].label, "Reset") &&
+	   !strcmp(rows[GMN_QUIT].label, "Quit"), "Continue, Reset, Quit");
+	ck(reachable(rows, n, got, GMN_ROWS) == GMN_ROWS, "every row is a stop");
+}
+
 /* The save slots, and the one constant that survived a rename by being written
  * out as a number.
  *
@@ -1024,6 +1040,7 @@ int main(void)
 	what_scrolls();
 	info_rows();
 	ingame_rows();
+	native_rows();
 	audio_row();
 	if (fails) { printf("\n%d menu check(s) failed\n", fails); return 1; }
 	printf("\nok: menus contain what they should\n");

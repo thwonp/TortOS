@@ -110,3 +110,12 @@ int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 	out[GM_CHEEVOS].value = b->cheevos;
 	return GM_ROWS;
 }
+
+int gm_native_rows(menu_row *out)
+{
+	static const char *label[GMN_ROWS] = { "Continue", "Reset", "Quit" };
+	int i;
+
+	for (i = 0; i < GMN_ROWS; i++) out[i] = (menu_row){ label[i], NULL, true };
+	return GMN_ROWS;
+}

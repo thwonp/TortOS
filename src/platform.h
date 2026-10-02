@@ -91,16 +91,27 @@ bool in_repeat(in_state *st, in_button b);
  * raises quit_requested, which every loop already checks. */
 void plat_terminate(void);
 
+/* What the menu over a frozen child chose. */
+typedef enum { RUN_CONTINUE, RUN_RESET, RUN_QUIT } run_choice;
+/* Called with the child frozen and off the screen. The display is the
+ * callee's while it runs: it brings its own video up and takes it down again
+ * before returning. */
+typedef run_choice (*run_menu_fn)(void *ctx);
+
 /* Run a child to completion, watching the power button while it runs - and
- * Menu too when menu_quits, for a child that has no way out of its own
- * (native PICO-8). Either ends it. envkv is a NULL-terminated array of
- * "KEY=value" strings. */
+ * Menu too when on_menu is given, for a child with no menu a pad can reach
+ * (native PICO-8). Menu freezes it and hands the screen to on_menu where the
+ * device can take a frozen window off the screen (the GKD, under sway);
+ * elsewhere Menu ends it, as a power hold does. Reset starts the same argv
+ * again. envkv is a NULL-terminated array of "KEY=value" strings. */
 int  plat_run(char *const argv[], const char *const envkv[], const char *workdir,
-              bool menu_quits);
+              run_menu_fn on_menu, void *ctx);
 bool plat_run_power_pressed(void);
 /* How long the last plat_run spent asleep (a power tap), to keep out of
  * Play Time. */
 unsigned plat_run_asleep_ms(void);
+/* How long ago the Menu press that opened plat_run's menu was made. */
+unsigned plat_run_menu_age_ms(void);
 /* Say that something equivalent to a power press has happened, for the paths
  * the evdev watchdog cannot see: a screen the launcher is drawing over a
  * paused game, where plat_resident_wait is not running and so nothing is

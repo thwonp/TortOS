@@ -9576,7 +9576,95 @@ static void respawn_resident(app *a)
 /* Hand the display to a child and take it back when it ends: the one-shot
  * diatom fallback and native PICO-8 both. The launcher tears its own down
  * first because the child has to own the screen. */
-static int run_alone(app *a, char *const argv[], bool menu_quits)
+/* Native PICO-8's in-game menu (plorpos-gkd.50.16). plat_run calls it with
+ * pico8_64 frozen and off the screen, so the display is the launcher's for as
+ * long as the menu is up: its video comes up here and goes again before the
+ * child is thawed, as run_alone does around the whole run. */
+typedef struct {
+	run_choice choice;
+	int        frames;     /* built so far: the second build follows the first present */
+} nm_ctx;
+
+/* Also where the press-to-menu time is said: the second build comes right
+ * after the first frame went to the screen. 100 ms is the budget (user,
+ * 2026-10-02). */
+static int nm_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	nm_ctx *c = ctx;
+
+	(void)max;
+	if (++c->frames == 2)
+		fprintf(stderr, "native menu: up %u ms after the press\n",
+		        plat_run_menu_age_ms());
+	*heading = NULL;       /* no title, as the in-game menu */
+	return gm_native_rows(rows);
+}
+
+/* Black: no picture of the game behind it - grim takes 260 ms, and the menu
+ * has 100. plorpos-gkd.50.20 is the picture. */
+static void nm_backdrop(app *a, void *ctx)
+{
+	(void)ctx;
+	SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
+	SDL_RenderClear(a->r);
+}
+
+/* Power held here ends the GAME, which run_alone's caller then reads as the
+ * power press it was - as gm_power does for a resident game. */
+static menu_result nm_power(app *a, void *ctx)
+{
+	nm_ctx *c = ctx;
+
+	(void)a;
+	plat_note_power_pressed();
+	c->choice = RUN_QUIT;
+	return MENU_DONE;
+}
+
+static menu_result nm_key(app *a, void *ctx, in_button key, int sel)
+{
+	nm_ctx *c = ctx;
+
+	(void)a;
+	if (key != IN_ACCEPT) return MENU_STAY;
+	c->choice = sel == GMN_RESET ? RUN_RESET
+	          : sel == GMN_QUIT  ? RUN_QUIT : RUN_CONTINUE;
+	return MENU_DONE;
+}
+
+static run_choice native_menu(void *ctx)
+{
+	app *a = ctx;
+	nm_ctx c = { RUN_CONTINUE, 0 };
+	menu_style st = { 0 };
+
+	if (!plat_video_init() || !plat_input_init()) return RUN_QUIT;
+	a->r = plat_renderer();
+	ui_init(a->r, P_FONT);
+	a->menu_w = 0;
+	/* The Menu press that opened this is not for it - see game_menu. */
+	plat_input_flush();
+	memset(&a->in, 0, sizeof a->in);
+	st.follow_tint = true;
+	st.backdrop    = nm_backdrop;
+	st.on_power    = nm_power;
+	/* B and MENU are Continue, as in the in-game menu; SELECT is Muse, which
+	 * the runner opens itself. Asked to quit with the menu up, the game
+	 * goes too. */
+	g_menu_closing = false;   /* sticky: see game_menu */
+	if (menu_run(a, &st, nm_build, nm_key, &c) == MENU_LEFT_GONE &&
+	    (want_quit || !a->running))
+		c.choice = RUN_QUIT;
+	g_menu_closing = false;
+
+	free_all_textures(a);
+	ui_quit();
+	plat_input_quit();
+	plat_video_quit();
+	return c.choice;
+}
+
+static int run_alone(app *a, char *const argv[], run_menu_fn on_menu)
 {
 	int rc;
 
@@ -9586,7 +9674,7 @@ static int run_alone(app *a, char *const argv[], bool menu_quits)
 	plat_input_quit();
 	plat_video_quit();
 
-	rc = plat_run(argv, child_env, P_ROOT, menu_quits);
+	rc = plat_run(argv, child_env, P_ROOT, on_menu, a);
 
 	if (!plat_video_init() || !plat_input_init()) { a->running = false; return rc; }
 	a->r = plat_renderer();
@@ -9604,8 +9692,9 @@ static int run_alone(app *a, char *const argv[], bool menu_quits)
  *
  * The fake08 shelf can also run the owner's own pico8_64 (Bios/pico8_64 and
  * Bios/pico8.dat beside it). Native is PICO-8 itself - Splore, the real
- * runtime - at the cost of everything diatom gives a game: no states, no
- * rewind, no in-game menu; Menu just quits (plat_run). */
+ * runtime - at the cost of most of what diatom gives a game: no states, no
+ * rewind, and an in-game menu of only Continue, Reset and Quit (native_menu;
+ * the GKD only - on the Brick Menu just quits, plorpos-gkd.50.13). */
 #define SPLORE "Splore"
 
 static bool is_pico8(const system_cfg *s) { return !strcmp(s->core, "fake08"); }
@@ -9698,7 +9787,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	if (splore) argv[n++] = (char *)"-splore";
 	else { argv[n++] = (char *)"-run"; argv[n++] = (char *)rom; }
 	argv[n] = NULL;
-	return run_alone(a, argv, true);
+	return run_alone(a, argv, native_menu);
 }
 
 static void launch(app *a)
@@ -10056,7 +10145,7 @@ static void launch(app *a)
 			}
 		}
 		argv[n] = NULL;
-		fprintf(stderr, "diatom exited %d\n", run_alone(a, argv, false));
+		fprintf(stderr, "diatom exited %d\n", run_alone(a, argv, NULL));
 		if (!a->running) return;
 	}
 

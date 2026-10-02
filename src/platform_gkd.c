@@ -234,6 +234,64 @@ int menu_key(int *code)
 	return fd_pad;
 }
 
+/* A helper to completion - swaymsg - with its chatter kept out of the
+ * log. true when it ran and said 0. */
+static bool helper(char *const argv[])
+{
+	extern char **environ;
+	posix_spawn_file_actions_t fa;
+	pid_t pid;
+	int st = 0;
+	bool ok;
+
+	posix_spawn_file_actions_init(&fa);
+	posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
+	ok = posix_spawnp(&pid, argv[0], &fa, NULL, argv, environ) == 0 &&
+	     waitpid(pid, &st, 0) == pid && WIFEXITED(st) && WEXITSTATUS(st) == 0;
+	posix_spawn_file_actions_destroy(&fa);
+	return ok;
+}
+
+/* Only one fullscreen window may be mapped (screen_yield), so the frozen
+ * child moves to a workspace of its own, where it is not drawn. Not the
+ * scratchpad: that makes it a floating window of another size, and sway
+ * keeps drawing a client's old frame, on top, until it answers the resize -
+ * which a frozen child never does. Its last frame covered the launcher's
+ * menu, half of it and then all of it (2026-10-02). Another workspace on the
+ * same output keeps it fullscreen at the same size, so there is nothing to
+ * answer. The pad is grabbed too: the child's own read of it would otherwise
+ * hold every press made in the menu and act on them when it thaws. */
+#define HIDE_WS "plorpos-hidden"
+
+bool child_hide(pid_t pid)
+{
+	char crit[80];
+	char *move[] = { "swaymsg", crit, NULL };
+
+	snprintf(crit, sizeof crit, "[pid=%d] move container to workspace " HIDE_WS,
+	         (int)pid);
+	if (!helper(move)) {
+		fprintf(stderr, "run: sway would not hide the child\n");
+		return false;
+	}
+	if (fd_pad >= 0 && ioctl(fd_pad, EVIOCGRAB, 1) != 0)
+		fprintf(stderr, "run: pad grab failed: %s\n", strerror(errno));
+	return true;
+}
+
+void child_restore(pid_t pid, bool show)
+{
+	char crit[80];
+	char *cmd[] = { "swaymsg", crit, NULL };
+
+	if (fd_pad >= 0) ioctl(fd_pad, EVIOCGRAB, 0);
+	if (!show) return;
+	snprintf(crit, sizeof crit,
+	         "[pid=%d] move container to workspace 1, focus, fullscreen enable",
+	         (int)pid);
+	if (!helper(cmd)) fprintf(stderr, "run: sway would not show the child\n");
+}
+
 static void stick_axis(bool *neg_pos, int v)
 {
 	neg_pos[0] = neg_pos[0] ? v <= -STICK_RELEASE : v <= -STICK_PRESS;

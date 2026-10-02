@@ -11,6 +11,7 @@
 
 #include <signal.h>
 #include <stdbool.h>
+#include <sys/types.h>
 
 #include "platform.h"
 
@@ -43,8 +44,15 @@ void screen_yield(bool to_game);
 bool battery_read(const char *dir, int *pct, bool *charging);
 /* Up to ms for a POWER press (1) or release (0) on fd_power; platform.c. */
 bool power_key_within(int ms, int value);
-/* The node Menu arrives on and its key code, for plat_run's menu_quits;
+/* The node Menu arrives on and its key code, for plat_run's on_menu;
  * device file. -1 when the device does not offer it there. */
 int  menu_key(int *code);
+/* Take a frozen child's window off the screen for plat_run's menu. While it
+ * is hidden the pad is the launcher's alone, so what is pressed in the menu
+ * is not replayed to the child when it thaws. false: this device cannot, and
+ * Menu ends the child instead. */
+bool child_hide(pid_t pid);
+/* Give the pad back, and with `show` put the window back fullscreen. */
+void child_restore(pid_t pid, bool show);
 
 #endif

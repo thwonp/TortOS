@@ -337,8 +337,10 @@ bool in_repeat(in_state *st, in_button b)
 static bool run_power_pressed;
 
 static unsigned run_asleep_ms;
+static unsigned run_menu_at;   /* plat_now_ms of the last Menu press */
 bool plat_run_power_pressed(void) { return run_power_pressed; }
 unsigned plat_run_asleep_ms(void) { return run_asleep_ms; }
+unsigned plat_run_menu_age_ms(void) { return plat_now_ms() - run_menu_at; }
 void plat_note_power_pressed(void) { run_power_pressed = true; }
 
 extern char **environ;
@@ -381,18 +383,12 @@ static char **child_environ(const char *const envkv[])
 	return out;
 }
 
-int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
-             bool menu_quits)
+/* fork and exec, with the environment child_environ built before the fork. */
+static pid_t run_fork(char *const argv[], char **env, const char *workdir)
 {
-	pid_t pid;
-	char **env = child_environ(envkv);
 	size_t alen = strlen(argv[0]);
+	pid_t pid = fork();
 
-	if (!env) return -1;
-	run_power_pressed = false;
-	run_asleep_ms = 0;
-	pid = fork();
-	if (pid < 0) { free(env); return -1; }
 	if (pid == 0) {
 		ssize_t w;
 
@@ -407,33 +403,71 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		(void)w;
 		_exit(127);
 	}
-	free(env);
+	return pid;
+}
+
+#ifdef __linux__
+/* End a child and wait for it: TERM, then KILL after 3 s. CONT as well, as a
+ * stopped process does not act on TERM. For Reset, which has to know the old
+ * one is gone before it starts the new. */
+static void run_end(pid_t pid)
+{
+	int ms, status;
+
+	kill(pid, SIGTERM);
+	kill(pid, SIGCONT);
+	for (ms = 0; ms < 3000; ms += 100) {
+		if (waitpid(pid, &status, WNOHANG) != 0) return;
+		usleep(100 * 1000);
+	}
+	kill(pid, SIGKILL);
+	waitpid(pid, &status, 0);
+}
+#endif
+
+int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
+             run_menu_fn on_menu, void *ctx)
+{
+	pid_t pid;
+	char **env = child_environ(envkv);
 	int status = 0;
+
+	if (!env) return -1;
+	run_power_pressed = false;
+	run_asleep_ms = 0;
+	pid = run_fork(argv, env, workdir);
+	if (pid < 0) { free(env); return -1; }
 #ifdef __linux__
 	/* Power as in a resident game: a tap sleeps with the child frozen and
 	 * thawed on wake, a hold ends it and powers off (the caller's
 	 * plat_run_power_pressed). The hold is also the escape hatch for a core
-	 * that dead-ends on an error screen that eats no input. Menu ends the
-	 * child too when asked: native PICO-8 has no quit a pad can reach. */
+	 * that dead-ends on an error screen that eats no input. Menu, when
+	 * asked, freezes the child under the caller's menu: native PICO-8 has
+	 * no menu a pad can reach.
+	 *
+	 * Woken by the keys, not a 100 ms nap: the menu has to be up within
+	 * 100 ms of the press (user, 2026-10-02), and the nap alone was up to
+	 * all of it. The timeout is for the hold and the TERM->KILL clock. */
 	struct input_event ev;
 	bool pwr_down = false;
 	int menu_code = 0;
-	int fd_menu = menu_quits ? menu_key(&menu_code) : -1;
+	int fd_menu = on_menu ? menu_key(&menu_code) : -1;
+	struct pollfd pfd[2] = { { fd_power, POLLIN, 0 }, { fd_menu, POLLIN, 0 } };
 	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
 		; /* drain stale events */
 	while (fd_menu >= 0 && read(fd_menu, &ev, sizeof ev) == (ssize_t)sizeof ev)
 		;
-	int ms_since_term = -1;
+	unsigned term_at = 0;   /* when TERM went, 0: not ending it */
 	for (;;) {
 		pid_t r = waitpid(pid, &status, WNOHANG);
 		if (r == pid) break;
-		if (r < 0) return -1;
-		usleep(100 * 1000);
-		bool quit = false;
+		if (r < 0) { free(env); return -1; }
+		poll(pfd, 2, 100);
+		bool quit = false, menu = false;
 		while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
 			if (ev.type == EV_KEY && ev.code == KEY_POWER)
 				pwr_down = ev.value != 0;
-		if (ms_since_term < 0) {
+		if (!term_at) {
 			pwr_action pa = plat_power_tap_or_hold(pwr_down);
 
 			if (pa == PWR_SLEEP) {
@@ -456,24 +490,56 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 			}
 		}
 		while (fd_menu >= 0 && read(fd_menu, &ev, sizeof ev) == (ssize_t)sizeof ev)
-			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 1)
-				quit = true;
-		if (quit && ms_since_term < 0) {
-			kill(pid, SIGTERM);
-			ms_since_term = 0;
-		}
-		if (ms_since_term >= 0) {
-			ms_since_term += 100;
-			if (ms_since_term > 3000) {
-				kill(pid, SIGKILL);
-				ms_since_term = -1;
+			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 1) {
+				struct timespec now;
+
+				/* The press's own time, on the clock the kernel stamped it
+				 * with, carried over to plat_now_ms - what the caller's
+				 * press-to-menu figure is measured from. */
+				clock_gettime(CLOCK_REALTIME, &now);
+				run_menu_at = plat_now_ms() -
+				    (unsigned)((now.tv_sec - ev.time.tv_sec) * 1000 +
+				               (now.tv_nsec / 1000 - ev.time.tv_usec) / 1000);
+				menu = true;
 			}
+		if (menu && !quit && !term_at) {
+			run_choice c = RUN_QUIT;
+
+			kill(pid, SIGSTOP);
+			if (child_hide(pid)) {
+				fprintf(stderr, "run: menu, child %d frozen\n", (int)pid);
+				c = on_menu(ctx);
+				child_restore(pid, c == RUN_CONTINUE);
+				fprintf(stderr, "run: %s\n", c == RUN_CONTINUE ? "continue"
+				        : c == RUN_RESET ? "reset" : "quit");
+				/* What the menu was driven with is not for this loop. */
+				while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+					;
+				while (fd_menu >= 0 && read(fd_menu, &ev, sizeof ev) == (ssize_t)sizeof ev)
+					;
+				pwr_down = false;
+			}
+			if (c == RUN_CONTINUE) kill(pid, SIGCONT);
+			else if (c == RUN_RESET) {
+				run_end(pid);
+				if ((pid = run_fork(argv, env, workdir)) < 0) { free(env); return -1; }
+			} else quit = true;
+		}
+		if (quit && !term_at) {
+			kill(pid, SIGTERM);
+			kill(pid, SIGCONT);   /* a frozen child acts on TERM only once thawed */
+			term_at = plat_now_ms() | 1;
+		}
+		if (term_at && plat_now_ms() - term_at > 3000) {
+			kill(pid, SIGKILL);
+			term_at = 0;
 		}
 	}
 #else
-	(void)menu_quits;
-	if (waitpid(pid, &status, 0) < 0) return -1;
+	(void)on_menu; (void)ctx;
+	if (waitpid(pid, &status, 0) < 0) { free(env); return -1; }
 #endif
+	free(env);
 	return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 

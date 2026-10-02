@@ -256,6 +256,11 @@ int menu_key(int *code)
 	return -1;
 }
 
+/* No compositor to take a frozen window off the screen, and Menu never gets
+ * here anyway (menu_key). plorpos-gkd.50.13. */
+bool child_hide(pid_t pid) { (void)pid; return false; }
+void child_restore(pid_t pid, bool show) { (void)pid; (void)show; }
+
 static in_button map_joy_button(int jb)
 {
 	switch (jb) {
