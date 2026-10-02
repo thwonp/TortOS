@@ -89,6 +89,9 @@ const cf_layout CF_LAYOUT_SYSTEMS_V = {
 	.vertical = true, .side_alpha = 255, .strips = 16, .wide_area = 1.00f,
 };
 
+/* Both games layouts' share of the screen beyond the stage (cf_layout.grow). */
+#define GAMES_GROW 0.60f
+
 /* Box art at the SAME SIZE the horizontal row uses, unlike the systems row
  * above. A console is one of eleven and can afford to dominate the screen; box
  * art is one of hundreds, and blown up to match it just looks oversized. The
@@ -98,14 +101,14 @@ const cf_layout CF_LAYOUT_GAMES_V = {
 	.size = 0.60f, .aspect = 0.72f, .step = 1.50f, .side_scale = 1.00f,
 	.center_y = 0.47f, .tilt = 0.0f, .reflect = 1.52f,
 	.vertical = true, .side_alpha = 255, .strips = 16,
-	.equal_area = true,
+	.equal_area = true, .grow = GAMES_GROW,
 };
 
 const cf_layout CF_LAYOUT_GAMES = {
 	.size = 0.60f, .aspect = 0.72f, .step = 0.74f, .side_scale = 0.62f,
 	.center_y = 0.47f, .tilt = 0.82f, .reflect = 1.52f,
 	.side_alpha = 150, .strips = 16,
-	.equal_area = true,
+	.equal_area = true, .grow = GAMES_GROW,
 };
 
 /* Muse's shelf: album covers, which are square, where the games layouts are
@@ -127,10 +130,18 @@ const cf_layout CF_LAYOUT_ALBUMS_V = {
 	.vertical = true, .side_alpha = 255, .strips = 16,
 };
 
+/* The card's height on this screen: the stage's, plus its share of the rest. */
+static float card_h(const cf_layout *lay, int screen_h)
+{
+	int spare = screen_h > CF_STAGE_H ? screen_h - CF_STAGE_H : 0;
+
+	return CF_STAGE_H * lay->size + spare * lay->grow;
+}
+
 void cf_focus_rect(const cf_layout *lay, int screen_w, int screen_h, SDL_Rect *out)
 {
 	int top = (screen_h - CF_STAGE_H) / 2;
-	float ch = CF_STAGE_H * lay->size;
+	float ch = card_h(lay, screen_h);
 	float cw = ch * lay->aspect;
 	out->w = (int)cw;
 	out->h = (int)ch;
@@ -621,7 +632,7 @@ bool cf_draw(coverflow *cf, SDL_Renderer *r, int screen_w, int screen_h,
 	bool loops = cf_loops(count);
 	int half = cf_half(count);
 	int top = (screen_h - CF_STAGE_H) / 2;
-	float ch = CF_STAGE_H * lay->size;
+	float ch = card_h(lay, screen_h);
 	float cw = ch * lay->aspect;
 	/* Spacing counts the card's extent along the axis it is stacked on. */
 	float step = (lay->vertical ? ch : cw) * lay->step;

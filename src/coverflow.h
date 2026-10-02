@@ -82,6 +82,12 @@ typedef struct {
 	 * take the whole area and does. The horizontal row has a neighbor either
 	 * side to overlap, and full area buries them. See CF_WIDE_ART. */
 	float wide_area;
+	/* How much of a screen's height BEYOND the stage the card takes, added
+	 * to its height and split evenly above and below its center. 0 on every
+	 * shelf but the games: the GKD's 921 has 153 spare that the tuned stage
+	 * leaves empty, and game cards are what wants it (plorpos-gkd.28). A
+	 * 768 screen has none to give, so the Brick is untouched by design. */
+	float grow;
 	int side_alpha;   /* alpha of fully off-center cards (center is 255) */
 	int strips;       /* vertical subdivisions per card */
 } cf_layout;
