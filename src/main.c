@@ -9796,8 +9796,9 @@ static int splore_keep(const char *folder)
 {
 	char dir[CFG_STR * 2], nfo[CFG_STR * 3], line[256];
 	char from[CFG_STR * 3], to[CFG_STR * 3];
-	char lid[64], title[128], name[128], key[96], had[64];
+	char lid[64], title[128], name[128], key[96], had[96], hlid[64], rec[96];
 	struct dirent *e;
+	struct stat st;
 	DIR *d;
 	int n = 0;
 
@@ -9823,10 +9824,24 @@ static int splore_keep(const char *folder)
 		fclose(f);
 		if (!*lid || strchr(lid, '/')) continue;
 
-		/* Keyed by the id without the revision: the .nfo's own name. */
+		/* Keyed by the id without the revision: the .nfo's own name.
+		 * Recorded as "<lid> <.nfo mtime>": Splore rewrites the .nfo each
+		 * time the cart is played, so a newer one is a cart played again -
+		 * one deleted from the shelf comes back for that, and only that
+		 * (plorpos-gkd.50.25). A record of the lid alone is from before:
+		 * taken as seen now, so carts deleted then stay gone. */
+		long long hm = -1;
+		bool again;
+
+		if (stat(nfo, &st) != 0) continue;
 		snprintf(key, sizeof key, "splore.%.*s", (int)(len - 9), e->d_name + 5);
+		snprintf(rec, sizeof rec, "%s %lld", lid, (long long)st.st_mtime);
 		db_get_str(db_lib(), key, had, sizeof had, "");
-		if (!strcmp(had, lid)) continue;
+		hlid[0] = '\0';
+		sscanf(had, "%63s %lld", hlid, &hm);
+		again = !strcmp(hlid, lid);
+		if (again && hm < 0) { db_set_str(db_lib(), key, rec); continue; }
+		if (again && (long long)st.st_mtime <= hm) continue;
 		snprintf(from, sizeof from, "%s/%s.p8.png", dir, lid);
 		if (access(from, R_OK) != 0) continue;
 
@@ -9840,14 +9855,17 @@ static int splore_keep(const char *folder)
 		if (!k) snprintf(name, sizeof name, "%s", lid);
 		snprintf(to, sizeof to, "%s/%s/%s.p8.png", P_ROMS, folder, name);
 
-		if (!*had && access(to, F_OK) == 0) {
-			fprintf(stderr, "splore: %s is the card's own, left as it is\n", to);
+		/* Played again with it still on the shelf - or still the card's own -
+		 * there is nothing to bring back. */
+		if ((!*had || again) && access(to, F_OK) == 0) {
+			if (!*had)
+				fprintf(stderr, "splore: %s is the card's own, left as it is\n", to);
 		} else {
 			copy_file(from, to);
-			fprintf(stderr, "splore: %s -> %s\n", lid, to);
+			fprintf(stderr, "splore: %s%s -> %s\n", lid, again ? " (played again)" : "", to);
 			n++;
 		}
-		db_set_str(db_lib(), key, lid);
+		db_set_str(db_lib(), key, rec);
 	}
 	closedir(d);
 	return n;
