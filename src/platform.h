@@ -97,15 +97,21 @@ typedef enum { RUN_CONTINUE, RUN_RESET, RUN_QUIT } run_choice;
  * callee's while it runs: it brings its own video up and takes it down again
  * before returning. */
 typedef run_choice (*run_menu_fn)(void *ctx);
+/* Called about ten times a second while the child runs, for the launcher's
+ * own work during the run (Muse's queue). Says whether the child should be
+ * silent - Muse is playing - which plat_run applies to its sound stream.
+ * Must not block: the same loop watches the power button. */
+typedef bool (*run_tick_fn)(void *ctx);
 
 /* Run a child to completion, watching the power button while it runs - and
  * Menu too when on_menu is given, for a child with no menu a pad can reach
  * (native PICO-8). Menu freezes it and hands the screen to on_menu where the
  * device can take a frozen window off the screen (the GKD, under sway);
  * elsewhere Menu ends it, as a power hold does. Reset starts the same argv
- * again. envkv is a NULL-terminated array of "KEY=value" strings. */
+ * again. on_tick, when given, runs throughout. envkv is a NULL-terminated
+ * array of "KEY=value" strings. */
 int  plat_run(char *const argv[], const char *const envkv[], const char *workdir,
-              run_menu_fn on_menu, void *ctx);
+              run_menu_fn on_menu, run_tick_fn on_tick, void *ctx);
 bool plat_run_power_pressed(void);
 /* How long the last plat_run spent asleep (a power tap), to keep out of
  * Play Time. */

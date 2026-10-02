@@ -54,5 +54,10 @@ int  menu_key(int *code);
 bool child_hide(pid_t pid);
 /* Give the pad back, and with `show` put the window back fullscreen. */
 void child_restore(pid_t pid, bool show);
+/* Silence a child's sound stream, or let it be heard: plat_run's on_tick.
+ * Cheap to call every tick - it acts on a change, and on the first call for
+ * a pid whatever it asks, because the sound server remembers a mute by
+ * program name and a new run can start out muted. */
+void child_quiet(pid_t pid, bool on);
 
 #endif

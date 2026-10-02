@@ -9664,7 +9664,21 @@ static run_choice native_menu(void *ctx)
 	return c.choice;
 }
 
-static int run_alone(app *a, char *const argv[], run_menu_fn on_menu)
+/* plat_run's tick for native PICO-8: what on_game_tick does for Muse in a
+ * resident game. Its queue moves on only when the launcher sends the next
+ * PLAY, so without this an album stopped after the track playing at launch
+ * (plorpos-gkd.50.23). And the game is silent while Muse plays, Diatom's
+ * ADR-0032, followed live - pausing Muse brings the game back within a
+ * tenth of a second (plorpos-gkd.50.17). */
+static bool native_tick(void *ctx)
+{
+	(void)ctx;
+	muse_poll();
+	return musec_playing();
+}
+
+static int run_alone(app *a, char *const argv[], run_menu_fn on_menu,
+                     run_tick_fn on_tick)
 {
 	int rc;
 
@@ -9674,7 +9688,7 @@ static int run_alone(app *a, char *const argv[], run_menu_fn on_menu)
 	plat_input_quit();
 	plat_video_quit();
 
-	rc = plat_run(argv, child_env, P_ROOT, on_menu, a);
+	rc = plat_run(argv, child_env, P_ROOT, on_menu, on_tick, a);
 
 	if (!plat_video_init() || !plat_input_init()) { a->running = false; return rc; }
 	a->r = plat_renderer();
@@ -9787,7 +9801,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	if (splore) argv[n++] = (char *)"-splore";
 	else { argv[n++] = (char *)"-run"; argv[n++] = (char *)rom; }
 	argv[n] = NULL;
-	return run_alone(a, argv, native_menu);
+	return run_alone(a, argv, native_menu, native_tick);
 }
 
 static void launch(app *a)
@@ -10145,7 +10159,7 @@ static void launch(app *a)
 			}
 		}
 		argv[n] = NULL;
-		fprintf(stderr, "diatom exited %d\n", run_alone(a, argv, NULL));
+		fprintf(stderr, "diatom exited %d\n", run_alone(a, argv, NULL, NULL));
 		if (!a->running) return;
 	}
 

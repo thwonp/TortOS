@@ -260,6 +260,8 @@ int menu_key(int *code)
  * here anyway (menu_key). plorpos-gkd.50.13. */
 bool child_hide(pid_t pid) { (void)pid; return false; }
 void child_restore(pid_t pid, bool show) { (void)pid; (void)show; }
+/* Not on the Brick yet: plorpos-gkd.50.13. */
+void child_quiet(pid_t pid, bool on) { (void)pid; (void)on; }
 
 static in_button map_joy_button(int jb)
 {

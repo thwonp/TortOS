@@ -292,6 +292,50 @@ void child_restore(pid_t pid, bool show)
 	if (!helper(cmd)) fprintf(stderr, "run: sway would not show the child\n");
 }
 
+/* The child's own PipeWire stream, found by its pid. pactl is a process,
+ * ~30 ms each way (measured 2026-10-02), so the stream is looked for at most
+ * twice a second until it appears - a cart may never open one - and a mute
+ * is sent only when it changes. */
+static int quiet_stream(pid_t pid)
+{
+	char line[256], want[48];
+	int cur = -1, idx = -1;
+	FILE *f = popen("pactl list sink-inputs 2>/dev/null", "r");
+
+	if (!f) return -1;
+	snprintf(want, sizeof want, "application.process.id = \"%d\"", (int)pid);
+	while (fgets(line, sizeof line, f)) {
+		if (!strncmp(line, "Sink Input #", 12)) cur = atoi(line + 12);
+		else if (idx < 0 && strstr(line, want)) idx = cur;
+	}
+	pclose(f);
+	return idx;
+}
+
+void child_quiet(pid_t pid, bool on)
+{
+	static pid_t q_pid;
+	static int q_idx = -1, q_said = -1;
+	static unsigned q_look_at;
+	char idx[16];
+	char *cmd[] = { "pactl", "set-sink-input-mute", idx, on ? "1" : "0", NULL };
+
+	if (pid != q_pid) { q_pid = pid; q_idx = -1; q_said = -1; q_look_at = 0; }
+	if (q_said == (int)on) return;
+	if (q_idx < 0) {
+		if (q_look_at && plat_now_ms() - q_look_at < 500) return;
+		q_look_at = plat_now_ms() | 1;
+		if ((q_idx = quiet_stream(pid)) < 0) return;
+	}
+	snprintf(idx, sizeof idx, "%d", q_idx);
+	if (helper(cmd)) {
+		q_said = on;
+		fprintf(stderr, "run: child %s\n", on ? "quiet" : "heard");
+	} else {
+		q_idx = -1;   /* the stream went: look again */
+	}
+}
+
 static void stick_axis(bool *neg_pos, int v)
 {
 	neg_pos[0] = neg_pos[0] ? v <= -STICK_RELEASE : v <= -STICK_PRESS;

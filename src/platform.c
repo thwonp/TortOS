@@ -426,7 +426,7 @@ static void run_end(pid_t pid)
 #endif
 
 int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
-             run_menu_fn on_menu, void *ctx)
+             run_menu_fn on_menu, run_tick_fn on_tick, void *ctx)
 {
 	pid_t pid;
 	char **env = child_environ(envkv);
@@ -464,6 +464,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		if (r < 0) { free(env); return -1; }
 		poll(pfd, 2, 100);
 		bool quit = false, menu = false;
+		if (on_tick && !term_at) child_quiet(pid, on_tick(ctx));
 		while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
 			if (ev.type == EV_KEY && ev.code == KEY_POWER)
 				pwr_down = ev.value != 0;
@@ -519,7 +520,12 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 					;
 				pwr_down = false;
 			}
-			if (c == RUN_CONTINUE) kill(pid, SIGCONT);
+			if (c == RUN_CONTINUE) {
+				/* Muse may have started or stopped in the menu: said before
+				 * the game makes a sound, as game_menu does. */
+				if (on_tick) child_quiet(pid, on_tick(ctx));
+				kill(pid, SIGCONT);
+			}
 			else if (c == RUN_RESET) {
 				run_end(pid);
 				if ((pid = run_fork(argv, env, workdir)) < 0) { free(env); return -1; }
@@ -536,7 +542,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		}
 	}
 #else
-	(void)on_menu; (void)ctx;
+	(void)on_menu; (void)on_tick; (void)ctx;
 	if (waitpid(pid, &status, 0) < 0) { free(env); return -1; }
 #endif
 	free(env);
