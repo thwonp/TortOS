@@ -336,7 +336,9 @@ bool in_repeat(in_state *st, in_button b)
  * tell the two apart when control comes back. */
 static bool run_power_pressed;
 
+static unsigned run_asleep_ms;
 bool plat_run_power_pressed(void) { return run_power_pressed; }
+unsigned plat_run_asleep_ms(void) { return run_asleep_ms; }
 void plat_note_power_pressed(void) { run_power_pressed = true; }
 
 extern char **environ;
@@ -379,7 +381,8 @@ static char **child_environ(const char *const envkv[])
 	return out;
 }
 
-int plat_run(char *const argv[], const char *const envkv[], const char *workdir)
+int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
+             bool menu_quits)
 {
 	pid_t pid;
 	char **env = child_environ(envkv);
@@ -387,6 +390,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir)
 
 	if (!env) return -1;
 	run_power_pressed = false;
+	run_asleep_ms = 0;
 	pid = fork();
 	if (pid < 0) { free(env); return -1; }
 	if (pid == 0) {
@@ -406,25 +410,57 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir)
 	free(env);
 	int status = 0;
 #ifdef __linux__
-	/* Escape hatch: a core that dead-ends (a bad ROM, a missing BIOS) leaves
-	 * the child showing an error screen that eats no input. Watch the power
-	 * button while waiting and end the child on a press. */
+	/* Power as in a resident game: a tap sleeps with the child frozen and
+	 * thawed on wake, a hold ends it and powers off (the caller's
+	 * plat_run_power_pressed). The hold is also the escape hatch for a core
+	 * that dead-ends on an error screen that eats no input. Menu ends the
+	 * child too when asked: native PICO-8 has no quit a pad can reach. */
 	struct input_event ev;
+	bool pwr_down = false;
+	int menu_code = 0;
+	int fd_menu = menu_quits ? menu_key(&menu_code) : -1;
 	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
 		; /* drain stale events */
+	while (fd_menu >= 0 && read(fd_menu, &ev, sizeof ev) == (ssize_t)sizeof ev)
+		;
 	int ms_since_term = -1;
 	for (;;) {
 		pid_t r = waitpid(pid, &status, WNOHANG);
 		if (r == pid) break;
 		if (r < 0) return -1;
 		usleep(100 * 1000);
-		while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) {
-			if (ev.type == EV_KEY && ev.code == KEY_POWER && ev.value == 1 &&
-			    ms_since_term < 0) {
-				run_power_pressed = true;
-				kill(pid, SIGTERM);
-				ms_since_term = 0;
+		bool quit = false;
+		while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+			if (ev.type == EV_KEY && ev.code == KEY_POWER)
+				pwr_down = ev.value != 0;
+		if (ms_since_term < 0) {
+			pwr_action pa = plat_power_tap_or_hold(pwr_down);
+
+			if (pa == PWR_SLEEP) {
+				unsigned t0 = plat_now_ms();
+				bool awake;
+
+				kill(pid, SIGSTOP);
+				awake = plat_light_sleep(0);
+				kill(pid, SIGCONT);
+				run_asleep_ms += plat_now_ms() - t0;
+				fprintf(stderr, "sleep: %s after %us (child)\n",
+				        awake ? "awake" : "no suspend, powering off",
+				        (plat_now_ms() - t0) / 1000);
+				pwr_down = false;
+				if (!awake) pa = PWR_POWEROFF;
 			}
+			if (pa == PWR_POWEROFF) {
+				run_power_pressed = true;
+				quit = true;
+			}
+		}
+		while (fd_menu >= 0 && read(fd_menu, &ev, sizeof ev) == (ssize_t)sizeof ev)
+			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 1)
+				quit = true;
+		if (quit && ms_since_term < 0) {
+			kill(pid, SIGTERM);
+			ms_since_term = 0;
 		}
 		if (ms_since_term >= 0) {
 			ms_since_term += 100;
@@ -435,6 +471,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir)
 		}
 	}
 #else
+	(void)menu_quits;
 	if (waitpid(pid, &status, 0) < 0) return -1;
 #endif
 	return WIFEXITED(status) ? WEXITSTATUS(status) : -1;

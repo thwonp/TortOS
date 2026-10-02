@@ -91,10 +91,16 @@ bool in_repeat(in_state *st, in_button b);
  * raises quit_requested, which every loop already checks. */
 void plat_terminate(void);
 
-/* Run a child to completion, watching the power button while it runs.
- * envkv is a NULL-terminated array of "KEY=value" strings. */
-int  plat_run(char *const argv[], const char *const envkv[], const char *workdir);
+/* Run a child to completion, watching the power button while it runs - and
+ * Menu too when menu_quits, for a child that has no way out of its own
+ * (native PICO-8). Either ends it. envkv is a NULL-terminated array of
+ * "KEY=value" strings. */
+int  plat_run(char *const argv[], const char *const envkv[], const char *workdir,
+              bool menu_quits);
 bool plat_run_power_pressed(void);
+/* How long the last plat_run spent asleep (a power tap), to keep out of
+ * Play Time. */
+unsigned plat_run_asleep_ms(void);
 /* Say that something equivalent to a power press has happened, for the paths
  * the evdev watchdog cannot see: a screen the launcher is drawing over a
  * paused game, where plat_resident_wait is not running and so nothing is

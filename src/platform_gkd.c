@@ -221,11 +221,17 @@ void plat_input_flush(void)
 	home_down = false;
 }
 
-void plat_input_quit(void)
+/* The nodes stay open, as on the Brick: they are display-independent, and
+ * plat_run watches power and Menu on them while a game it started has the
+ * screen. Closing them here left that watch reading nothing, so a stuck
+ * game run the slow way could not be ended (plorpos-gkd.50.11). What queues
+ * meanwhile is thrown away by plat_input_flush on the way back. */
+void plat_input_quit(void) { }
+
+int menu_key(int *code)
 {
-	if (fd_pad >= 0)  { close(fd_pad);  fd_pad = -1; }
-	if (fd_keys >= 0) { close(fd_keys); fd_keys = -1; }
-	if (fd_power >= 0) { close(fd_power); fd_power = -1; }
+	*code = BTN_MODE;
+	return fd_pad;
 }
 
 static void stick_axis(bool *neg_pos, int v)

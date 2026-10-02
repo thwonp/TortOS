@@ -43,5 +43,8 @@ void screen_yield(bool to_game);
 bool battery_read(const char *dir, int *pct, bool *charging);
 /* Up to ms for a POWER press (1) or release (0) on fd_power; platform.c. */
 bool power_key_within(int ms, int value);
+/* The node Menu arrives on and its key code, for plat_run's menu_quits;
+ * device file. -1 when the device does not offer it there. */
+int  menu_key(int *code);
 
 #endif

@@ -248,6 +248,14 @@ void plat_input_quit(void)
 	/* keep the raw descriptors; they are display-independent */
 }
 
+/* Not wired: Menu reaches the launcher through the joystick, which is closed
+ * while a game runs. The Brick's native PICO-8 is plorpos-gkd.50.13. */
+int menu_key(int *code)
+{
+	*code = 0;
+	return -1;
+}
+
 static in_button map_joy_button(int jb)
 {
 	switch (jb) {

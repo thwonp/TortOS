@@ -186,6 +186,7 @@ static void muse_order_view(sysview *v);
 static void album_art_screen(app *a);
 /* Same reason: Over The Hare is a screen up here and the scan is down there. */
 static void rescan_all(app *a);
+static bool runs_native(const system_cfg *s, const char *file);
 /* Wi-Fi Services opens both, and they are written after it. */
 static void ra_signin_screen(app *a);
 static void xfer_screen(app *a);
@@ -370,7 +371,12 @@ static void sort_shelf(app *a, int sys)
 		sort_apply_owned(v->list.items, v->owner, v->list.count, v->sort, tags);
 		return;
 	}
-	sort_apply(v->list.items, v->list.count, v->sort, a->sys.systems[sys].tag);
+	/* Splore stays first in every order: the carts sort behind it. */
+	if (v->list.count && runs_native(&a->sys.systems[sys], v->list.items[0].file))
+		sort_apply(v->list.items + 1, v->list.count - 1, v->sort,
+		           a->sys.systems[sys].tag);
+	else
+		sort_apply(v->list.items, v->list.count, v->sort, a->sys.systems[sys].tag);
 }
 
 static void sort_all(app *a)
@@ -9512,6 +9518,116 @@ static void respawn_resident(app *a)
 	plat_spawn_detached(argv, child_env, P_ROOT);
 }
 
+/* Hand the display to a child and take it back when it ends: the one-shot
+ * diatom fallback and native PICO-8 both. The launcher tears its own down
+ * first because the child has to own the screen. */
+static int run_alone(app *a, char *const argv[], bool menu_quits)
+{
+	int rc;
+
+	anim_launch(a, 190);
+	free_all_textures(a);
+	ui_quit();
+	plat_input_quit();
+	plat_video_quit();
+
+	rc = plat_run(argv, child_env, P_ROOT, menu_quits);
+
+	if (!plat_video_init() || !plat_input_init()) { a->running = false; return rc; }
+	a->r = plat_renderer();
+	ui_init(a->r, P_FONT);
+	a->menu_w = 0;   /* fonts reopened: remeasure the panel */
+	prime_sys_window(a);
+	prime_window(a, a->sys_cursor);
+	/* The display is ours again and no game is running: the safe moment
+	 * to put a resident emulator back, so the NEXT launch is fast. */
+	respawn_resident(a);
+	return rc;
+}
+
+/* ---- PICO-8 -------------------------------------------------------------
+ *
+ * The fake08 shelf can also run the owner's own pico8_64 (Bios/pico8_64 and
+ * Bios/pico8.dat beside it). Native is PICO-8 itself - Splore, the real
+ * runtime - at the cost of everything diatom gives a game: no states, no
+ * rewind, no in-game menu; Menu just quits (plat_run). */
+#define SPLORE "Splore"
+
+static bool is_pico8(const system_cfg *s) { return !strcmp(s->core, "fake08"); }
+
+/* Splore is PICO-8's own cart browser, so it is native whatever the shelf
+ * runs. Its entry has no extension, so no file on the card can be it. */
+static bool runs_native(const system_cfg *s, const char *file)
+{
+	return is_pico8(s) && !strcmp(file, SPLORE);
+}
+
+static void pico8_bin(char *out, size_t n)
+{
+	snprintf(out, n, "%s/Bios/pico8_64", P_CARD);
+}
+
+/* First on the shelf, before any cart, whenever native PICO-8 is there to
+ * run it or there are carts beside it - a card with neither has no PICO-8
+ * shelf to put it on. */
+static void splore_add(const system_cfg *s, game_list *l)
+{
+	char bin[CFG_STR * 2];
+	game_entry *items;
+
+	if (!is_pico8(s)) return;
+	pico8_bin(bin, sizeof bin);
+	if (l->count == 0 && access(bin, X_OK) != 0) return;
+	items = realloc(l->items, (size_t)(l->count + 1) * sizeof *items);
+	if (!items) return;
+	memmove(items + 1, items, (size_t)l->count * sizeof *items);
+	memset(items, 0, sizeof *items);
+	snprintf(items[0].name, sizeof items[0].name, "%s", SPLORE);
+	snprintf(items[0].title, sizeof items[0].title, "%s", SPLORE);
+	snprintf(items[0].file, sizeof items[0].file, "%s", SPLORE);
+	l->items = items;
+	l->count++;
+}
+
+/* -home is where PICO-8 keeps everything it writes - config, log, cart data,
+ * Splore's downloads - and -desktop its screenshots, which by default would
+ * land beside the carts and show on the shelf as .png carts. Both under
+ * Saves/pico-8, made here because PICO-8 makes neither.
+ *
+ * -root_path is the shelf's folder for a cart, where a multi-cart game
+ * load()s its siblings from. Not for Splore: it writes a scratch Splore.png
+ * into its root while it works, and one left by a quit mid-write was a
+ * second "Splore" on the shelf (2026-10-02). PICO-8's own carts folder
+ * under -home instead. */
+static int run_pico8(app *a, const char *bin, const char *folder,
+                     const char *rom, bool splore)
+{
+	char home[CFG_STR * 2], desk[CFG_STR * 2 + 16], root[CFG_STR * 2];
+	char *argv[12];
+	int n = 0;
+
+	snprintf(home, sizeof home, "%s/Saves/pico-8", P_CARD);
+	snprintf(desk, sizeof desk, "%s/desktop", home);
+	mkdir(home, 0755);
+	mkdir(desk, 0755);
+	if (splore) {
+		snprintf(root, sizeof root, "%s/carts", home);
+		mkdir(root, 0755);
+	} else {
+		snprintf(root, sizeof root, "%s/%s", P_ROMS, folder);
+	}
+
+	argv[n++] = (char *)bin;
+	argv[n++] = (char *)"-home";      argv[n++] = home;
+	argv[n++] = (char *)"-root_path"; argv[n++] = root;
+	argv[n++] = (char *)"-desktop";   argv[n++] = desk;
+	argv[n++] = (char *)"-joystick";  argv[n++] = (char *)"0";
+	if (splore) argv[n++] = (char *)"-splore";
+	else { argv[n++] = (char *)"-run"; argv[n++] = (char *)rom; }
+	argv[n] = NULL;
+	return run_alone(a, argv, true);
+}
+
 static void launch(app *a)
 {
 	sysview *v = &a->view[a->sys_cursor];
@@ -9532,7 +9648,8 @@ static void launch(app *a)
 	 * already 18 full, and a silent bound check would have dropped every
 	 * option rather than failing loudly. */
 	char *argv[20 + 2 * 32];
-	bool resident = false, want_menu;
+	bool resident = false, want_menu, native;
+	char pico8[CFG_STR * 2];
 	int n = 0;
 
 	if (v->list.count == 0) return;
@@ -9574,6 +9691,18 @@ static void launch(app *a)
 			memset(&a->in, 0, sizeof a->in);
 			return;
 		}
+	}
+
+	/* Native PICO-8 with no pico8_64 is said, the same way, rather than
+	 * quietly run on fake08: the player asked for the real one. */
+	native = runs_native(s, romfile);
+	pico8_bin(pico8, sizeof pico8);
+	if (native && access(pico8, X_OK) != 0) {
+		wait_panel(a, v->list.items[v->cursor].title, "needs Bios/pico8_64");
+		SDL_Delay(2200);
+		plat_input_flush();
+		memset(&a->in, 0, sizeof a->in);
+		return;
 	}
 
 	/* The autosave story, by path rather than by convention: the state and the
@@ -9658,7 +9787,7 @@ static void launch(app *a)
 	 * ADR-0032. Stated before the RUN goes out, which sends it. */
 	plat_resident_quiet(musec_playing());
 
-	if (plat_resident_ready()) {
+	if (!native && plat_resident_ready()) {
 		/* The emulator is already up, holding its context and every core,
 		 * so this is ~200ms rather than ~1100. Nothing here is torn
 		 * down -- this process keeps its own context through the whole game,
@@ -9809,18 +9938,22 @@ static void launch(app *a)
 		}
 	}
 
-	if (!resident) {
+	if (native) {
+		/* Played time counts here too, begun and ended around plat_run,
+		 * less any sleep. No stats_tick checkpoints while it runs, so a
+		 * power cut mid-session loses that session's time. */
+		stats_begin(s->tag, romfile, plat_now_ms());
+		fprintf(stderr, "pico8_64 exited %d\n",
+		        run_pico8(a, pico8, s->folder, rom, runs_native(s, romfile)));
+		stats_asleep(plat_run_asleep_ms());
+		stats_end(NULL, plat_now_ms());
+		if (!a->running) return;
+	} else if (!resident) {
 		/* One game per process, the old way: the fallback for a resident that
 		 * is missing or has died. Diatom standalone IS the one-shot mode -
 		 * same binary, no socket - so the fallback stopped being a different
 		 * emulator and became the same one held differently. It has to take
-		 * the display, so this side tears its own down first. */
-		anim_launch(a, 190);
-		free_all_textures(a);
-		ui_quit();
-		plat_input_quit();
-		plat_video_quit();
-
+		 * the display, so run_alone tears this side's down first. */
 		argv[n++] = elf;
 		argv[n++] = (char *)"--core";            argv[n++] = core;
 		argv[n++] = (char *)"--rom";             argv[n++] = rom;
@@ -9847,17 +9980,8 @@ static void launch(app *a)
 			}
 		}
 		argv[n] = NULL;
-		fprintf(stderr, "diatom exited %d\n", plat_run(argv, child_env, P_ROOT));
-
-		if (!plat_video_init() || !plat_input_init()) { a->running = false; return; }
-		a->r = plat_renderer();
-		ui_init(a->r, P_FONT);
-		a->menu_w = 0;   /* fonts reopened: remeasure the panel */
-		prime_sys_window(a);
-		prime_window(a, a->sys_cursor);
-		/* The display is ours again and no game is running: the safe moment
-		 * to put a resident emulator back, so the NEXT launch is fast. */
-		respawn_resident(a);
+		fprintf(stderr, "diatom exited %d\n", run_alone(a, argv, false));
+		if (!a->running) return;
 	}
 
 	t_back0 = plat_now_ms();
@@ -10521,6 +10645,7 @@ static void scan_all(app *a)
 		/* Both shelves on fbneo are named by set, Arcade and Neo Geo alike. */
 		titles_apply(&v->list, db_lib(), a->sys.systems[i].folder,
 		             strcmp(a->sys.systems[i].core, "fbneo") ? NULL : fbneo_dat());
+		splore_add(&a->sys.systems[i], &v->list);
 		if (v->list.count > 0) {
 			v->tex = calloc((size_t)v->list.count, sizeof *v->tex);
 			v->tw = calloc((size_t)v->list.count, sizeof *v->tw);
