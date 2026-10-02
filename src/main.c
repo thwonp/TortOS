@@ -10335,12 +10335,16 @@ static void launch(app *a)
 				if (!strcmp(v->list.items[i].file, from)) { v->cursor = i; break; }
 			cf_reset(&v->cf, v->cursor);
 		}
-	} else if (!resident) {
+	} else if (!resident && !want_quit) {
 		/* One game per process, the old way: the fallback for a resident that
 		 * is missing or has died. Diatom standalone IS the one-shot mode -
 		 * same binary, no socket - so the fallback stopped being a different
 		 * emulator and became the same one held differently. It has to take
-		 * the display, so run_alone tears this side's down first. */
+		 * the display, so run_alone tears this side's down first.
+		 *
+		 * Not when quitting: the resident died because the launcher is ending
+		 * the game, and starting it again would swallow the quit
+		 * (plorpos-gkd.58). */
 		argv[n++] = elf;
 		argv[n++] = (char *)"--core";            argv[n++] = core;
 		argv[n++] = (char *)"--rom";             argv[n++] = rom;

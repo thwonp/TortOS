@@ -549,6 +549,9 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				if ((pid = run_fork(argv, env, workdir)) < 0) { free(env); return -1; }
 			} else quit = true;
 		}
+		/* The launcher itself told to quit: the child goes the same way, or
+		 * the signal waits on a game nobody is ending (plorpos-gkd.58). */
+		if (g_terminating) quit = true;
 		if (quit && !term_at) {
 			kill(pid, SIGTERM);
 			kill(pid, SIGCONT);   /* a frozen child acts on TERM only once thawed */
