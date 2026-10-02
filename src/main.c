@@ -3525,12 +3525,10 @@ static void anim_launch(app *a, unsigned ms)
  * Timed against the shutdown rather than chosen. Measured 2026-08-28: 1.42 s
  * from the Power off press to adbd dying, of which the old 620 ms animation
  * was the first slice - the rest was a black screen while sync and the kernel
- * finished. So the animation runs to about 900 ms and then DOES NOT clear.
- *
- * Not clearing is the point. Whatever was last presented stays on the panel
- * until the kernel cuts it, so the mark sits there through the remainder of
- * the shutdown and the screen going dark is the device going dark. The boot
- * animation relies on exactly the same thing at the other end. */
+ * finished. So the animation runs to about 900 ms and then DOES NOT clear: the
+ * closed shell is its last frame. power_off turns the backlight off right
+ * after, rather than leaving the shell lit until the kernel cuts the panel
+ * (which is how it was until 2026-10-02). */
 static void anim_poweroff(app *a)
 {
 	const unsigned T_IN = 430, T_HEAD = 260, T_DIM = 210;
@@ -3581,6 +3579,11 @@ static void power_off(app *a)
 	book_keep(true);
 	plat_request_poweroff();
 	anim_poweroff(a);
+	/* And dark the moment it ends. The rest of the shutdown is not instant -
+	 * on the GKD Pixel 2 it waits for the programs on the card to go before
+	 * unmounting it - and the shell stayed lit through all of it. Eric's
+	 * call, 2026-10-02, for both devices. */
+	plat_screen(false);
 	a->running = false;
 }
 
