@@ -467,37 +467,21 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		;
 	while (fd_lv >= 0 && read(fd_lv, &ev, sizeof ev) == (ssize_t)sizeof ev)
 		;
-	/* The volume keys as in the menus: volume, or brightness with Home held
-	 * at the press, stepping again while held (plorpos-gkd.50.19). */
-	int lv_step = 0;        /* +1/-1 while one is held */
-	bool lv_bright = false;
-	unsigned lv_next = 0;   /* when the held key steps again */
 	unsigned term_at = 0;   /* when TERM went, 0: not ending it */
 	for (;;) {
 		pid_t r = waitpid(pid, &status, WNOHANG);
 		if (r == pid) break;
 		if (r < 0) { free(env); return -1; }
-		int wait = 100;
-		if (lv_step) {
-			int due = (int)(lv_next - plat_now_ms());
-			wait = due < 0 ? 0 : due < wait ? due : wait;
-		}
-		poll(pfd, 3, wait);
+		poll(pfd, 3, 100);
 		bool quit = false, menu = false;
 		if (on_tick && !term_at) child_quiet(pid, on_tick(ctx));
+		/* The volume keys: volume, or brightness with Home held, one step
+		 * per press - no stepping on hold, as in Diatom (plorpos-gkd.50.19,
+		 * .50.26). */
 		while (fd_lv >= 0 && read(fd_lv, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 			int d = ev.code == KEY_VOLUMEUP ? 1 : ev.code == KEY_VOLUMEDOWN ? -1 : 0;
-			if (ev.type != EV_KEY || !d || ev.value == 2) continue;
-			if (ev.value == 1) {
-				lv_step = d;
-				lv_bright = levels_alt();
-				lv_next = plat_now_ms() + REPEAT_DELAY_MS;
-				level_nudge(lv_bright, d);
-			} else if (d == lv_step) lv_step = 0;
-		}
-		if (lv_step && (int)(plat_now_ms() - lv_next) >= 0) {
-			lv_next = plat_now_ms() + REPEAT_RATE_MS;
-			level_nudge(lv_bright, lv_step);
+			if (ev.type == EV_KEY && d && ev.value == 1)
+				level_nudge(levels_alt(), d);
 		}
 		while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
 			if (ev.type == EV_KEY && ev.code == KEY_POWER)
