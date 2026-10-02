@@ -8,6 +8,10 @@
 #include <string.h>
 #include <strings.h>
 
+#include "rc_consoles.h"
+#include "rc_hash.h"
+
+#include "chdread.h"
 #include "rahash.h"
 
 /* ---------------------------------------------------------------- MD5 ---- */
@@ -296,19 +300,56 @@ void ra_md5_hex(const void *data, size_t len, char *out)
 	md5_hex(&m, out);
 }
 
+#define ROM_MAX (64L << 20)
+
+/* RetroAchievements' console for a disc on this shelf, 0 for anything hashed
+ * as a ROM. A disc is hashed by what boots it, not by its bytes: the program
+ * sectors its header names on a PC Engine CD, the executable SYSTEM.CNF names
+ * on a PlayStation. That is rhash's job (RA's own code, vendored under
+ * third_party/), reading one sector at a time. The PC Engine shelf mixes
+ * HuCards and CDs, so there it goes by extension - and only the ones rhash
+ * reads as a disc: any other it would read whole. */
+static uint32_t disc_console(const char *tag, const char *path)
+{
+	const char *dot = strrchr(path, '.');
+
+	if (!strcmp(tag, "PS")) return RC_CONSOLE_PLAYSTATION;
+	if (!strcmp(tag, "PCE") && dot &&
+	    (!strcasecmp(dot, ".chd") || !strcasecmp(dot, ".cue") || !strcasecmp(dot, ".m3u")))
+		return RC_CONSOLE_PC_ENGINE_CD;
+	return 0;
+}
+
+static void hash_said(const char *msg, const rc_hash_iterator_t *it)
+{
+	(void)it;
+	fprintf(stderr, "rahash: %s\n", msg);
+}
+
+static bool hash_disc(const char *path, uint32_t console, char *out)
+{
+	rc_hash_iterator_t it;
+	int ok;
+
+	rc_hash_initialize_iterator(&it, path, NULL, 0);
+	chd_cdreader(&it.callbacks.cdreader);
+	it.callbacks.error_message = hash_said;
+	ok = rc_hash_generate(out, console, &it);
+	rc_hash_destroy_iterator(&it);
+	if (!ok) out[0] = '\0';
+	return ok;
+}
+
 bool ra_hash_rom(const char *path, const char *tag, char *out)
 {
 	unsigned char *data = NULL;
 	size_t len = 0, skip;
+	uint32_t console;
 	md5_ctx m;
 
 	if (!path || !tag || !out) return false;
 	out[0] = '\0';
-	/* A PlayStation disc is hundreds of MB and this reads the whole file into
-	 * memory - fatal on the Brick - for a hash RetroAchievements would not
-	 * recognise anyway: discs are hashed by their boot executable. No PS set
-	 * can be fetched until that is written (plorpos-gkd.49). */
-	if (!strcmp(tag, "PS")) return false;
+	if ((console = disc_console(tag, path))) return hash_disc(path, console, out);
 	/* Arcade sets are hashed by their NAME, not their contents, and the zip's
 	 * largest file would be the wrong thing at up to tens of MB. Not written
 	 * yet; until it is, no arcade set can be fetched. */
@@ -326,6 +367,14 @@ bool ra_hash_rom(const char *path, const char *tag, char *out)
 		sz = ftell(f);
 		fseek(f, 0, SEEK_SET);
 		if (sz <= 0) { fclose(f); return false; }
+		/* Read whole, so never a disc: one that reached here (a .bin on the
+		 * PC Engine shelf, a .ccd) would be hundreds of MB for a hash RA
+		 * does not use (plorpos-gkd.53). No cartridge is near this. */
+		if (sz > ROM_MAX) {
+			fprintf(stderr, "rahash: %s is %ld MB, not hashed\n", path, sz >> 20);
+			fclose(f);
+			return false;
+		}
 		data = malloc((size_t)sz);
 		if (!data) { fclose(f); return false; }
 		if (fread(data, 1, (size_t)sz, f) != (size_t)sz) {

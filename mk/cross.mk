@@ -49,6 +49,11 @@ endif
 CREDS := $(BUILD)/ss_creds.h
 CFLAGS += -I$(BUILD)
 
+TP_OUT := $(BUILD)/tp
+TP_OPT := -O2 -mcpu=cortex-a53
+include mk/third_party.mk
+CFLAGS += $(TP_CFLAGS)
+
 .PHONY: creds
 creds:
 	@mkdir -p $(BUILD)
@@ -62,9 +67,9 @@ creds:
 	@cmp -s $(CREDS).new $(CREDS) 2>/dev/null || mv -f $(CREDS).new $(CREDS)
 	@rm -f $(CREDS).new
 
-$(BUILD)/tortos.elf: $(SRC) $(CREDS) $(wildcard src/*.h)
+$(BUILD)/tortos.elf: $(SRC) $(CREDS) $(wildcard src/*.h) $(TP_OBJ)
 	mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(SRC) $(LDLIBS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(SRC) $(TP_OBJ) $(LDLIBS)
 
 # A libc-only helper with no SDL: setbright puts the panel at the configured
 # brightness before the boot animation, while the launcher is still starting.

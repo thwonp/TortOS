@@ -22,7 +22,13 @@
 
 /* Writes 32 lowercase hex digits plus a NUL, so `out` needs 33 bytes.
  * `tag` is a systems.cfg tag - NES, SFC, MD, GB. False means the file could
- * not be read or the archive could not be opened. */
+ * not be read or the archive could not be opened.
+ *
+ * A disc - anything on the PlayStation shelf, a .chd/.cue/.m3u on the PC
+ * Engine one - is hashed by RA's own rhash instead (third_party/, with
+ * chdread.c for CHD), a few sectors read, never the image. Anything else over
+ * 64 MB is refused rather than read whole: no cartridge comes near it, and a
+ * disc that reached the cartridge path would be hundreds of MB. */
 bool ra_hash_rom(const char *path, const char *tag, char *out);
 
 /* Plain MD5 of a buffer, same 33-byte output. Exposed because submitting an

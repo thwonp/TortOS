@@ -88,8 +88,10 @@ build/ss_creds.h: FORCE
 # platform_gkd.c does not make the Brick build look stale (and the reverse).
 SRC_BRICK := $(filter-out src/platform_gkd.c,$(wildcard src/*.c))
 SRC_GKD   := $(filter-out src/platform_brick.c,$(wildcard src/*.c))
+# And the vendored code both link (mk/third_party.mk), so a change there rebuilds.
+THIRD_PARTY := mk/third_party.mk $(shell find third_party -name '*.[ch]')
 
-build/tortos.elf: $(SRC_BRICK) $(wildcard src/*.h) tools/setbright.c mk/cross.mk \
+build/tortos.elf: $(SRC_BRICK) $(wildcard src/*.h) tools/setbright.c mk/cross.mk $(THIRD_PARTY) \
                   $(wildcard src/muse/*.c) $(wildcard src/muse/*.h) tools/musectl.c \
                   tools/btplayer.c \
                   build/ss_creds.h
@@ -154,7 +156,7 @@ build/gkd/ss_creds.h: FORCE
 
 # Grouped (&:), so that any one of the three missing runs the build.
 build/gkd/tortos.elf build/gkd/muse build/gkd/musectl &: \
-                      $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk build/gkd/ss_creds.h \
+                      $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) build/gkd/ss_creds.h \
                       $(wildcard src/muse/*.c) $(wildcard src/muse/*.h) tools/musectl.c
 	@docker image inspect $(IMAGE) > /dev/null 2>&1 || { \
 		echo "toolchain image missing; run: make toolchain" >&2; exit 1; }
@@ -325,10 +327,15 @@ build-native/artrun-check: tools/artrun-check.c src/artscrape.c src/artscrape.h 
 check-rahash: build-native/rahash-check
 	@python3 tools/rahash-check.py
 
-build-native/rahash-check: tools/rahash-check.c src/rahash.c src/rahash.h FORCE
+# Discs are hashed by vendored code (mk/third_party.mk), built here for the host.
+TP_OUT := build-native/tp
+TP_OPT := -O2
+include mk/third_party.mk
+
+build-native/rahash-check: tools/rahash-check.c src/rahash.c src/rahash.h src/chdread.c $(TP_OBJ) FORCE
 	@mkdir -p build-native
-	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
-	      -o $@ tools/rahash-check.c src/rahash.c
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g $(TP_CFLAGS) \
+	      -o $@ tools/rahash-check.c src/rahash.c src/chdread.c $(TP_OBJ) -ldl
 
 # The two set converters - one C on the device, one Python in the bulk tool -
 # over real RetroAchievements responses. Needs credentials and a network;
@@ -336,10 +343,10 @@ build-native/rahash-check: tools/rahash-check.c src/rahash.c src/rahash.h FORCE
 check-raset: build-native/raset-check
 	@python3 tools/raset-check.py
 
-build-native/raset-check: tools/raset-check.c src/rafetch.c src/rajson.c src/rahash.c src/net.c src/atomic.c src/db.c FORCE
+build-native/raset-check: tools/raset-check.c src/rafetch.c src/rajson.c src/rahash.c src/chdread.c src/net.c src/atomic.c src/db.c $(TP_OBJ) FORCE
 	@mkdir -p build-native
-	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g -DTORTOS_VERSION='"check"' \
-	      -o $@ tools/raset-check.c src/rafetch.c src/rajson.c src/rahash.c src/net.c src/atomic.c src/db.c
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g -DTORTOS_VERSION='"check"' $(TP_CFLAGS) \
+	      -o $@ tools/raset-check.c src/rafetch.c src/rajson.c src/rahash.c src/chdread.c src/net.c src/atomic.c src/db.c $(TP_OBJ)
 
 # Whether this build can reach ScreenScraper, and whether an account survives
 # a restart. The live half needs a network and .screenscraper.env, and skips
