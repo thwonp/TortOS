@@ -55,6 +55,7 @@
 
 #include <SDL.h>
 #include <SDL_image.h>
+#include <dirent.h>
 #include <ctype.h>
 #include <math.h>
 #include <signal.h>
@@ -9720,6 +9721,76 @@ static bool is_splore(const system_cfg *s, const char *file)
 	return is_pico8(s) && !strcmp(file, SPLORE);
 }
 
+/* Carts played in Splore, onto the shelf (plorpos-gkd.50.18). Splore keeps
+ * every cart it shows in bbs/carts, browsing included, but writes a
+ * temp-<id>.nfo - the cart's lid (id-revision) and title - only for one that
+ * was run (watched 2026-10-02), so the .nfo is what marks a cart to keep.
+ * Each revision is copied once, as <title>.p8.png beside the other carts:
+ * from then on an ordinary cart, with its art, states and engine the shelf's.
+ * Recorded per card, so a cart deleted from the shelf stays gone until a
+ * newer revision is played, and a cart of the owner's own by that name is
+ * never written over. How many were copied. */
+static int splore_keep(const char *folder)
+{
+	char dir[CFG_STR * 2], nfo[CFG_STR * 3], line[256];
+	char from[CFG_STR * 3], to[CFG_STR * 3];
+	char lid[64], title[128], name[128], key[96], had[64];
+	struct dirent *e;
+	DIR *d;
+	int n = 0;
+
+	snprintf(dir, sizeof dir, "%s/Saves/pico-8/bbs/carts", P_CARD);
+	if (!(d = opendir(dir))) return 0;
+	while ((e = readdir(d))) {
+		size_t len = strlen(e->d_name), k = 0;
+		FILE *f;
+
+		if (len <= 9 || strncmp(e->d_name, "temp-", 5) ||
+		    strcmp(e->d_name + len - 4, ".nfo"))
+			continue;
+		snprintf(nfo, sizeof nfo, "%s/%s", dir, e->d_name);
+		if (!(f = fopen(nfo, "r"))) continue;
+		lid[0] = title[0] = '\0';
+		while (fgets(line, sizeof line, f)) {
+			line[strcspn(line, "\r\n")] = '\0';
+			if (!strncmp(line, "lid:", 4))
+				snprintf(lid, sizeof lid, "%.63s", line + 4);
+			else if (!strncmp(line, "title:", 6))
+				snprintf(title, sizeof title, "%.127s", line + 6);
+		}
+		fclose(f);
+		if (!*lid || strchr(lid, '/')) continue;
+
+		/* Keyed by the id without the revision: the .nfo's own name. */
+		snprintf(key, sizeof key, "splore.%.*s", (int)(len - 9), e->d_name + 5);
+		db_get_str(db_lib(), key, had, sizeof had, "");
+		if (!strcmp(had, lid)) continue;
+		snprintf(from, sizeof from, "%s/%s.p8.png", dir, lid);
+		if (access(from, R_OK) != 0) continue;
+
+		/* The title as a filename the card takes: no path or FAT-reserved
+		 * characters, no trailing dot or space. The lid when nothing is left. */
+		for (const char *c = title; *c && k < sizeof name - 1; c++)
+			if ((unsigned char)*c >= ' ' && !strchr("/\\:*?\"<>|", *c))
+				name[k++] = *c;
+		while (k && (name[k - 1] == ' ' || name[k - 1] == '.')) k--;
+		name[k] = '\0';
+		if (!k) snprintf(name, sizeof name, "%s", lid);
+		snprintf(to, sizeof to, "%s/%s/%s.p8.png", P_ROMS, folder, name);
+
+		if (!*had && access(to, F_OK) == 0) {
+			fprintf(stderr, "splore: %s is the card's own, left as it is\n", to);
+		} else {
+			copy_file(from, to);
+			fprintf(stderr, "splore: %s -> %s\n", lid, to);
+			n++;
+		}
+		db_set_str(db_lib(), key, lid);
+	}
+	closedir(d);
+	return n;
+}
+
 static void pico8_bin(char *out, size_t n)
 {
 	snprintf(out, n, "%s/Bios/pico8_64", P_CARD);
@@ -10127,6 +10198,13 @@ static void launch(app *a)
 		stats_asleep(plat_run_asleep_ms());
 		stats_end(NULL, plat_now_ms());
 		if (!a->running) return;
+		/* Splore is left on the shelf it was opened from, now with the
+		 * carts played in it. The rescan rebuilds the views, so v again;
+		 * Splore is still first, where the cursor comes back to. */
+		if (is_splore(s, romfile) && splore_keep(s->folder) > 0) {
+			rescan_all(a);
+			v = &a->view[a->sys_cursor];
+		}
 	} else if (!resident) {
 		/* One game per process, the old way: the fallback for a resident that
 		 * is missing or has died. Diatom standalone IS the one-shot mode -

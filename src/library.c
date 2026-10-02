@@ -232,6 +232,12 @@ bool lib_scan(const char *roms_root, const char *folder, const char *exts,
 		dot = strrchr(list[n].name, '.');
 		if (dot && dot != list[n].name) *dot = '\0';
 		lib_title(list[n].name, list[n].title, sizeof list[n].title);
+		{   /* A PICO-8 cart is <name>.p8.png: the .p8 is extension too.
+		     * The title only - the name is what saves and lists key on. */
+			size_t tl = strlen(list[n].title);
+			if (tl > 3 && !strcasecmp(list[n].title + tl - 3, ".p8"))
+				list[n].title[tl - 3] = '\0';
+		}
 		n++;
 	}
 
