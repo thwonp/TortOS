@@ -56,6 +56,8 @@
 #include <SDL.h>
 #include <SDL_image.h>
 #include <dirent.h>
+#include <errno.h>
+#include <ftw.h>
 #include <ctype.h>
 #include <math.h>
 #include <signal.h>
@@ -5300,6 +5302,7 @@ static void gi_gather(app *a, int owner, const game_entry *g, game_info *gi)
 	struct stat st;
 
 	memset(gi, 0, sizeof *gi);
+	gi->deletable = !is_splore(s, g->file);
 
 	/* The save slots are not read here any more. The row that showed them went
 	 * on 2026-09-17 - the carousel shows them when you load, with the frames
@@ -5634,6 +5637,49 @@ static void synopsis_screen(app *a, const char *title, const char *text,
 static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf);
 static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag);
 
+/* Delete Game, from the info screen (plorpos-gkd.69): the game's file, or a
+ * disc game's whole folder - the folder is the game - and its favorite.
+ * Nothing else: saves, states, art and play time stay, so a game put back
+ * picks up where it was (user, 2026-10-02). Then the card is read again, and
+ * the cursor stays where the game was, on what is now the next one. */
+static int rm_one(const char *p, const struct stat *st, int flag, struct FTW *f)
+{
+	(void)st; (void)flag; (void)f;
+	return remove(p);
+}
+
+static void game_delete(app *a, int owner, const game_entry *g)
+{
+	const system_cfg *s = &a->sys.systems[owner];
+	const char *slash = strchr(g->file, '/');
+	int at = a->view[a->sys_cursor].cursor;
+	char path[LIB_PATH * 3];
+	sysview *v;
+	bool ok;
+
+	if (slash)
+		snprintf(path, sizeof path, "%s/%s/%.*s", P_ROMS, s->folder,
+		         (int)(slash - g->file), g->file);
+	else
+		snprintf(path, sizeof path, "%s/%s/%s", P_ROMS, s->folder, g->file);
+	wait_panel(a, "Delete Game", "Deleting...");
+	ok = slash ? nftw(path, rm_one, 8, FTW_DEPTH | FTW_PHYS) == 0
+	           : remove(path) == 0;
+	fprintf(stderr, "delete: %s: %s\n", path, ok ? "gone" : strerror(errno));
+	/* Before the rescan: g points into the list it frees. */
+	if (ok && fav_is(s->tag, g->file)) {
+		fav_toggle(s->tag, g->file);
+		fav_save();
+	}
+	/* Even when it failed: a folder can be half gone. */
+	rescan_all(a);
+	v = &a->view[a->sys_cursor];
+	if (a->screen == SCREEN_GAMES && v->list.count) {
+		v->cursor = at < v->list.count ? at : v->list.count - 1;
+		cf_reset(&v->cf, v->cursor);
+	}
+}
+
 static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 {
 	info_ctx *c = ctx;
@@ -5654,6 +5700,17 @@ static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 		if (db_game_get(db_lib(), a->sys.systems[c->owner].folder, c->g->file, &m)
 		    && m.synopsis[0])
 			synopsis_screen(a, c->g->title, m.synopsis, c->st.accent);
+		return MENU_STAY;
+	}
+
+	if (!strcmp(rows[sel].label, "Delete Game")) {
+		/* Closes the screen when it went: there is no game left to show. */
+		if (confirm_panel(a, "Delete Game", c->g->title, "Delete")) {
+			game_delete(a, c->owner, c->g);
+			return MENU_DONE;
+		}
+		plat_input_flush();
+		memset(&a->in, 0, sizeof a->in);
 		return MENU_STAY;
 	}
 

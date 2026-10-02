@@ -82,6 +82,10 @@ int gi_rows(menu_row *out, const game_info *gi, bool net)
 	 * hour - and stay off this screen. */
 	out[n++] = (menu_row){ gi->has_art ? "Replace Box Art" : "Get Box Art",
 	                       net ? NULL : "needs Wi-Fi", net };
+	/* Last, under the one that adds: the one that cannot be undone, asked
+	 * again before it happens (plorpos-gkd.69). */
+	if (gi->deletable)
+		out[n++] = (menu_row){ "Delete Game", NULL, true };
 	return n;
 }
 

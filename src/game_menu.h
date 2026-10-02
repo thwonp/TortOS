@@ -64,7 +64,7 @@ static inline int gm_save_slot(const bool *have)
 	return GM_SLOTS;
 }
 
-#define GI_MAX 5          /* four facts at most, one action */
+#define GI_MAX 6          /* four facts at most, two actions */
 
 /* The genre line, from the scrape. Sized from the card rather than guessed:
  * measured 2026-09-17 over 1,704 rows, the whole comma-separated value has a
@@ -92,6 +92,7 @@ typedef struct {
 	 * rather than looking unscraped. */
 	bool  scraped;
 	bool  has_synopsis;
+	bool  deletable;       /* a file on the card: everything but Splore */
 } game_info;
 
 /* `net` is whether there is a network, asked by the caller and passed in: the

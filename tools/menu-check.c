@@ -781,7 +781,7 @@ static void info_rows(void)
 	snprintf(gi.genre, sizeof gi.genre, "Platform,Shoot'em Up");
 	n = gi_rows(rows, &gi, true);
 	printf("game info, scraped with a year, a genre and prose:\n");
-	ck(n == GI_MAX, "three rows more than an unscraped game");
+	ck(n == 5, "three rows more than an unscraped game");
 	ck(!strcmp(rows[0].label, "Synopsis"), "what the game IS leads");
 	ck(rows[0].live, "and opens, because the prose does not fit on a row");
 	ck(!strcmp(rows[1].label, "Year") && !strcmp(val(&rows[1]), "1995"),
@@ -804,15 +804,34 @@ static void info_rows(void)
 	gi.has_synopsis = true;
 	n = gi_rows(rows, &gi, true);
 	printf("game info, scraped with no year:\n");
-	ck(n == GI_MAX - 1, "the Year row is simply absent");
+	ck(n == 4, "the Year row is simply absent");
 	ck(!strcmp(rows[0].label, "Synopsis"), "and Synopsis still leads");
 	ck(!strcmp(rows[1].label, "Genre"), "with the genre where the year was");
 
 	gi.genre[0] = '\0';
 	n = gi_rows(rows, &gi, true);
 	printf("game info, scraped with neither year nor genre:\n");
-	ck(n == GI_MAX - 2, "both are simply absent");
+	ck(n == 3, "both are simply absent");
 	ck(!strcmp(rows[1].label, "Cheevos"), "leaving the prose and the two actions");
+
+	/* A game on the card (everything but Splore): Delete Game, last, and
+	 * live without a network. plorpos-gkd.69. */
+	gi.deletable = true;
+	gi.year[0] = '\0';
+	n = gi_rows(rows, &gi, false);
+	printf("game info, a game on the card:\n");
+	ck(!strcmp(rows[n - 1].label, "Delete Game"), "Delete Game comes last");
+	ck(rows[n - 1].live, "and needs no network");
+	k = reachable(rows, n, got, GI_MAX);
+	ck(got[k - 1] == n - 1, "and is reachable");
+	snprintf(gi.year, sizeof gi.year, "1995");
+	snprintf(gi.genre, sizeof gi.genre, "Platform");
+	n = gi_rows(rows, &gi, true);
+	ck(n == GI_MAX, "every row at once fits GI_MAX");
+	gi.deletable = false;
+	n = gi_rows(rows, &gi, true);
+	for (i = 0; i < n; i++)
+		ck(strcmp(rows[i].label, "Delete Game") != 0, "Splore has no Delete Game");
 }
 
 
