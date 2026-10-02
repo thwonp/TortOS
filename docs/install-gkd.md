@@ -73,7 +73,7 @@ TortOS/    tortos.elf  diatom  launch.sh  systems.cfg  menu.ttf  cacert.pem
            cards/  cores/  res/
 Roms/      NES/  SNES/  Game Boy/ ...
 Bios/
-Saves/
+Saves/     NES/  SNES/ ...   one per system, named as in Roms/, made on first play
 ```
 
 You can also fill the card in the GKD: put it in, and copy to the

@@ -794,11 +794,10 @@ void plat_resident_on_tick(void (*fn)(void)) { d_on_tick = fn; }
  * The cost was not cosmetic - see the ERROR arm in diatom_wait. */
 static int d_got_running;
 
-bool plat_resident_send(const char *tag, const char *core, const char *rom,
-                        const char *resume, const char *exit_state,
-                        const char *preview,
-                        int console, const char *cheevos)
+bool plat_resident_send(const plat_game *g)
 {
+	const char *tag = g->tag;
+
 	run_power_pressed = false;
 	/* A new game has not reported RUNNING yet. Cleared HERE rather than in
 	 * diatom_wait, because the launcher re-enters that after every in-game
@@ -848,12 +847,13 @@ bool plat_resident_send(const char *tag, const char *core, const char *rom,
 		 * given yet. Both are ignored by an older Diatom, which is what
 		 * ADR-0009 promises about unknown keys. */
 		if (!dsend("RUN\tcore=%s\trom=%s\ttag=%s"
-		           "\tresume=%s\texit_state=%s\tpreview=%s"
+		           "\tresume=%s\texit_state=%s\tpreview=%s\tsave=%s"
 		           "\tconsole=%d\tcheevos=%s",
-		           core, rom, tag,
-		           resume ? resume : "", exit_state ? exit_state : "",
-		           preview ? preview : "",
-		           console, cheevos ? cheevos : ""))
+		           g->core, g->rom, tag,
+		           g->resume ? g->resume : "",
+		           g->exit_state ? g->exit_state : "",
+		           g->preview ? g->preview : "", g->save ? g->save : "",
+		           g->console, g->cheevos ? g->cheevos : ""))
 			return false;
 
 		/* AFTER RUN, never before: RUN resets the map to identity (Diatom's

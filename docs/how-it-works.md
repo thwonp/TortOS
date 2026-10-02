@@ -160,7 +160,9 @@ not a second and a half of re-initializing a display.
   Silent - the device shows no in-game chrome.
 
 States are keyed on the system's **`Roms/` folder**, and battery `.srm` files
-sit flat in `Saves/` named after the ROM. The **tag** in `systems.cfg` keys
+are named after the ROM: flat in `Saves/` on the Brick, and on the GKD in
+`Saves/<Roms folder>/`, beside whatever the core keeps there itself (memory
+cards, `fbneo/`), so the same title on two shelves has two saves. The **tag** in `systems.cfg` keys
 something else: the per-system display mode, the sort order, and the favorites
 list. This
 paragraph claimed for a while that saves and states hung off the tag; they do

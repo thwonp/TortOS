@@ -10022,7 +10022,17 @@ static void launch(app *a)
 	const char *romfile = v->list.items[v->cursor].file;
 
 	snprintf(rom, sizeof rom, "%s/%s/%s", P_ROMS, s->folder, romfile);
+#if defined(PLATFORM_GKD)
+	/* Each shelf's saves in a folder named as its Roms folder, so the same
+	 * title on two shelves cannot share one .srm, and a core's own files
+	 * (memory cards, fbneo/) sit with their system (plorpos-aev). The Brick
+	 * keeps upstream's flat Saves. PICO-8's is Saves/pico-8 on exFAT, which
+	 * ignores case: fake08 and native PICO-8 share cdata/, in one format. */
+	snprintf(save, sizeof save, "%s/Saves/%s", P_CARD, s->folder);
+	mkdir(save, 0755);
+#else
 	snprintf(save, sizeof save, "%s/Saves", P_CARD);
+#endif
 	snprintf(bios, sizeof bios, "%s/Bios", P_CARD);
 
 	/* A disc that needs firmware, before anything tries to run it.
@@ -10161,8 +10171,12 @@ static void launch(app *a)
 		 * the in-game menu, which is drawn HERE now, over the frame the
 		 * emulator hands us on the way into its pause. */
 		aout_before_launch();
-		if (plat_resident_send(s->tag, core, rom, st, st, pv,
-		                       console, active[0] ? active : NULL)) {
+		plat_game g = {
+			.tag = s->tag, .core = core, .rom = rom,
+			.resume = st, .exit_state = st, .preview = pv, .save = save,
+			.console = console, .cheevos = active[0] ? active : NULL,
+		};
+		if (plat_resident_send(&g)) {
 			int r;
 
 			/* The list Diatom was just handed, for an early answer to trim. */

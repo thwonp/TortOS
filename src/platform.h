@@ -146,17 +146,18 @@ bool plat_spawn_detached(char *const argv[], const char *const envkv[],
 #define RES_PAUSED 2   /* Diatom only: menu open, the launcher owns the display */
 const char *plat_resident_socket(void);
 bool plat_resident_ready(void);
-/* `console` is a RetroAchievements console id and `cheevos` a set file for
- * Diatom to watch; 0 and NULL mean the game has no achievements, which is the
- * ordinary case. Diatom ADR-0026.
- *
- * Eight positional arguments, five of them paths, is one past comfortable -
- * the call already passes the same state path twice in a row. A struct is the
- * next change to this function, not a further parameter. */
-bool plat_resident_send(const char *tag, const char *core, const char *rom,
-                        const char *resume, const char *exit_state,
-                        const char *preview,
-                        int console, const char *cheevos);
+/* One game for the resident. `console` is a RetroAchievements console id and
+ * `cheevos` a set file for Diatom to watch; 0 and NULL mean the game has no
+ * achievements, which is the ordinary case (Diatom ADR-0026). `save` is the
+ * game's save dir; NULL leaves it at Diatom's --save (plorpos-aev). */
+typedef struct {
+	const char *tag, *core, *rom;
+	const char *resume, *exit_state, *preview;
+	const char *save;
+	int         console;
+	const char *cheevos;
+} plat_game;
+bool plat_resident_send(const plat_game *g);
 int  plat_resident_wait(void);
 
 /* Called from inside plat_resident_wait when Diatom reports an achievement
