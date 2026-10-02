@@ -117,8 +117,10 @@ typedef struct {
 } sysview;
 
 /* Diatom's display modes, in the order TortOS offers them: the sensible
- * default first, then whole-pixel scaling, then the ones that trade shape or
- * edges for coverage, with 1:1 last as a reference rather than a choice.
+ * default first, then the shape the core asks for, then whole pixels. Seven
+ * once; Integer tall, Overscale, Fill and Native 1:1 went with diatom's
+ * ADR-0040 (plorpos-gkd.62), and a shelf saved on one of them loads as
+ * Aspect - see display_load.
  *
  * The names are Diatom's protocol strings and have to match its own table in
  * src/scale.c exactly - it answers an unknown one with ERROR code=bad_display
@@ -130,15 +132,12 @@ typedef struct {
  * 1024x768 panel on black bars for the Game Boys before anyone has been given
  * a reason to choose. The rest keep their order. */
 static const struct { const char *name, *label; } DMODES[] = {
-	{ "stretch",          "Stretch"      },
-	{ "aspect",           "Aspect"       },
-	{ "integer",          "Integer"      },
-	{ "integer-vertical", "Integer tall" },
-	{ "overscale",        "Overscale"    },
-	{ "fill",             "Fill"         },
-	{ "native",           "Native 1:1"   },
+	{ "stretch", "Stretch" },
+	{ "aspect",  "Aspect"  },
+	{ "integer", "Integer" },
 };
 #define DMODE_COUNT ((int)(sizeof DMODES / sizeof DMODES[0]))
+#define DMODE_ASPECT 1
 
 typedef struct {
 	systems_cfg sys;
@@ -282,6 +281,10 @@ static void display_load(app *a)
 	for (i = 0; i < a->sys.count; i++) {
 		snprintf(key, sizeof key, "display.%s", a->sys.systems[i].tag);
 		if (!db_get_str(db_dev(), key, name, sizeof name, NULL)) continue;
+		/* A name no longer in the table is a mode diatom dropped
+		 * (ADR-0040): Aspect, the kept mode closest to all four - the
+		 * same picture as Fill wherever Fill did not crop. */
+		a->view[i].dmode = DMODE_ASPECT;
 		for (k = 0; k < DMODE_COUNT; k++)
 			if (!strcmp(DMODES[k].name, name)) { a->view[i].dmode = k; break; }
 	}
@@ -6368,7 +6371,7 @@ static int menu_measure(const menu_row *rows, int n, const char *heading)
 /* One width for both shelf menus, every system, and every value their rows can
  * cycle to. The panel is a frame the lists sit inside rather than something
  * that resizes to whatever is selected: without this, cycling display mode from
- * "Fill" to "Integer tall" widens the slab under the cursor, and walking from
+ * "Aspect" to "Integer" widens the slab under the cursor, and walking from
  * the systems row into a system resizes it again.
  *
  * Measured across all of that rather than picked, so a longer label, another
@@ -9652,9 +9655,8 @@ static void splore_add(const system_cfg *s, game_list *l)
  * The shelf's Display Mode, as near as PICO-8's own flags come. Stretch is
  * a draw_rect over the whole output, measured off the renderer before
  * run_alone takes it down, so it is the panel's real size on either device.
- * Both integer modes are pixel_perfect - PICO-8's pixels are square, so the
- * two agree. Aspect is no flag at all, PICO-8's own fit, and so is any mode
- * it has nothing like. Neither flag is saved in config.txt, so a run that
+ * Integer is pixel_perfect. Aspect is no flag at all, PICO-8's own fit.
+ * Neither flag is saved in config.txt, so a run that
  * passes none is not left with the last one's. */
 static int run_pico8(app *a, const char *bin, const char *folder,
                      const char *rom, bool splore, const char *dmode)
@@ -9685,7 +9687,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	    SDL_GetRendererOutputSize(a->r, &ow, &oh) == 0 && ow > 0 && oh > 0) {
 		snprintf(rect, sizeof rect, "0,0,%d,%d", ow, oh);
 		argv[n++] = (char *)"-draw_rect"; argv[n++] = rect;
-	} else if (!strncmp(dmode, "integer", 7)) {
+	} else if (!strcmp(dmode, "integer")) {
 		argv[n++] = (char *)"-pixel_perfect"; argv[n++] = (char *)"1";
 	}
 	fprintf(stderr, "pico8_64: display %s %s %s\n", dmode,
@@ -10808,7 +10810,7 @@ static void rescan_all(app *a)
 	 * rescan invalidates it - and the case that shows is a card that booted
 	 * empty: with no systems there are no game-menu rows to measure, the
 	 * panel is sized for the TortOS menu alone, and the first system to
-	 * arrive gets "Integer tall" cut off inside a frame measured before it
+	 * arrive gets "Pico-8 Native" cut off inside a frame measured before it
 	 * existed. */
 	a->menu_w = 0;
 
