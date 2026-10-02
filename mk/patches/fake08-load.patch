@@ -1,0 +1,61 @@
+diff --git a/platform/libretro/libretro.cpp b/platform/libretro/libretro.cpp
+index 589d4f2..cfc84ab 100644
+--- a/platform/libretro/libretro.cpp
++++ b/platform/libretro/libretro.cpp
+@@ -1,6 +1,7 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include <array>
++#include <vector>
+ 
+ #include "libretro.h"
+ #include "libretro_core_options.h"
+@@ -284,9 +285,18 @@ EXPORT void retro_set_controller_port_device(unsigned port, unsigned device)
+ {
+ }
+ 
++// The cart as the frontend gave it, for reset: a cart loaded from memory has
++// no filename, and reloading by name fell back to the fake08 BIOS shell.
++static std::vector<unsigned char> cartBytes;
++
+ EXPORT void retro_reset()
+ {
+-    _vm->QueueCartChange(_vm->CurrentCartFilename());
++    if (!cartBytes.empty()) {
++        _vm->QueueCartChange(cartBytes.data(), cartBytes.size());
++    }
++    else {
++        _vm->QueueCartChange(_vm->CurrentCartFilename());
++    }
+ }
+ 
+ static std::array<int, 7> buttons
+@@ -758,15 +768,26 @@ EXPORT bool retro_load_game(struct retro_game_info const *info)
+         setCartDirectory(containingDir);
+     }
+ 
++    // Load the cart now, not on the first retro_run: a frontend may restore a
++    // state before it runs a frame, and unserialize needs the cart's Lua state.
++    // Queue first for the flags it resets, then do what Vm::Step does with it.
++    bool loaded;
+     if (info->size > 0) {
+         const unsigned char* data = reinterpret_cast<const unsigned char*>(info->data);
+-        _vm->QueueCartChange(data, info->size);
++        cartBytes.assign(data, data + info->size);
++        _vm->QueueCartChange(cartBytes.data(), cartBytes.size());
++        loaded = _vm->LoadCart(cartBytes.data(), cartBytes.size());
+     }
+     else {
++        cartBytes.clear();
+         _vm->QueueCartChange(info->path);
++        loaded = _vm->LoadCart(info->path);
++    }
++    if (loaded) {
++        _vm->vm_run();
+     }
+ 
+-    return true;
++    return loaded;
+ }
+ 
+ EXPORT bool retro_load_game_special(unsigned game_type,
