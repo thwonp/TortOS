@@ -34,10 +34,13 @@ void wifi_label(wifi_ui *w)
 	char cur[WIFI_SSID_MAX], ip[64];
 	int i;
 
-	w->conn[0] = '\0';
+	w->conn[0] = w->st_ui[0] = '\0';
 	w->connected = wifi_status(cur, sizeof cur, ip, sizeof ip) == WIFI_CONNECTED;
 	if (!w->connected) cur[0] = '\0';
-	else if (ip[0]) snprintf(w->conn, sizeof w->conn, "%s · %s", cur, ip);
+	else if (ip[0]) {
+		snprintf(w->conn, sizeof w->conn, "%s · %s", cur, ip);
+		snprintf(w->st_ui, sizeof w->st_ui, "%s:8384", ip);
+	}
 	for (i = 0; i < w->n; i++) {
 		const char *state = (cur[0] && !strcmp(cur, w->nets[i].ssid))
 		                    ? " - connected"
@@ -110,6 +113,10 @@ int wifi_build(void *ctx, menu_row *rows, int max, const char **heading)
 	if (WIFI_SVC_ROWS) {
 		ADD((menu_row){ "SSH",   w->svc[WIFI_SSH]   ? "on" : "off", true });
 		ADD((menu_row){ "Samba", w->svc[WIFI_SAMBA] ? "on" : "off", true });
+		/* On, it reads as where to manage it: the web UI, signed into as
+		 * root with ROCKNIX's root password. */
+		ADD((menu_row){ "Syncthing", !w->svc[WIFI_SYNCTHING] ? "off"
+		                : w->st_ui[0] ? w->st_ui : "on", true });
 	}
 	ADD((menu_row){ "Over The Hare",
 	                            w->connected ? NULL : "needs Wi-Fi", w->connected });

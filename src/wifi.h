@@ -75,10 +75,10 @@ wifi_state wifi_status(char *ssid, int ssid_cap, char *ip, int ip_cap);
 /* Drop a saved network and forget its credential. */
 bool wifi_forget(const char *ssid);
 
-/* The network services a device lets you switch: SSH and Samba on the GKD,
- * where ROCKNIX runs them, and none on the Brick. On/off is ROCKNIX's own
+/* The network services a device lets you switch: SSH, Samba and Syncthing on
+ * the GKD, where ROCKNIX runs them, and none on the Brick. On/off is ROCKNIX's own
  * setting, so it survives a reboot and the stock menu agrees with it. */
-typedef enum { WIFI_SSH, WIFI_SAMBA, WIFI_NSVC } wifi_svc;
+typedef enum { WIFI_SSH, WIFI_SAMBA, WIFI_SYNCTHING, WIFI_NSVC } wifi_svc;
 #ifdef PLATFORM_GKD
 #define WIFI_SVC_ROWS WIFI_NSVC
 #else

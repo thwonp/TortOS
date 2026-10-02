@@ -17,9 +17,10 @@ typedef struct {
 	bool     on;
 	bool     scanning;   /* a scan is running; the list is provisional */
 	bool     scanned;    /* a scan has finished at least once this visit */
-	bool     svc[WIFI_NSVC];   /* SSH, Samba; read on entry, only where WIFI_SVC_ROWS */
+	bool     svc[WIFI_NSVC];   /* SSH, Samba, Syncthing; read on entry, only where WIFI_SVC_ROWS */
 	bool     connected;  /* associated with an address: Over The Hare can run */
 	char     conn[WIFI_SSID_MAX + 72]; /* "<ssid> · <ip>" while connected, else empty */
+	char     st_ui[72];  /* Syncthing's web UI, "<ip>:8384", while connected */
 	const char *ra_name; /* the RetroAchievements account, NULL signed out */
 } wifi_ui;
 

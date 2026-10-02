@@ -4725,7 +4725,7 @@ static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
 
 	if (key != IN_ACCEPT) return MENU_STAY;
 
-	/* SSH and Samba, where the device has them. No confirm on turning SSH off,
+	/* SSH, Samba and Syncthing, where the device has them. No confirm on turning SSH off,
 	 * though it may be the only way in: the owner's call (gkd.10). */
 	if (sel >= WIFI_ROW_SVC && sel < WIFI_ROW_SVC + WIFI_SVC_ROWS) {
 		wifi_svc s = (wifi_svc)(sel - WIFI_ROW_SVC);
