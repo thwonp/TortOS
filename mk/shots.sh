@@ -59,10 +59,12 @@ nowplaying         --nowplaying 0 1 30
 nowplaying-paused  --nowplaying 0 1 30 --paused
 EOF
 
+# The vendored objects get their own directory: the host checks build the same
+# ones into build-native/tp with the host libc, which this image cannot link.
 docker run --rm -e TORTOS_WINDOW="${SHOT_WINDOW:-}" -v "$ROOT:/work" -v "$CARD:/card:O" -v "$OUT:/out" -w /work \
 	"$IMAGE" sh -c '
 set -e
-make -f mk/native.mk VERSION=shots > /out/.build.log 2>&1 ||
+make -f mk/native.mk VERSION=shots TP_OUT=build-native/tp-shots > /out/.build.log 2>&1 ||
 	{ tail -20 /out/.build.log; exit 1; }
 export TORTOS_ROOT=/card/TortOS TORTOS_CARD=/card TORTOS_ROMS=/card/Roms \
        TORTOS_USERDATA=/card/.userdata/tg3040 \

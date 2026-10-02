@@ -23,6 +23,12 @@ LDLIBS := $(shell pkg-config --libs $(PKGS)) -lm
 CREDS := $(BUILD)/ss_creds.h
 CFLAGS += -I$(BUILD)
 
+# Disc hashing's vendored code, as mk/cross.mk links it (plorpos-gkd.74).
+TP_OUT := $(BUILD)/tp
+TP_OPT := -O1
+include mk/third_party.mk
+CFLAGS += $(TP_CFLAGS)
+
 .PHONY: all creds
 all: creds $(BUILD)/tortos
 
@@ -36,6 +42,6 @@ creds:
 	@cmp -s $(CREDS).new $(CREDS) 2>/dev/null || mv -f $(CREDS).new $(CREDS)
 	@rm -f $(CREDS).new
 
-$(BUILD)/tortos: $(SRC) $(CREDS) $(wildcard src/*.h)
+$(BUILD)/tortos: $(SRC) $(CREDS) $(wildcard src/*.h) $(TP_OBJ)
 	mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -o $@ $(SRC) $(LDLIBS)
+	$(CC) $(CFLAGS) -o $@ $(SRC) $(TP_OBJ) $(LDLIBS)
