@@ -225,3 +225,53 @@ void chd_cdreader(rc_hash_cdreader_t *r)
 	r->close_track         = close_track;
 	r->first_track_sector  = first_track_sector;
 }
+
+/* ---------------------------------------------- the launcher's own reads */
+
+/* A playlist's first disc: its first line that is not blank or a comment,
+ * relative to the playlist. */
+static bool m3u_first(const char *path, char *out, size_t n)
+{
+	char line[512];
+	const char *slash = strrchr(path, '/');
+	FILE *f = fopen(path, "r");
+	bool ok = false;
+
+	if (!f) return false;
+	while (fgets(line, sizeof line, f)) {
+		line[strcspn(line, "\r\n")] = '\0';
+		if (!line[0] || line[0] == '#') continue;
+		if (line[0] == '/' || !slash)
+			ok = snprintf(out, n, "%s", line) < (int)n;
+		else
+			ok = snprintf(out, n, "%.*s/%s", (int)(slash - path), path, line) < (int)n;
+		break;
+	}
+	fclose(f);
+	return ok;
+}
+
+bool cd_read_head(const char *path, void *out, size_t n)
+{
+	char disc[1024];
+	const char *dot = strrchr(path, '.');
+	rc_hash_iterator_t it;
+	void *h;
+	size_t got = 0;
+
+	if (dot && !strcasecmp(dot, ".m3u")) {
+		if (!m3u_first(path, disc, sizeof disc)) return false;
+		path = disc;
+	}
+	/* Through an iterator, as rhash opens a track: rhash's own reader has no
+	 * open_track, only open_track_iterator, which reads the file through the
+	 * iterator's callbacks. */
+	rc_hash_get_default_cdreader(&g_default);
+	rc_hash_initialize_iterator(&it, path, NULL, 0);
+	if ((h = open_track_iterator(path, 1, &it))) {
+		got = read_sector(h, first_track_sector(h), out, n);
+		close_track(h);
+	}
+	rc_hash_destroy_iterator(&it);
+	return got == n;
+}

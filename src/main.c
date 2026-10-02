@@ -23,6 +23,7 @@
 #include "sort.h"
 #include "titles.h"
 #include "coverflow.h"
+#include "chdread.h"
 #include "library.h"
 #include "platform.h"
 #include "texload.h"
@@ -9965,6 +9966,22 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	return run_alone(a, argv, native_menu, native_tick);
 }
 
+/* The firmware file a disc on this shelf boots with. One per shelf, except a
+ * Sega CD on the Genesis shelf: genesis_plus_gx loads bios_CD_E, _J or _U by
+ * the disc's region, which it reads from the security code at 0x20B of the
+ * first sector (core/loadrom.c get_region). Same rule here, so the panel names
+ * the file the core would have asked for. An unreadable header falls back to
+ * systems.cfg's name, and the core says what it says. (plorpos-gkd.71) */
+static void disc_bios_for(const system_cfg *s, const char *rom, char *out, size_t n)
+{
+	unsigned char head[0x20C];
+
+	snprintf(out, n, "%s", s->disc_bios);
+	if (strcmp(s->tag, "MD") || !cd_read_head(rom, head, sizeof head)) return;
+	snprintf(out, n, "bios_CD_%c.bin",
+	         head[0x20B] == 0x64 ? 'E' : head[0x20B] == 0xA1 ? 'J' : 'U');
+}
+
 static void launch(app *a)
 {
 	sysview *v = &a->view[a->sys_cursor];
@@ -10015,13 +10032,14 @@ static void launch(app *a)
 	 * cartridge on the shelf because a CD would have needed one is a worse
 	 * failure than the one being fixed. */
 	if (s->disc_bios[0] && lib_is_disc(v->list.items[v->cursor].file)) {
-		char fw[CFG_STR * 3];
+		char fw[CFG_STR * 3], name[CFG_STR];
 
-		snprintf(fw, sizeof fw, "%s/%s", bios, s->disc_bios);
+		disc_bios_for(s, rom, name, sizeof name);
+		snprintf(fw, sizeof fw, "%s/%s", bios, name);
 		if (access(fw, R_OK) != 0) {
 			char msg[CFG_STR + 32];
 
-			snprintf(msg, sizeof msg, "needs Bios/%s", s->disc_bios);
+			snprintf(msg, sizeof msg, "needs Bios/%s", name);
 			wait_panel(a, v->list.items[v->cursor].title, msg);
 			SDL_Delay(2200);
 			plat_input_flush();

@@ -306,17 +306,19 @@ void ra_md5_hex(const void *data, size_t len, char *out)
  * as a ROM. A disc is hashed by what boots it, not by its bytes: the program
  * sectors its header names on a PC Engine CD, the executable SYSTEM.CNF names
  * on a PlayStation. That is rhash's job (RA's own code, vendored under
- * third_party/), reading one sector at a time. The PC Engine shelf mixes
- * HuCards and CDs, so there it goes by extension - and only the ones rhash
- * reads as a disc: any other it would read whole. */
+ * third_party/), reading one sector at a time. The PC Engine and Genesis
+ * shelves mix cartridges and CDs, so there it goes by extension - and only the
+ * ones rhash reads as a disc: any other it would read whole. A Genesis .bin
+ * stays a cartridge (plorpos-gkd.71). */
 static uint32_t disc_console(const char *tag, const char *path)
 {
 	const char *dot = strrchr(path, '.');
+	bool cd = dot && (!strcasecmp(dot, ".chd") || !strcasecmp(dot, ".cue") ||
+	                  !strcasecmp(dot, ".m3u"));
 
 	if (!strcmp(tag, "PS")) return RC_CONSOLE_PLAYSTATION;
-	if (!strcmp(tag, "PCE") && dot &&
-	    (!strcasecmp(dot, ".chd") || !strcasecmp(dot, ".cue") || !strcasecmp(dot, ".m3u")))
-		return RC_CONSOLE_PC_ENGINE_CD;
+	if (!strcmp(tag, "PCE") && cd) return RC_CONSOLE_PC_ENGINE_CD;
+	if (!strcmp(tag, "MD") && cd) return RC_CONSOLE_SEGA_CD;
 	return 0;
 }
 

@@ -43,13 +43,17 @@ static bool ext_allowed(const char *ext, const char *list)
 
 /* Is this filename a disc image? The shelf needs to know because a disc may
  * need firmware a cartridge on the same shelf does not - see disc_bios in
- * config.h. Same table the disc-folder ranking uses, so the two cannot drift. */
+ * config.h. Same table the disc-folder ranking uses, so the two cannot drift.
+ *
+ * Except .bin: on the Genesis shelf a .bin is a cartridge, and a disc kept as
+ * .bin tracks is launched through its .cue (disc_rank prefers it), so a .bin
+ * that reaches the shelf on its own is never the disc (plorpos-gkd.71). */
 bool lib_is_disc(const char *name)
 {
 	const char *ext = ext_of(name);
 	int i;
 
-	if (!ext) return false;
+	if (!ext || !strcasecmp(ext, "bin")) return false;
 	for (i = 0; DISC_EXTS[i]; i++)
 		if (strcasecmp(ext, DISC_EXTS[i]) == 0) return true;
 	return false;

@@ -25,7 +25,7 @@
  * not be read or the archive could not be opened.
  *
  * A disc - anything on the PlayStation shelf, a .chd/.cue/.m3u on the PC
- * Engine one - is hashed by RA's own rhash instead (third_party/, with
+ * Engine or Genesis one - is hashed by RA's own rhash instead (third_party/, with
  * chdread.c for CHD), a few sectors read, never the image. Anything else over
  * 64 MB is refused rather than read whole: no cartridge comes near it, and a
  * disc that reached the cartridge path would be hundreds of MB. */
