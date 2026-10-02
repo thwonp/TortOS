@@ -896,29 +896,20 @@ static char *dline(int timeout_ms)
 	}
 }
 
-/* launch.sh writes the pid when it starts Diatom. Verified against
- * /proc/<pid>/cmdline before any signal is sent: a stale file after a crash
- * and respawn would otherwise aim SIGTERM at whoever inherited the number. */
+/* Whoever is on the other end of the socket. Not a pid file: only the Brick's
+ * launch.sh wrote one, so on the GKD - and on the Brick after respawn_resident
+ * started Diatom - there was no pid to escalate to, and a core wedged inside
+ * retro_run kept the screen until someone ran kill -9 (plorpos-gkd.58). */
 static pid_t diatom_pid(void)
 {
-	char path[64], cmd[256];
-	FILE *f = fopen("/tmp/diatom.pid", "r");
-	long v = 0;
-	int fd, n;
+	struct ucred cr;
+	socklen_t len = sizeof cr;
 
-	if (!f) return -1;
-	if (fscanf(f, "%ld", &v) != 1) v = 0;
-	fclose(f);
-	if (v <= 0) return -1;
-
-	snprintf(path, sizeof path, "/proc/%ld/cmdline", v);
-	fd = open(path, O_RDONLY);
-	if (fd < 0) return -1;
-	n = (int)read(fd, cmd, sizeof cmd - 1);
-	close(fd);
-	if (n <= 0) return -1;
-	cmd[n] = '\0';
-	return strstr(cmd, "diatom") ? (pid_t)v : -1;
+	if (dsock < 0 ||
+	    getsockopt(dsock, SOL_SOCKET, SO_PEERCRED, &cr, &len) != 0 ||
+	    cr.pid <= 0)
+		return -1;
+	return cr.pid;
 }
 
 static char d_audio_dev[128];
