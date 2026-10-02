@@ -1,0 +1,142 @@
+diff --git a/platform/libretro/libretro.cpp b/platform/libretro/libretro.cpp
+index cfc84ab..130b510 100644
+--- a/platform/libretro/libretro.cpp
++++ b/platform/libretro/libretro.cpp
+@@ -518,10 +518,11 @@ EXPORT void retro_run()
+     frame++;
+ }
+ 
+-//lua memory is 2 MB in size. 1 MB enough for non-globals?
++//lua memory is 2 MB in size (fake08 does not enforce it, so a state that
++//does not fit makes the save fail rather than overrun the buffers)
+ //https://www.lexaloffle.com/dl/docs/pico-8_manual.html
+ //section 6.7: Memory
+-#define LUASTATEBUFFSIZE 1024*1024
++#define LUASTATEBUFFSIZE (2*1024*1024)
+ char luaStateBuffer[LUASTATEBUFFSIZE];
+ 
+ EXPORT size_t retro_serialize_size()
+@@ -559,16 +560,24 @@ EXPORT bool retro_serialize(void *data, size_t size)
+     if (log_cb) {
+         log_cb(RETRO_LOG_INFO, "setting up lua state buffer\n");
+     }
+-    char headerBuffer[SAVE_STATE_HEADER_SIZE] = {'f', '8', 0, 1};
+-    memcpy((char*)data, &headerBuffer, SAVE_STATE_HEADER_SIZE);
+-    
+     memset(luaStateBuffer, 0, LUASTATEBUFFSIZE);
+ 
+     if (log_cb) {
+         log_cb(RETRO_LOG_INFO, "serializing lua state\n");
+     }
++    // Before anything is written: a frontend may serialize straight into a
++    // buffer it keeps (a rewind ring), so a failed save must leave it intact.
++    size_t luaStateSize = _vm->serializeLuaState(luaStateBuffer, LUASTATEBUFFSIZE);
++    if (luaStateSize == 0) {
++        if (log_cb) {
++            log_cb(RETRO_LOG_WARN, "lua state does not fit in %d bytes, or failed to persist\n", LUASTATEBUFFSIZE);
++        }
++        return false;
++    }
++
++    char headerBuffer[SAVE_STATE_HEADER_SIZE] = {'f', '8', 0, 1};
++    memcpy((char*)data, &headerBuffer, SAVE_STATE_HEADER_SIZE);
+     size_t offset = SAVE_STATE_HEADER_SIZE;
+-    size_t luaStateSize = _vm->serializeLuaState(luaStateBuffer);
+ 
+     if (log_cb) {
+         log_cb(RETRO_LOG_INFO, "copying lua state size to buffer\n");
+@@ -628,12 +637,19 @@ bool deserialize_legacy(const void *data, size_t size) {
+     }
+     size_t offset = 0;
+     size_t luaStateSize;
++    if (size < sizeof(size_t)) {
++        return false;
++    }
+     memcpy(&luaStateSize, ((char*)data + offset),  sizeof(size_t));
+     offset += sizeof(size_t);
+ 
+     if (log_cb) {
+         log_cb(RETRO_LOG_INFO, "LEGACY got lua state size %d\n", luaStateSize);
+     }
++    if (luaStateSize > LUASTATEBUFFSIZE ||
++        size - offset < luaStateSize + sizeof(PicoRam) + sizeof(audioState_t)) {
++        return false;
++    }
+ 
+     if (log_cb) {
+         log_cb(RETRO_LOG_INFO, "LEGACY copying lua state\n");
+@@ -679,6 +695,9 @@ EXPORT bool retro_unserialize(const void *data, size_t size)
+     if (log_cb) {
+         log_cb(RETRO_LOG_INFO, "copying lua state from buffer to var\n");
+     }
++    if (size < SAVE_STATE_HEADER_SIZE) {
++        return false;
++    }
+     //read header
+     char headerBuffer[SAVE_STATE_HEADER_SIZE];
+     memcpy(&headerBuffer, data, SAVE_STATE_HEADER_SIZE);
+@@ -693,12 +712,26 @@ EXPORT bool retro_unserialize(const void *data, size_t size)
+ 
+     size_t offset = SAVE_STATE_HEADER_SIZE;
+     size_t luaStateSize;
++    if (size - offset < sizeof(size_t)) {
++        return false;
++    }
+     memcpy(&luaStateSize, ((char*)data + offset),  sizeof(size_t));
+     offset += sizeof(size_t);
+ 
+     if (log_cb) {
+         log_cb(RETRO_LOG_INFO, "got lua state size %d\n", luaStateSize);
+     }
++    // Check every size the state claims before restoring any of it.
++    if (luaStateSize > LUASTATEBUFFSIZE ||
++        size - offset < luaStateSize + 2*sizeof(size_t) + sizeof(PicoRam) + sizeof(musicChannel)) {
++        return false;
++    }
++    size_t storedRamSize, storedMusicSize;
++    memcpy(&storedRamSize, ((char*)data + offset + luaStateSize), sizeof(size_t));
++    memcpy(&storedMusicSize, ((char*)data + offset + luaStateSize + sizeof(size_t) + sizeof(PicoRam)), sizeof(size_t));
++    if (storedRamSize != sizeof(PicoRam) || storedMusicSize != sizeof(musicChannel)) {
++        return false;
++    }
+ 
+     if (log_cb) {
+         log_cb(RETRO_LOG_INFO, "copying lua state\n");
+diff --git a/source/vm.cpp b/source/vm.cpp
+index 5d665e1..48dbd24 100644
+--- a/source/vm.cpp
++++ b/source/vm.cpp
+@@ -1490,7 +1490,8 @@ std::string Vm::getLuaLine(string filename, int linenumber) {
+ }
+ 
+ 
+-size_t Vm::serializeLuaState(char* dest) {
++// Returns 0 when persisting fails or the state does not fit in cap.
++size_t Vm::serializeLuaState(char* dest, size_t cap) {
+     lua_getglobal(_luaState, "eris");
+ 	lua_getfield(_luaState, -1, "persist_all");
+ 
+@@ -1502,6 +1503,10 @@ size_t Vm::serializeLuaState(char* dest) {
+ 
+ 	size_t len;
+ 	const char* result = lua_tolstring(_luaState, -1, &len);
++    if (len > cap) {
++        lua_pop(_luaState, 2);
++        return 0;
++    }
+     memcpy(dest, result, len);
+ 	lua_pop(_luaState, 2);
+ 
+diff --git a/source/vm.h b/source/vm.h
+index 7206d7f..c221d5e 100644
+--- a/source/vm.h
++++ b/source/vm.h
+@@ -173,7 +173,7 @@ class Vm {
+     string getCartBreadcrumb();
+     string getCartParam();
+ 
+-    size_t serializeLuaState(char* dest);
++    size_t serializeLuaState(char* dest, size_t cap);
+     void deserializeLuaState(const char* src, size_t len);
+ };
+ 

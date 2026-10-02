@@ -18,7 +18,17 @@
 #   back RAM and the game drew itself over it. Re-enabled, the restore then
 #   corrupted the heap: eris hooks half-built protos into objects the
 #   incremental GC has already marked, so a GC step mid-restore frees them
-#   (found with ASan). The patch holds the GC for the restore.
+#   (found with ASan). The patch holds the GC for the restore. It also
+#   points the registry's __PICO8_SANDBOX (z8lua's nil-global fallback) at
+#   the restored sandbox: the cart coroutine sets it on its first frame, which
+#   a restore skips, so a resumed cart in a reused core ran the previous
+#   cart's _update60 and ignored input.
+#
+#   fake08-bound-lua.patch - the Lua state was copied into a fixed 1 MB buffer
+#   with no bound, and fake08 does not enforce PICO-8's 2 MB Lua limit (Ma
+#   Puzzle's state reached 2.5 MB). The budget is now 2 MB; a state that does
+#   not fit makes the save fail before anything is written, and a load checks
+#   every size the state claims before restoring any of it.
 #
 # The pin is the commit ROCKNIX ships (fake08-lr package.mk), which is also
 # upstream master as of 2026-10-01. z8lua is a submodule.
@@ -28,7 +38,7 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${1:-/tmp/tortos-fake08}
 PIN=814991a2571ad3970e386cef48f3b148aa1c27b9   # jtothebell/fake-08 master, 2026-06-13
-SHA=a31de7c112e3bf5633857e6605fd6a2b2200dc9e852f0bb913358379259c85e5
+SHA=16ddc401dc5c6079353de6e54d4fdf855914e713aef698d35962367041324af5
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
 
@@ -41,6 +51,7 @@ git checkout -q -f "$PIN"
 git submodule update -q --init --recursive
 git apply "$ROOT/mk/patches/fake08-load.patch"
 git apply "$ROOT/mk/patches/fake08-states.patch"
+git apply "$ROOT/mk/patches/fake08-bound-lua.patch"
 EPOCH=$(git log -1 --format=%ct)
 
 # Flags through the environment: the Makefile appends to CFLAGS and CXXFLAGS.
