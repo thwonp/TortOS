@@ -57,3 +57,15 @@ for Muse's card; where the photograph came from is not recorded here. The
 original is kept outside the repository in `cards_backup_photos/muse.png`, and
 `tools/genmusecard.py` cuts this card from it: trimmed to its alpha, longest
 side 96% of 384 and centred, in the 384 canvas because it is taller than wide.
+
+## PICO8.png
+
+Not a console either: PICO-8 is a fantasy console, so there is no hardware to
+photograph and it carries what it has instead, a cartridge. The frame is a
+PICO-8 cart image (Celeste's) with the cart data PICO-8 hides in the low two
+bits of every pixel masked off, its label replaced by the PICO-8 logo from the
+PICO-8 distribution (`lexaloffle-pico8.png`) and its two title lines by
+"PICO-8" in the frame's own letters. Nothing of the source cart is left. The
+frame and logo are Lexaloffle's trade dress and appear here to identify the
+platform, as the consoles do above. Scaled nearest x9 then LANCZOS to height
+369, centred in the 384 canvas because it is taller than wide.
