@@ -9648,12 +9648,21 @@ static void splore_add(const system_cfg *s, game_list *l)
  * into its root while it works, and one left by a quit mid-write was a
  * second "Splore" on the shelf (2026-10-02). PICO-8's own carts folder
  * under -home instead. */
+/*
+ * The shelf's Display Mode, as near as PICO-8's own flags come. Stretch is
+ * a draw_rect over the whole output, measured off the renderer before
+ * run_alone takes it down, so it is the panel's real size on either device.
+ * Both integer modes are pixel_perfect - PICO-8's pixels are square, so the
+ * two agree. Aspect is no flag at all, PICO-8's own fit, and so is any mode
+ * it has nothing like. Neither flag is saved in config.txt, so a run that
+ * passes none is not left with the last one's. */
 static int run_pico8(app *a, const char *bin, const char *folder,
-                     const char *rom, bool splore)
+                     const char *rom, bool splore, const char *dmode)
 {
 	char home[CFG_STR * 2], desk[CFG_STR * 2 + 16], root[CFG_STR * 2];
-	char *argv[12];
-	int n = 0;
+	char rect[48];
+	char *argv[16];
+	int n = 0, ow = 0, oh = 0, flags;
 
 	snprintf(home, sizeof home, "%s/Saves/pico-8", P_CARD);
 	snprintf(desk, sizeof desk, "%s/desktop", home);
@@ -9671,6 +9680,16 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	argv[n++] = (char *)"-root_path"; argv[n++] = root;
 	argv[n++] = (char *)"-desktop";   argv[n++] = desk;
 	argv[n++] = (char *)"-joystick";  argv[n++] = (char *)"0";
+	flags = n;
+	if (!strcmp(dmode, "stretch") &&
+	    SDL_GetRendererOutputSize(a->r, &ow, &oh) == 0 && ow > 0 && oh > 0) {
+		snprintf(rect, sizeof rect, "0,0,%d,%d", ow, oh);
+		argv[n++] = (char *)"-draw_rect"; argv[n++] = rect;
+	} else if (!strncmp(dmode, "integer", 7)) {
+		argv[n++] = (char *)"-pixel_perfect"; argv[n++] = (char *)"1";
+	}
+	fprintf(stderr, "pico8_64: display %s %s %s\n", dmode,
+	        n > flags ? argv[flags] : "-", n > flags ? argv[flags + 1] : "");
 	if (splore) argv[n++] = (char *)"-splore";
 	else { argv[n++] = (char *)"-run"; argv[n++] = (char *)rom; }
 	argv[n] = NULL;
@@ -9995,7 +10014,8 @@ static void launch(app *a)
 		 * power cut mid-session loses that session's time. */
 		stats_begin(s->tag, romfile, plat_now_ms());
 		fprintf(stderr, "pico8_64 exited %d\n",
-		        run_pico8(a, pico8, s->folder, rom, is_splore(s, romfile)));
+		        run_pico8(a, pico8, s->folder, rom, is_splore(s, romfile),
+		                  DMODES[a->view[o].dmode].name));
 		stats_asleep(plat_run_asleep_ms());
 		stats_end(NULL, plat_now_ms());
 		if (!a->running) return;
