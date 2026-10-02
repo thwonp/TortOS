@@ -58,10 +58,15 @@ def main():
 
         n = 0
         for p in files:
-            data = rac.rom_bytes(p)
-            if data is None:
-                continue
-            want = hashlib.md5(rac.ra_body(tag, data)).hexdigest()
+            if tag in ("ARCADE", "NEOGEO"):
+                # An arcade set is hashed by its name, not its contents.
+                name = os.path.splitext(os.path.basename(p))[0]
+                want = hashlib.md5(name.encode()).hexdigest()
+            else:
+                data = rac.rom_bytes(p)
+                if data is None:
+                    continue
+                want = hashlib.md5(rac.ra_body(tag, data)).hexdigest()
             have = got.get(p)
             total += 1
             n += 1

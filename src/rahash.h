@@ -24,6 +24,9 @@
  * `tag` is a systems.cfg tag - NES, SFC, MD, GB. False means the file could
  * not be read or the archive could not be opened.
  *
+ * An Arcade or Neo Geo set is hashed by its file name alone, the archive
+ * never opened (plorpos-gkd.57).
+ *
  * A disc - anything on the PlayStation shelf, a .chd/.cue/.m3u on the PC
  * Engine or Genesis one - is hashed by RA's own rhash instead (third_party/, with
  * chdread.c for CHD), a few sectors read, never the image. Anything else over
