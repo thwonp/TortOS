@@ -934,12 +934,20 @@ static bool has_box_art(const char *folder, const char *name)
 
 /* Where a card's own picture comes from: the box art, or failing that a
  * PICO-8 image cart, which IS its box art - nobody publishes covers for them
- * (plorpos-gkd.50.14). Reading only: the replace action keeps writing to
- * box_art_path, so a chosen picture wins and a cart is never written over. */
-static bool card_art_path(const char *folder, const game_entry *g, char *out, size_t n)
+ * (plorpos-gkd.50.14) - or for Splore, which is no file at all, the gold cart
+ * the launcher ships (plorpos-gkd.50.24). Reading only: the replace action
+ * keeps writing to box_art_path, so a chosen picture wins and a cart is never
+ * written over. */
+static bool card_art_path(const system_cfg *s, const game_entry *g, char *out, size_t n)
 {
+	const char *folder = s->folder;
 	size_t fl = strlen(g->file);
 	bool box = has_box_art(folder, g->name);
+
+	if (!box && is_splore(s, g->file)) {
+		snprintf(out, n, "%s/cards/splore.png", P_ROOT);
+		return true;
+	}
 
 	if (!box && fl > 7 && !strcasecmp(g->file + fl - 7, ".p8.png")) {
 		snprintf(out, n, "%s/%s/%s", P_ROMS, folder, g->file);
@@ -968,7 +976,7 @@ static SDL_Texture *game_get_tex(void *ctx, int i, int *w, int *h, float *cb)
 	} else if (!v->tex[i]) {
 		char art[LIB_PATH * 3], prev[LIB_PATH * 3];
 
-		card_art_path(a->sys.systems[o].folder, &v->list.items[i],
+		card_art_path(&a->sys.systems[o], &v->list.items[i],
 		              art, sizeof art);
 		preview_path(a, o, &v->list.items[i], prev, sizeof prev);
 		/* Hand it to the worker and draw nothing this frame. Asking is cheap
@@ -10361,7 +10369,7 @@ static void launch(app *a)
 		char art[LIB_PATH * 3];
 
 		if (v->tex[v->cursor] &&
-		    !card_art_path(a->sys.systems[o].folder, g, art, sizeof art)) {
+		    !card_art_path(&a->sys.systems[o], g, art, sizeof art)) {
 			SDL_DestroyTexture(v->tex[v->cursor]);
 			v->tex[v->cursor] = NULL;
 		}

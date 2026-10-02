@@ -69,3 +69,13 @@ PICO-8 distribution (`lexaloffle-pico8.png`) and its two title lines by
 frame and logo are Lexaloffle's trade dress and appear here to identify the
 platform, as the consoles do above. Scaled nearest x9 then LANCZOS to height
 369, centred in the 384 canvas because it is taller than wide.
+
+## ../splore.png
+
+Not a shelf card: the picture on the PICO-8 shelf's Splore entry, which has no
+cart file to be its own art. Made as PICO8.png above, at cart size (160x205,
+like every cart beside it): Celeste's cart frame with the cart data masked off,
+the PICO-8 logo for its label, "SPLORE" for its title in the frame's own 3x5
+letters (S and L drawn to match - the frame only spells PICO-8 CARTRIDGE), and
+the frame's greys turned gold so it stands apart from the carts. Nothing of the
+source cart is left; the frame and logo are Lexaloffle's trade dress, as above.
