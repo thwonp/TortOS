@@ -89,6 +89,10 @@ typedef struct {
 	 * whatever sits at index 0 is what an untouched card plays at - see the
 	 * note on DMODES itself. */
 	int dmode;
+	/* PICO-8's shelf only: run its carts with the owner's pico8_64 rather
+	 * than fake08. Zero is fake08, so a card nobody has touched - a new
+	 * install included - plays in diatom. */
+	bool native;
 	/* Index into SORTS. Zero is by name, which is what every shelf was
 	 * before this existed and what an untouched one still is. On Muse's
 	 * shelf an ml_order instead, whose zero is by artist. */
@@ -186,7 +190,8 @@ static void muse_order_view(sysview *v);
 static void album_art_screen(app *a);
 /* Same reason: Over The Hare is a screen up here and the scan is down there. */
 static void rescan_all(app *a);
-static bool runs_native(const system_cfg *s, const char *file);
+static bool is_pico8(const system_cfg *s);
+static bool is_splore(const system_cfg *s, const char *file);
 /* Wi-Fi Services opens both, and they are written after it. */
 static void ra_signin_screen(app *a);
 static void xfer_screen(app *a);
@@ -305,6 +310,31 @@ static void display_save(app *a)
 	}
 }
 
+/* engine.<TAG>, PICO-8's shelf only, beside display.<TAG>. No row means
+ * fake08: only a shelf someone has turned to native has one. */
+static void engine_load(app *a)
+{
+	char key[CFG_STR + 16], name[CFG_STR];
+	int i;
+
+	for (i = 0; i < a->sys.count; i++) {
+		if (!is_pico8(&a->sys.systems[i])) continue;
+		snprintf(key, sizeof key, "engine.%s", a->sys.systems[i].tag);
+		if (db_get_str(db_dev(), key, name, sizeof name, NULL))
+			a->view[i].native = !strcmp(name, "native");
+	}
+}
+
+static void engine_save(app *a, int sys)
+{
+	char key[CFG_STR + 16];
+
+	snprintf(key, sizeof key, "engine.%s", a->sys.systems[sys].tag);
+	db_set_str(db_dev(), key, a->view[sys].native ? "native" : "fake08");
+}
+
+#define ENGINE_LABEL(native) ((native) ? "Pico-8 Native" : "fake-08")
+
 /* ---------- per-system sort order ----------------------------------------- */
 
 /* Keyed on the tag for the same reason display.<TAG> is, and stored beside it.
@@ -372,7 +402,7 @@ static void sort_shelf(app *a, int sys)
 		return;
 	}
 	/* Splore stays first in every order: the carts sort behind it. */
-	if (v->list.count && runs_native(&a->sys.systems[sys], v->list.items[0].file))
+	if (v->list.count && is_splore(&a->sys.systems[sys], v->list.items[0].file))
 		sort_apply(v->list.items + 1, v->list.count - 1, v->sort,
 		           a->sys.systems[sys].tag);
 	else
@@ -4194,6 +4224,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.fav        = !u.muse && sc->core[0] == '\0' && sc->folder[0] == '\0';
 		u.game_count = a->view[sys].list.count;
 		u.dmode      = DMODES[a->view[sys].dmode].label;
+		u.engine     = is_pico8(sc) ? ENGINE_LABEL(a->view[sys].native) : NULL;
 		u.muse_books = u.muse && muse_books_shown();
 		u.muse_both  = u.muse && ml_count(&g_muse, true) && ml_count(&g_muse, false);
 		u.sort       = u.muse ? ml_order_label((ml_order)a->view[sys].sort, u.muse_books)
@@ -6414,6 +6445,12 @@ static int menu_shelf_width(app *a)
 			if (mw > w) w = mw;
 		}
 		if (!own) rows[SM_DISPLAY].value = DMODES[0].label;
+		for (k = 0; !own && is_pico8(&a->sys.systems[i]) && k < 2; k++) {
+			int mw;
+			rows[SM_CORE].value = ENGINE_LABEL(k);
+			mw = menu_measure(rows, n, heading);
+			if (mw > w) w = mw;
+		}
 		for (k = 0; k < (muse ? ML_ORDERS : SORT_COUNT); k++) {
 			int mw;
 			rows[srow].value = muse ? ml_order_label((ml_order)k, false) : SORTS[k].label;
@@ -6875,6 +6912,18 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		 * knew that from the day the menu was cut to two rows, and left and
 		 * right on Favorites' Sort By did nothing at all. */
 		if (a->view[a->sys_cursor].owner) sel = sel == 1 ? SM_SORT : SM_GAMES;
+		/* PICO-8's engine, fake08 or the owner's pico8_64. Two values, so
+		 * left, right and A all turn it over, saved at once like Display
+		 * Mode. No check for the binary here: a missing one says so at
+		 * launch, the same as Splore. */
+		if (sel == SM_CORE && (d || key == IN_ACCEPT) &&
+		    is_pico8(&a->sys.systems[a->sys_cursor])) {
+			sysview *v = &a->view[a->sys_cursor];
+
+			v->native = !v->native;
+			engine_save(a, a->sys_cursor);
+			return MENU_STAY;
+		}
 		/* Display mode, saved the moment it changes because there is no
 		 * confirm step to hang the write off. */
 		if (d && sel == SM_DISPLAY) {
@@ -9557,7 +9606,7 @@ static bool is_pico8(const system_cfg *s) { return !strcmp(s->core, "fake08"); }
 
 /* Splore is PICO-8's own cart browser, so it is native whatever the shelf
  * runs. Its entry has no extension, so no file on the card can be it. */
-static bool runs_native(const system_cfg *s, const char *file)
+static bool is_splore(const system_cfg *s, const char *file)
 {
 	return is_pico8(s) && !strcmp(file, SPLORE);
 }
@@ -9695,7 +9744,9 @@ static void launch(app *a)
 
 	/* Native PICO-8 with no pico8_64 is said, the same way, rather than
 	 * quietly run on fake08: the player asked for the real one. */
-	native = runs_native(s, romfile);
+	/* The owner's choice, not the shelf's: a favorite runs the way it
+	 * would from PICO-8's own shelf. */
+	native = is_splore(s, romfile) || (is_pico8(s) && a->view[o].native);
 	pico8_bin(pico8, sizeof pico8);
 	if (native && access(pico8, X_OK) != 0) {
 		wait_panel(a, v->list.items[v->cursor].title, "needs Bios/pico8_64");
@@ -9944,7 +9995,7 @@ static void launch(app *a)
 		 * power cut mid-session loses that session's time. */
 		stats_begin(s->tag, romfile, plat_now_ms());
 		fprintf(stderr, "pico8_64 exited %d\n",
-		        run_pico8(a, pico8, s->folder, rom, runs_native(s, romfile)));
+		        run_pico8(a, pico8, s->folder, rom, is_splore(s, romfile)));
 		stats_asleep(plat_run_asleep_ms());
 		stats_end(NULL, plat_now_ms());
 		if (!a->running) return;
@@ -10754,6 +10805,7 @@ static void rescan_all(app *a)
 
 	scan_all(a);
 	display_load(a);     /* indexes by tag, so it is safe to run again */
+	engine_load(a);
 	sort_load(a);
 	sort_all(a);
 
@@ -11591,6 +11643,7 @@ int main(int argc, char *argv[])
 	/* After the scan, because it indexes by system, and before anything can
 	 * launch, because the mode has to reach Diatom with the first RUN. */
 	display_load(&a);
+	engine_load(&a);
 	sort_load(&a);
 	sort_all(&a);
 	t_mark("scan");

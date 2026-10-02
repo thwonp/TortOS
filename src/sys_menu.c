@@ -79,7 +79,8 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 			return n;
 		}
 		out[SM_GAMES]   = (menu_row){ "Games",         b->a,        false };
-		out[SM_CORE]    = (menu_row){ "Core",          b->b,        false };
+		out[SM_CORE]    = (menu_row){ "Core", u->engine ? u->engine : b->b,
+		                              u->engine != NULL };
 		out[SM_SORT]    = (menu_row){ "Sort By",
 		                              u->sort ? u->sort : "Name", true  };
 		out[SM_DISPLAY] = (menu_row){ "Display Mode",  u->dmode,    true  };
@@ -94,7 +95,8 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 		 * Show read "All games" because that string was written here and
 		 * nothing could ever change it. Games and Core are dead rows too and
 		 * they stay, because what they report is true - the shelf's count and
-		 * the core that will run it. The filter Show promised is on the shelf
+		 * the core that will run it. Except on PICO-8's shelf, where Core is
+		 * the switch between fake08 and the owner's pico8_64. The filter Show promised is on the shelf
 		 * already: Y marks a favorite and Favorites is its own shelf. */
 		/* out[SM_BUTTONS] = (menu_row){ "Button Mapping", NULL,    false }; */
 		/* Just this system. Needs the network like its counterpart in the
