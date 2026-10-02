@@ -7385,7 +7385,10 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 {
 	gm_ui u;
 
-	u.dmode  = DMODES[a->view[a->sys_cursor].dmode].label;
+	/* The owner's, the mode gm_cycle_display changes: on Favorites the
+	 * shelf's own is never set, so the label read Stretch whatever the
+	 * game was playing at (plorpos-gkd.64). */
+	u.dmode  = DMODES[owner_view(a)->dmode].label;
 	u.earned = chv_earned();
 	u.total  = chv_count();
 	return gm_rows(&u, out, b);
