@@ -47,6 +47,11 @@ bool power_key_within(int ms, int value);
 /* The node Menu arrives on and its key code, for plat_run's on_menu;
  * device file. -1 when the device does not offer it there. */
 int  menu_key(int *code);
+/* The node the volume keys (KEY_VOLUMEUP/DOWN) arrive on, for plat_run;
+ * -1 when the device does not offer it there. */
+int  levels_fd(void);
+/* Whether Home is held now, which makes the volume keys brightness keys. */
+bool levels_alt(void);
 /* Take a frozen child's window off the screen for plat_run's menu. While it
  * is hidden the pad is the launcher's alone, so what is pressed in the menu
  * is not replayed to the child when it thaws. false: this device cannot, and

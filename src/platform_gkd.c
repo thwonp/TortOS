@@ -234,6 +234,18 @@ int menu_key(int *code)
 	return fd_pad;
 }
 
+int levels_fd(void) { return fd_keys; }
+
+/* Asked of the kernel, not home_down: while plat_run has the pad, only it
+ * reads it, and only for Menu. */
+bool levels_alt(void)
+{
+	unsigned char bits[KEY_MAX / 8 + 1] = { 0 };
+
+	return fd_pad >= 0 && ioctl(fd_pad, EVIOCGKEY(sizeof bits), bits) >= 0 &&
+	       (bits[BTN_TRIGGER_HAPPY1 / 8] >> (BTN_TRIGGER_HAPPY1 % 8) & 1);
+}
+
 /* A helper to completion - swaymsg - with its chatter kept out of the
  * log. true when it ran and said 0. */
 static bool helper(char *const argv[])

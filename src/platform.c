@@ -423,6 +423,12 @@ static void run_end(pid_t pid)
 	kill(pid, SIGKILL);
 	waitpid(pid, &status, 0);
 }
+
+static void level_nudge(bool bright, int d)
+{
+	if (bright) plat_brightness_nudge(d);
+	else        plat_volume_nudge(d);
+}
 #endif
 
 int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
@@ -452,19 +458,47 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	bool pwr_down = false;
 	int menu_code = 0;
 	int fd_menu = on_menu ? menu_key(&menu_code) : -1;
-	struct pollfd pfd[2] = { { fd_power, POLLIN, 0 }, { fd_menu, POLLIN, 0 } };
+	int fd_lv = levels_fd();
+	struct pollfd pfd[3] = { { fd_power, POLLIN, 0 }, { fd_menu, POLLIN, 0 },
+	                         { fd_lv, POLLIN, 0 } };
 	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
 		; /* drain stale events */
 	while (fd_menu >= 0 && read(fd_menu, &ev, sizeof ev) == (ssize_t)sizeof ev)
 		;
+	while (fd_lv >= 0 && read(fd_lv, &ev, sizeof ev) == (ssize_t)sizeof ev)
+		;
+	/* The volume keys as in the menus: volume, or brightness with Home held
+	 * at the press, stepping again while held (plorpos-gkd.50.19). */
+	int lv_step = 0;        /* +1/-1 while one is held */
+	bool lv_bright = false;
+	unsigned lv_next = 0;   /* when the held key steps again */
 	unsigned term_at = 0;   /* when TERM went, 0: not ending it */
 	for (;;) {
 		pid_t r = waitpid(pid, &status, WNOHANG);
 		if (r == pid) break;
 		if (r < 0) { free(env); return -1; }
-		poll(pfd, 2, 100);
+		int wait = 100;
+		if (lv_step) {
+			int due = (int)(lv_next - plat_now_ms());
+			wait = due < 0 ? 0 : due < wait ? due : wait;
+		}
+		poll(pfd, 3, wait);
 		bool quit = false, menu = false;
 		if (on_tick && !term_at) child_quiet(pid, on_tick(ctx));
+		while (fd_lv >= 0 && read(fd_lv, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+			int d = ev.code == KEY_VOLUMEUP ? 1 : ev.code == KEY_VOLUMEDOWN ? -1 : 0;
+			if (ev.type != EV_KEY || !d || ev.value == 2) continue;
+			if (ev.value == 1) {
+				lv_step = d;
+				lv_bright = levels_alt();
+				lv_next = plat_now_ms() + REPEAT_DELAY_MS;
+				level_nudge(lv_bright, d);
+			} else if (d == lv_step) lv_step = 0;
+		}
+		if (lv_step && (int)(plat_now_ms() - lv_next) >= 0) {
+			lv_next = plat_now_ms() + REPEAT_RATE_MS;
+			level_nudge(lv_bright, lv_step);
+		}
 		while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
 			if (ev.type == EV_KEY && ev.code == KEY_POWER)
 				pwr_down = ev.value != 0;

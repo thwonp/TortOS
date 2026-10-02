@@ -256,6 +256,10 @@ int menu_key(int *code)
 	return -1;
 }
 
+/* Not wired either: plorpos-gkd.50.13. */
+int levels_fd(void) { return -1; }
+bool levels_alt(void) { return false; }
+
 /* No compositor to take a frozen window off the screen, and Menu never gets
  * here anyway (menu_key). plorpos-gkd.50.13. */
 bool child_hide(pid_t pid) { (void)pid; return false; }
