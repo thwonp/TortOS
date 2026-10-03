@@ -396,6 +396,42 @@ static void palette_save(const game_entry *g, int i)
 	db_set_str(db_lib(), key, gbpal_label(i));
 }
 
+/* disc.<TAG>.<file>, the disc an .m3u game was last on (plorpos-gkd.47),
+ * 0-based as diatom counts them. Sent on RUN so a game resumed from its
+ * auto-state finds the disc it was saved on in the drive. -1: not an .m3u,
+ * or never swapped. */
+static bool is_m3u(const char *file)
+{
+	size_t n = strlen(file);
+	return n > 4 && !strcasecmp(file + n - 4, ".m3u");
+}
+
+static void disc_key(char *key, size_t n, const char *tag, const game_entry *g)
+{
+	const char *base = strrchr(g->file, '/');
+	snprintf(key, n, "disc.%s.%s", tag, base ? base + 1 : g->file);
+}
+
+static int disc_of(app *a, int sys, const game_entry *g)
+{
+	char key[LIB_PATH + CFG_STR + 16];
+
+	if (!is_m3u(g->file)) return -1;
+	disc_key(key, sizeof key, a->sys.systems[sys].tag, g);
+	return db_get_int(db_lib(), key, -1);
+}
+
+static void disc_save(app *a, int sys, const game_entry *g, int i)
+{
+	char key[LIB_PATH + CFG_STR + 16];
+
+	disc_key(key, sizeof key, a->sys.systems[sys].tag, g);
+	db_set_int(db_lib(), key, i);
+}
+
+/* What diatom said when the in-game menu opened: count 0 = no Disc row. */
+static struct { int index, count; char label[24]; } g_disc;
+
 /* engine.<TAG>, PICO-8's shelf only, beside display.<TAG>. No row means
  * fake08: only a shelf someone has turned to native has one. */
 static void engine_load(app *a)
@@ -7560,6 +7596,7 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 		int pal = palette_of(a, o, &sv->list.items[sv->cursor]);
 		u.palette = pal < 0 ? NULL : gbpal_label(pal);
 	}
+	u.disc   = g_disc.count > 1 ? g_disc.label : NULL;
 	u.earned = chv_earned();
 	u.total  = chv_count();
 	return gm_rows(&u, out, b);
@@ -9332,6 +9369,14 @@ static int gm_width(app *a)
 		mw = gm_measure(rows);
 		if (mw > w) w = mw;
 	}
+	for (k = 0; k < g_disc.count && rows[GM_DISC].live; k++) {
+		char l[16];
+		int mw;
+		snprintf(l, sizeof l, "Disc %d", k + 1);
+		rows[GM_DISC].value = l;
+		mw = gm_measure(rows);
+		if (mw > w) w = mw;
+	}
 	return w;
 }
 
@@ -9677,6 +9722,91 @@ static void palette_screen(app *a, gm_ctx *gm)
 	menu_run(a, &st, pal_build, pal_key, &c);
 }
 
+/* The in-game Disc list (plorpos-gkd.47), an .m3u game's own. Same shape as
+ * the Palette list above; the disc is kept per game for the next launch. */
+#define GM_DISC_MAX 8   /* the most discs a list shows; PlayStation sets stop at 5 */
+typedef struct {
+	gm_ctx           *gm;
+	const game_entry *g;
+	int               sys;
+} disc_ctx;
+
+static void disc_note(int index, int count)
+{
+	g_disc.index = index;
+	g_disc.count = count;
+	snprintf(g_disc.label, sizeof g_disc.label, "Disc %d", index + 1);
+}
+
+/* Asked once, as the menu opens, and only of an .m3u game: everything else
+ * pays nothing and draws no row. */
+static void disc_query(app *a)
+{
+	sysview *sv = &a->view[a->sys_cursor];
+	unsigned t0;
+	int i, n;
+
+	g_disc.count = 0;
+	if (sv->list.count == 0 || !is_m3u(sv->list.items[sv->cursor].file)) return;
+	t0 = SDL_GetTicks();
+	if (plat_resident_line("DISC") && plat_resident_disc(&i, &n, 150))
+		disc_note(i, n);
+	fprintf(stderr, "disc: %d of %d (%u ms)\n", g_disc.index + 1, g_disc.count,
+	        SDL_GetTicks() - t0);
+}
+
+static int disc_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	static char label[GM_DISC_MAX][16];
+	int i, n = g_disc.count < max ? g_disc.count : max;
+
+	(void)ctx;
+	if (n > GM_DISC_MAX) n = GM_DISC_MAX;
+	for (i = 0; i < n; i++) {
+		snprintf(label[i], sizeof label[i], "Disc %d", i + 1);
+		rows[i] = (menu_row){ label[i], i == g_disc.index ? "Current" : NULL, true };
+	}
+	*heading = "Disc";
+	return n;
+}
+
+/* A swaps the disc in the paused game and keeps it for this game. diatom
+ * opens the tray now and closes it once the game has run a second, so the
+ * game sees the lid open; the swap is answered either way. */
+static menu_result disc_key_cb(app *a, void *ctx, in_button key, int sel)
+{
+	disc_ctx *c = ctx;
+	int i, n;
+
+	if (key != IN_ACCEPT) return MENU_STAY;
+	if (sel == g_disc.index) return MENU_DONE;
+	if (plat_resident_line("SETDISC\tindex=%d", sel) &&
+	    plat_resident_disc(&i, &n, 500)) {
+		disc_note(i, n);
+		if (i == sel) disc_save(a, c->sys, c->g, i);
+	}
+	fprintf(stderr, "disc: asked for %d, in the drive %d\n", sel + 1, g_disc.index + 1);
+	return MENU_DONE;
+}
+
+static void disc_backdrop(app *a, void *ctx) { gm_backdrop(a, ((disc_ctx *)ctx)->gm); }
+static menu_result disc_power(app *a, void *ctx) { return gm_power(a, ((disc_ctx *)ctx)->gm); }
+
+static void disc_screen(app *a, gm_ctx *gm)
+{
+	sysview *sv = &a->view[a->sys_cursor];
+	disc_ctx c = { gm, &sv->list.items[sv->cursor],
+	               shelf_owner(a, a->sys_cursor, sv->cursor) };
+	menu_style st = gm->st;
+
+	if (g_disc.count < 2) return;
+	st.fixed_w  = 0;
+	st.backdrop = disc_backdrop;
+	st.on_power = disc_power;
+	st.start    = g_disc.index;
+	menu_run(a, &st, disc_build, disc_key_cb, &c);
+}
+
 static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 {
 	gm_ctx *c = ctx;
@@ -9739,6 +9869,9 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	case GM_PALETTE:
 		palette_screen(a, c);
 		break;
+	case GM_DISC:
+		disc_screen(a, c);
+		break;
 	case GM_CHEEVOS:
 		cheevos_screen(a, c->bg, false);
 		break;
@@ -9792,6 +9925,7 @@ static void game_menu(app *a)
 			SDL_FreeSurface(sf);
 		}
 	}
+	disc_query(a);
 	/* Measured across every mode label, so cycling Display does not resize
 	 * the panel underneath the cursor. */
 	c.st.fixed_w     = gm_width(a);
@@ -10248,8 +10382,11 @@ static void launch(app *a)
 	 * loader's own cap so the two cannot drift apart: the previous 20 was
 	 * already 18 full, and a silent bound check would have dropped every
 	 * option rather than failing loudly. */
-	char *argv[20 + 2 * 32 + 4];   /* and the palette's two (plorpos-gkd.76) */
+	char *argv[20 + 2 * 32 + 6];   /* and the palette's two (plorpos-gkd.76),
+	                                * and --disc (plorpos-gkd.47) */
 	char palp[64] = "", palc[64] = "";
+	char discs[16] = "";
+	int  disc;   /* 0-based; -1 = the core's choice (plorpos-gkd.47) */
 	bool resident = false, want_menu, native;
 	char pico8[CFG_STR * 2];
 	int n = 0;
@@ -10270,6 +10407,7 @@ static void launch(app *a)
 		int pal = palette_of(a, o, &v->list.items[v->cursor]);
 		if (pal >= 0) gbpal_opts(pal, palp, sizeof palp, palc, sizeof palc);
 	}
+	disc = disc_of(a, o, &v->list.items[v->cursor]);
 #if defined(PLATFORM_GKD)
 	/* Each shelf's saves in a folder named as its Roms folder, so the same
 	 * title on two shelves cannot share one .srm, and a core's own files
@@ -10424,6 +10562,7 @@ static void launch(app *a)
 			.resume = st, .exit_state = st, .preview = pv, .save = save,
 			.console = console, .cheevos = active[0] ? active : NULL,
 			.opts = { palp[0] ? palp : NULL, palc[0] ? palc : NULL },
+			.disc = disc + 1,
 		};
 		if (plat_resident_send(&g)) {
 			int r;
@@ -10618,6 +10757,10 @@ static void launch(app *a)
 		argv[n++] = (char *)DMODES[a->view[o].dmode].name;
 		argv[n++] = (char *)"--load-state";      argv[n++] = st;
 		argv[n++] = (char *)"--state-on-exit";   argv[n++] = st;
+		if (disc >= 0) {
+			snprintf(discs, sizeof discs, "%d", disc);
+			argv[n++] = (char *)"--disc";        argv[n++] = discs;
+		}
 		/* The Auto card's own path here, not the scratch the resident mode
 		 * uses. Standalone has no in-game menu - the launcher is torn down -
 		 * so nothing can overwrite it mid-session, and it is written once at

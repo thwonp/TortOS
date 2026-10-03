@@ -93,8 +93,8 @@ int gi_rows(menu_row *out, const game_info *gi, bool net)
 int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 {
 	static const char *label[GM_ROWS] = {
-		"Continue", "Save", "Load", "Display", "Shader", "Palette", "Cheevos",
-		"Hotkeys", "Reset", "Quit"
+		"Continue", "Save", "Load", "Display", "Shader", "Palette", "Disc",
+		"Cheevos", "Hotkeys", "Reset", "Quit"
 	};
 	int i;
 
@@ -109,6 +109,11 @@ int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 	 * one - anything else says None and is passed over. */
 	out[GM_PALETTE].value = u->palette ? u->palette : "None";
 	out[GM_PALETTE].live  = u->palette != NULL;
+	/* Under Palette, and only for a game launched from an .m3u whose core
+	 * has more than one disc to offer - the player's rule: no Disc row on
+	 * anything that cannot have a second disc. */
+	out[GM_DISC].value = u->disc ? u->disc : "None";
+	out[GM_DISC].live  = u->disc != NULL;
 
 	/* Most of a library has no set, and a row that says so plainly is better
 	 * than one that is missing: "none" answers the question the player opened
@@ -129,7 +134,8 @@ int gm_compact(menu_row *rows, int n, int *ids)
 	int i, k = 0;
 
 	for (i = 0; i < n; i++) {
-		if ((i == GM_SHADER || i == GM_PALETTE) && !rows[i].live) continue;
+		if ((i == GM_SHADER || i == GM_PALETTE || i == GM_DISC) && !rows[i].live)
+			continue;
 		rows[k] = rows[i];
 		ids[k++] = i;
 	}

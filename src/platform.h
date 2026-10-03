@@ -159,6 +159,7 @@ typedef struct {
 	int         console;
 	const char *cheevos;
 	const char *opts[2];
+	int         disc;   /* an .m3u's disc to start on, 1-based; 0 = the core's choice (plorpos-gkd.47) */
 } plat_game;
 bool plat_resident_send(const plat_game *g);
 int  plat_resident_wait(void);
@@ -246,6 +247,10 @@ bool plat_resident_sync_rect(int timeout_ms);   /* false: timed out, or ERROR */
 /* Read replies for up to timeout_ms until Diatom confirms the SAVE to path
  * (its SAVED line). False on an ERROR, a timeout, or no Diatom at all. */
 bool plat_resident_saved(const char *path, int timeout_ms);
+/* Read replies for up to timeout_ms until Diatom's DISC line, the answer to a
+ * DISC or a SETDISC (plorpos-gkd.47). index is 0-based; count 0 means the core
+ * has no disc to swap. False on a timeout or no Diatom at all. */
+bool plat_resident_disc(int *index, int *count, int timeout_ms);
 
 void plat_request_poweroff(void);
 void plat_leds_off(void);

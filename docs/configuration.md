@@ -77,6 +77,16 @@ Every Game Boy launch sends the game's `mgba_gb_colors_preset` and
 `mgba_gb_colors` after the core options above, so a `coreopt.GB.mgba_gb_colors`
 stored on an older card is overridden. A save state does not carry the palette.
 
+**Multi-disc games** are a folder holding the discs and an `.m3u` that lists
+them, one file name per line (`Roms/PlayStation/Policenauts/Policenauts.m3u`);
+the folder shows on the shelf as one game. A game launched from an `.m3u` gets
+a **Disc** row in the in-game menu, under Palette, whenever the core reports
+more than one disc. Picking a disc opens the virtual tray, swaps, and closes it
+after a second of play, which is when a game waiting for "insert disc 2" notices.
+The choice is stored as `disc.<TAG>.<m3u file>` (0-based) and sent at the next
+launch, so a game resumed from its auto-state finds the disc it was saved on.
+Every disc shares the one memory card, named after the `.m3u`.
+
 One trap worth repeating: **a resume state beats these.** A save state carries
 the machine it was made on, so changing an option that selects hardware will not
 appear to work on a game you have already played. Test on a game that has never

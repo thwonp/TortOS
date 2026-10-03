@@ -852,14 +852,18 @@ bool plat_resident_send(const plat_game *g)
 		 * opening seconds and Diatom cannot evaluate what it has not been
 		 * given yet. Both are ignored by an older Diatom, which is what
 		 * ADR-0009 promises about unknown keys. */
+		/* disc= only when there is one to ask for: absent is the core's own
+		 * choice, and diatom reads 0 as the first disc (plorpos-gkd.47). */
+		char disc[24] = "";
+		if (g->disc > 0) snprintf(disc, sizeof disc, "\tdisc=%d", g->disc - 1);
 		if (!dsend("RUN\tcore=%s\trom=%s\ttag=%s"
 		           "\tresume=%s\texit_state=%s\tpreview=%s\tsave=%s"
-		           "\tconsole=%d\tcheevos=%s",
+		           "\tconsole=%d\tcheevos=%s%s",
 		           g->core, g->rom, tag,
 		           g->resume ? g->resume : "",
 		           g->exit_state ? g->exit_state : "",
 		           g->preview ? g->preview : "", g->save ? g->save : "",
-		           g->console, g->cheevos ? g->cheevos : ""))
+		           g->console, g->cheevos ? g->cheevos : "", disc))
 			return false;
 
 		/* AFTER RUN, never before: RUN resets the map to identity (Diatom's
@@ -1128,6 +1132,31 @@ bool plat_resident_saved(const char *path, int timeout_ms)
 			return true;
 		if (strncmp(l, "ERROR\t", 6) == 0) return false;
 		if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
+		else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
+		else if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
+	}
+	return false;
+}
+
+bool plat_resident_disc(int *index, int *count, int timeout_ms)
+{
+	unsigned t0 = SDL_GetTicks();
+	char *l;
+
+	if (dsock < 0) return false;
+	while ((int)(SDL_GetTicks() - t0) < timeout_ms) {
+		l = dline(timeout_ms - (int)(SDL_GetTicks() - t0));
+		if (!l) break;
+		/* A refused SETDISC says ERROR and then DISC anyway, so the ERROR
+		 * is logged and the wait goes on for the state it leaves. */
+		if (strncmp(l, "DISC\t", 5) == 0) {
+			const char *i = strstr(l, "\tindex="), *n = strstr(l, "\tcount=");
+			*index = i ? atoi(i + 7) : 0;
+			*count = n ? atoi(n + 7) : 0;
+			return true;
+		}
+		if (strncmp(l, "ERROR\t", 6) == 0) fprintf(stderr, "resident: %s\n", l);
+		else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
 		else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
 		else if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
 	}

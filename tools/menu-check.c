@@ -837,10 +837,11 @@ static void info_rows(void)
 
 /* ---------- the in-game menu ---------------------------------------------- */
 
-/* Cheevos, Shader and Palette are the only rows that can be dead (and the last
- * two are then not drawn at all - gm_compact): Cheevos
+/* Cheevos, Shader, Palette and Disc are the only rows that can be dead (and the
+ * last three are then not drawn at all - gm_compact): Cheevos
  * exactly when the game has no set, Shader exactly when there is no list (every
- * Brick), Palette exactly when the game is not a Game Boy game.
+ * Brick), Palette exactly when the game is not a Game Boy game, Disc exactly
+ * when the game was not launched from an .m3u with discs to swap.
  * Everything else is always something A does. */
 static void ingame_rows(void)
 {
@@ -851,10 +852,11 @@ static void ingame_rows(void)
 
 	u.dmode = "Native"; u.earned = 12; u.total = 40;
 	u.shader = "Real LCD"; u.shaders = true; u.palette = "GB Pocket";
+	u.disc = "Disc 2";
 	n = gm_rows(&u, rows, &b);
 
 	printf("in-game menu, a game with a set:\n");
-	ck(n == GM_ROWS, "ten rows");
+	ck(n == GM_ROWS, "eleven rows");
 	ck(!strcmp(rows[GM_CONTINUE].label, "Continue"), "Continue leads");
 	ck(!strcmp(val(&rows[GM_DISPLAY]), "Native"), "Display carries the mode");
 	ck(GM_SHADER == GM_DISPLAY + 1 && !strcmp(rows[GM_SHADER].label, "Shader"),
@@ -865,6 +867,10 @@ static void ingame_rows(void)
 	   "Palette is under Shader (plorpos-gkd.76)");
 	ck(!strcmp(val(&rows[GM_PALETTE]), "GB Pocket"), "and carries the game's palette");
 	ck(rows[GM_PALETTE].live, "and is reachable on a Game Boy game");
+	ck(GM_DISC == GM_PALETTE + 1 && !strcmp(rows[GM_DISC].label, "Disc"),
+	   "Disc is under Palette (plorpos-gkd.47)");
+	ck(!strcmp(val(&rows[GM_DISC]), "Disc 2"), "and carries the disc in the drive");
+	ck(rows[GM_DISC].live, "and is reachable on an .m3u game");
 	ck(!strcmp(val(&rows[GM_CHEEVOS]), "12 / 40"), "Cheevos counts the set");
 	ck(rows[GM_CHEEVOS].live, "and is reachable");
 	ck(!strcmp(rows[GM_CHEEVOS + 1].label, "Hotkeys"),
@@ -904,16 +910,21 @@ static void ingame_rows(void)
 	ck(holds(got, k, GM_HOTKEYS), "and the rows below it still work");
 
 	{
-		int ids[GM_ROWS], i, m, shader = 0, palette = 0;
+		int ids[GM_ROWS], i, m, shader = 0, palette = 0, disc = 0;
 
+		u.disc = NULL;
+		n = gm_rows(&u, rows, &b);
+		ck(!strcmp(val(&rows[GM_DISC]), "None") && !rows[GM_DISC].live,
+		   "Disc says None and does nothing on a game not launched from an .m3u");
 		m = gm_compact(rows, n, ids);
-		printf("in-game menu as drawn, a Brick's Game Boy-less game:\n");
-		ck(m == GM_ROWS - 2, "Shader and Palette are not drawn at all");
+		printf("in-game menu as drawn, a Brick's Game Boy-less, one-disc game:\n");
+		ck(m == GM_ROWS - 3, "Shader, Palette and Disc are not drawn at all");
 		for (i = 0; i < m; i++) {
 			if (!strcmp(rows[i].label, "Shader")) shader = 1;
 			if (!strcmp(rows[i].label, "Palette")) palette = 1;
+			if (!strcmp(rows[i].label, "Disc")) disc = 1;
 		}
-		ck(!shader && !palette, "neither label is anywhere");
+		ck(!shader && !palette && !disc, "no such label is anywhere");
 		ck(ids[GM_SHADER] == GM_CHEEVOS && !strcmp(rows[GM_SHADER].label, "Cheevos"),
 		   "the row under Display reads back as Cheevos");
 		ck(ids[m - 1] == GM_QUIT && !strcmp(rows[m - 1].label, "Quit"),
@@ -923,8 +934,17 @@ static void ingame_rows(void)
 
 		u.shaders = true; u.palette = "Auto";
 		n = gm_rows(&u, rows, &b);
-		ck(gm_compact(rows, n, ids) == GM_ROWS && ids[GM_PALETTE] == GM_PALETTE,
-		   "a Game Boy game on the GKD draws every row");
+		m = gm_compact(rows, n, ids);
+		ck(m == GM_ROWS - 1 && ids[GM_PALETTE] == GM_PALETTE &&
+		   ids[GM_DISC] == GM_CHEEVOS,
+		   "a Game Boy game on the GKD draws every row but Disc");
+
+		u.palette = NULL; u.disc = "Disc 1";
+		n = gm_rows(&u, rows, &b);
+		m = gm_compact(rows, n, ids);
+		ck(m == GM_ROWS - 1 && ids[GM_PALETTE] == GM_DISC &&
+		   !strcmp(rows[GM_PALETTE].label, "Disc"),
+		   "an .m3u PlayStation game draws Disc where Palette would be");
 	}
 }
 
