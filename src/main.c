@@ -871,8 +871,8 @@ static void sys_card_generated(app *a, int i)
 	                             &a->sys_w[i], &a->sys_h[i]);
 }
 
-/* On the frame, as every system card was until 2026-10-02. Now only for the
- * focused card at boot, and when there is no loader thread. */
+/* On the frame, as every system card was until 2026-10-02. Now only when
+ * there is no loader thread, as for --shot. */
 static void sys_card_load_now(app *a, int i)
 {
 	char set[CFG_STR * 2], def[CFG_STR * 2];
@@ -1317,6 +1317,59 @@ static void prime_sys_window(app *a)
 	for (int i = 0; i < a->sys.count; i++) {
 		int w, h;
 		sys_get_tex(a, i, &w, &h, NULL);
+	}
+}
+
+/* The system cards the shelf's row draws: the focused one and up to three
+ * either side, wrapping round the ends as cf_draw does. `n`th nearest first,
+ * so asking in this order decodes the middle of the screen first. Returns
+ * false past the last. */
+static bool sys_card_visible(const app *a, int n, int *item)
+{
+	int count = a->sys.count, half = count - 1 < CF_HALF_WINDOW ? count - 1 : CF_HALF_WINDOW;
+	int k = (n + 1) / 2, side = n % 2 ? 1 : -1;
+
+	if (count <= 0 || k > half) return false;
+	*item = ((a->sys_cursor + side * k) % count + count) % count;
+	return true;
+}
+
+/* At boot, before the display is up: the loader threads start on the cards
+ * the first frame will show while video, input and settings are set up
+ * (about 430 ms on the GKD Pixel 2), instead of after. */
+static void sys_cards_ask_visible(app *a)
+{
+	char set[CFG_STR * 2], def[CFG_STR * 2];
+	int n, i;
+
+	for (n = 0; sys_card_visible(a, n, &i); n++) {
+		bool other = sys_card_paths(a, i, set, def, sizeof set);
+		texload_want(SYS_CARDS_SHELF, i, set, other ? def : NULL);
+	}
+}
+
+/* And just before the first frame, install them as they finish, so it has
+ * them all and none fills in after. Normally they are done by now; the cap
+ * means a slow card read costs the boot at most `cap_ms`, and the rest fill
+ * in as before. */
+static void sys_cards_wait_visible(app *a, unsigned cap_ms)
+{
+	unsigned t0 = plat_now_ms();
+
+	for (;;) {
+		bool all = true;
+		int n, i;
+
+		texload_drain(a);
+		for (n = 0; sys_card_visible(a, n, &i); n++)
+			if (!a->sys_tex[i]) { all = false; break; }
+		if (all) return;
+		if (plat_now_ms() - t0 >= cap_ms) {
+			fprintf(stderr, "boot: system cards not all in after %u ms; "
+			                "the rest fill in\n", cap_ms);
+			return;
+		}
+		SDL_Delay(4);
 	}
 }
 
@@ -12570,6 +12623,7 @@ int main(int argc, char *argv[])
 	app a = { 0 };
 	char path[CFG_STR * 2];
 	char startup[CFG_STR];
+	bool loader;                  /* texload's threads are running */
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot_path = argv[++i];
@@ -13052,6 +13106,52 @@ int main(int argc, char *argv[])
 	sort_all(&a);
 	t_mark("scan");
 
+	/* Where the shelf was and which card set it shows, read here rather than
+	 * after the display is up: both are plain data, and they are what decides
+	 * the cards the first frame shows, which the loader threads start on next.
+	 * The card settings are only read by drawing, which comes long after. */
+	{
+		char set[CFG_STR];
+		db_get_str(db_dev(), "cards", set, sizeof set, CARDS_DEFAULT);
+		g_cards = cards_index(set);
+		db_get_str(db_dev(), "cards_dir", set, sizeof set, CARDS_DIR_DEFAULT);
+		g_dir = cards_dir_index(set);
+	}
+	a.sys_cursor = 0;
+	db_get_str(db_lib(), "startup_system", startup, sizeof startup, "");
+	if (startup[0])
+		for (int i = 0; i < a.sys.count; i++)
+			if (strcasecmp(a.sys.systems[i].name, startup) == 0) {
+				a.sys_cursor = i;
+				break;
+			}
+	restore_place(&a);
+	/* After restore_place, so it wins: `.last` says where the shelf was and
+	 * this says what was actually being played. Before the card priming
+	 * below, because that loads textures for whatever the cursor is on, and
+	 * a fallback to the shelf should find the right ones there. */
+	a.resume_menu = playing_restore(&a);
+	cf_reset(&a.cf_sys, a.sys_cursor);
+	a.tint = a.sys.systems[a.sys_cursor].accent;
+	t_mark("restore place");
+
+	/* After IMG_Init: the worker calls IMG_Load. Before the display, because
+	 * neither needs it - decoding is CPU work, and making textures of what it
+	 * decodes waits for the renderer, on this thread, in texload_drain - and
+	 * because the threads would otherwise sit idle through video, input and
+	 * settings. So the system cards the first frame shows are asked for now.
+	 *
+	 * Not for --shot. A shot draws the shelf exactly once, and with the workers
+	 * running every card on that one frame is only queued - so the PNG came out
+	 * with the title, the count and the rail and not a single card, while the
+	 * log line named the focused game as though it had been drawn. With no
+	 * worker, game_get_tex decodes on the frame the way it always did, which is
+	 * what a tool for checking one frame wants: the right picture, not a fast
+	 * one. */
+	IMG_Init(IMG_INIT_PNG);
+	loader = !shot_path && texload_start();
+	if (loader && a.screen == SCREEN_SYSTEMS) sys_cards_ask_visible(&a);
+
 	/* BEFORE the first frame this process ever draws: if a previous launcher
 	 * died while a game was running, the resident is still presenting through
 	 * fbdev right now, and drawing the shelf over it is the two-presenter
@@ -13066,17 +13166,6 @@ int main(int argc, char *argv[])
 
 	if (!plat_video_init()) { fprintf(stderr, "video init failed\n"); return 1; }
 	t_mark("video");
-	IMG_Init(IMG_INIT_PNG);
-	/* After IMG_Init: the worker calls IMG_Load.
-	 *
-	 * Not for --shot. A shot draws the shelf exactly once, and with the workers
-	 * running every card on that one frame is only queued - so the PNG came out
-	 * with the title, the count and the rail and not a single card, while the
-	 * log line named the focused game as though it had been drawn. With no
-	 * worker, game_get_tex decodes on the frame the way it always did, which is
-	 * what a tool for checking one frame wants: the right picture, not a fast
-	 * one. */
-	if (!shot_path) texload_start();
 	a.r = plat_renderer();
 	t_mark("renderer");
 	plat_input_init();
@@ -13096,38 +13185,12 @@ int main(int argc, char *argv[])
 	 * saved brightness does. Read before ui_init, which is when the scale is
 	 * applied. */
 	if (!ui_init(a.r, P_FONT)) fprintf(stderr, "font init failed\n");
-	{
-		char set[CFG_STR];
-		db_get_str(db_dev(), "cards", set, sizeof set, CARDS_DEFAULT);
-		g_cards = cards_index(set);
-		db_get_str(db_dev(), "cards_dir", set, sizeof set, CARDS_DIR_DEFAULT);
-		g_dir = cards_dir_index(set);
-	}
 	t_mark("font+settings");
 
-	a.sys_cursor = 0;
-	db_get_str(db_lib(), "startup_system", startup, sizeof startup, "");
-	if (startup[0])
-		for (int i = 0; i < a.sys.count; i++)
-			if (strcasecmp(a.sys.systems[i].name, startup) == 0) {
-				a.sys_cursor = i;
-				break;
-			}
-	restore_place(&a);
-	/* After restore_place, so it wins: `.last` says where the shelf was and
-	 * this says what was actually being played. Before the card priming
-	 * below, because that loads textures for whatever the cursor is on, and
-	 * a fallback to the shelf should find the right ones there. */
-	a.resume_menu = playing_restore(&a);
-	cf_reset(&a.cf_sys, a.sys_cursor);
-	a.tint = a.sys.systems[a.sys_cursor].accent;
-	t_mark("restore place");
-	/* Only the card the first frame centers is decoded here, and only when
-	 * that frame is the system shelf; everything else is asked of the loader
-	 * threads, covers first because a game list is what usually comes up.
-	 * draw_shelf keeps asking until every system card is in. */
-	if (a.screen == SCREEN_SYSTEMS && !a.sys_tex[a.sys_cursor])
-		sys_card_load_now(&a, a.sys_cursor);
+	/* The system cards asked for before the display came up, installed so the
+	 * first frame has every one it shows. Then the covers, and the rest of the
+	 * system cards, which draw_shelf keeps asking for until all are in. */
+	if (loader && a.screen == SCREEN_SYSTEMS) sys_cards_wait_visible(&a, 100);
 	t_mark("system cards");
 	prime_window(&a, a.sys_cursor);
 	prime_sys_window(&a);
