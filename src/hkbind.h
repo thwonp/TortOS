@@ -35,7 +35,7 @@ enum {
 };
 int hk_trig_from(int input, int mod);
 extern const char *const HK_ACTION_LABEL[];  /* "Fast-Forward", "Rewind", ... */
-#define HK_ROW_COUNT 6
+#define HK_ROW_COUNT 4
 
 /* Parses a stored or live spec ("l2:ff,d.x:savestate") into one trigger index
  * (0..HK_TRIG_COUNT-1, 0 = None) per action row. A fragment that names an

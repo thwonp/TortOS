@@ -9004,13 +9004,14 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 
 /* The hotkey submenu (sibling Diatom feature, its ADR-0035): which face
  * button or shoulder, if any, held with SELECT triggers fast-forward, rewind,
- * a quicksave, a quickload, the next display mode or the screen filter - the
- * same set Diatom's hotkeys_set accepts, so a binding made here can never be
- * one Diatom would refuse. Display and filter were a fixed SELECT+L1/R1/A
- * chord until plorpos-gkd.22.
+ * a quicksave or a quickload - the same set Diatom's hotkeys_set accepts, so a
+ * binding made here can never be one Diatom would refuse. Display mode and
+ * filter were bindable too, from plorpos-gkd.22 until plorpos-gkd.73 left the
+ * mode to the shelf and in-game menus and nearest as the only filter; a saved
+ * binding naming either is dropped by hk_parse and skipped by Diatom.
  *
  * A Hotkey Modifier row (global - which key is held for all of them, diatom's
- * ADR-0038) above six fixed action rows, cycled left and right the way
+ * ADR-0038) above four fixed action rows, cycled left and right the way
  * Display Mode already is -
  * not a "press any button to capture it" flow, which this codebase has
  * never built anywhere and would have been the highest-risk new interaction
