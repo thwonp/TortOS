@@ -6,8 +6,12 @@ files on the GKD's internal storage that tell ROCKNIX to start plorpOS instead
 of EmulationStation. Take the card out and the GKD starts EmulationStation as
 before.
 
-You need the GKD with its stock ROCKNIX, a microSD card, a computer on the same
-Wi-Fi network, and a plorpOS build for the GKD. The build has two folders:
+You need the GKD with its stock ROCKNIX, a microSD card and a computer on the
+same Wi-Fi network.
+
+Download **`plorpOS-gkd-v1.0.zip`** from
+[Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it. It
+has two folders, and this guide as `INSTALL.md`:
 
 ```
 TortOS/     the launcher, emulator, cores and assets    -> the card
@@ -25,9 +29,7 @@ password. Leave the card out for now.
 
 ## 2. Put the services on the GKD
 
-Do this before the card goes in. One of the three services stops ROCKNIX from
-filling the card's `Roms/` with a hundred-odd empty system folders, and it can
-only do that for a card it hasn't seen yet.
+Do this before the card goes in.
 
 1. On the computer, connect to the GKD's **`config`** share:
    - Windows: type `\\192.168.0.55\config` in File Explorer's address bar.
@@ -49,8 +51,8 @@ works inside its folder.
 <details>
 <summary>Over SSH instead</summary>
 
-SSH is also on out of the box, as `root`. The password is in EmulationStation's
-settings.
+SSH is also on out of the box, as `root`, password `rocknix` unless you've
+changed it (EmulationStation's settings show it).
 
 ```sh
 ssh root@192.168.0.55 mkdir -p /storage/.config/system.d
@@ -65,24 +67,29 @@ scp -r system.d/* root@192.168.0.55:/storage/.config/system.d/
 2. **Copy the build's `TortOS/` folder to the root of the card,** and create
    `Roms/`, `Bios/` and `Saves/` beside it.
 3. **Add games** to `Roms/`, one folder per console, named as in
-   [Supported systems](../README.md#supported-systems). BIOS files go loose in
+   [Supported systems](https://github.com/thwonp/TortOS/blob/plorpos-gkd-v1.0/README.md#supported-systems). BIOS files go loose in
    `Bios/`.
 
 ```
-TortOS/    tortos.elf  diatom  launch.sh  systems.cfg  menu.ttf  cacert.pem
-           cards/  cores/  res/
+TortOS/    tortos.elf  diatom  muse  musectl  launch.sh  systems.cfg
+           menu.ttf  cacert.pem  LICENSE  NOTICE  ...
+           cards/  cores/  res/  shaders/  LICENSES/
 Roms/      NES/  SNES/  Game Boy/ ...
 Bios/
 Saves/     NES/  SNES/ ...   one per system, named as in Roms/, made on first play
 ```
 
-You can also fill the card in the GKD: put it in, and copy to the
-**`games-external`** share the same way as in step 2.
+Once plorpOS is running you can also transfer files to the card while it's in the GKD, over the
+**`games-external`** samba share, or connecting to it using "Over the Hare".
 
-## 4. Restart
+## 4. Turn it off, insert the card, turn it on
 
-Put the card in, and restart the GKD from EmulationStation (START, **Quit**,
-**Restart System**). It comes up in plorpOS, and does from now on.
+Turn the GKD off from EmulationStation (START, **Quit**, **Shutdown System**).
+Put the card in while it's off, then turn it on. It comes up in plorpOS, and
+does from now on.
+
+The services from step 2 take effect at the next boot, so a card put into the
+running GKD is one ROCKNIX fills with empty system folders. If this happened to you, you can leave the folders, or delete them if they bother you.
 
 ## If it starts EmulationStation instead
 
@@ -101,8 +108,11 @@ Put the card in, and restart the GKD from EmulationStation (START, **Quit**,
 Only the three `plorpos.conf` files in `/storage/.config/system.d/`. They
 replace nothing: each adds to one of ROCKNIX's services. The first two do
 nothing when plorpOS isn't on the card; the third keeps ROCKNIX from creating
-empty system folders on any card. plorpOS's Wi-Fi, SSH and Samba switches change
-ROCKNIX's own settings, the ones EmulationStation shows.
+empty system folders on any card. plorpOS's Wi-Fi, SSH, Samba and Syncthing
+switches change ROCKNIX's own settings, the ones EmulationStation shows.
+
+SSH and Syncthing's web page (port 8384) both sign in as `root` with ROCKNIX's
+root password, `rocknix` unless you've changed it.
 
 ## Removing plorpOS
 

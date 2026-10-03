@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="res/readme/wordmark.png" alt="TortOS" height="72">
+  <img src="res/readme/plorpos-wordmark.png" alt="plorpOS" height="99">
   &nbsp;&nbsp;&nbsp;&nbsp;
   <img src="res/readme/turtle.png" alt="" height="84">
 </p>
 
 <p align="center">
-  <b>A <ins>fast</ins>, focused custom firmware for the TrimUI Brick, Brick Hammer and Brick Pro.</b><br>
-  Plays eleven classic consoles, and gets out of your way.
+  <b>A <ins>fast</ins>, focused custom firmware for the GKD 350H Ultra and the TrimUI Brick, Brick Hammer and Brick Pro.</b><br>
+  Plays fifteen classic consoles, and gets out of your way.
 </p>
 
 <p align="center">
@@ -16,35 +16,68 @@
   <a href="#faq">FAQ</a>
 </p>
 
-## This fork
+## What plorpOS adds
 
-This fork is **plorpOS** (working name), its own project now rather than a
-branch of TortOS, under a non-commercial license (see [License](#license)).
-What it does differently from upstream TortOS. Details are in
-[the guide](docs/guide.md).
+**plorpOS** is a fork of TortOS that grew into its own project. Everything
+TortOS does, it still does. On top of that:
 
-- **Music keeps playing through sleep.** A tap of POWER, or the idle timer,
+**More handhelds**
+
+- **The GKD 350H Ultra.** plorpOS runs on top of the GKD's own system,
+  ROCKNIX, and changes nothing in it: take the card out and it starts
+  EmulationStation again. The shelf is drawn at the screen's own resolution,
+  not stretched, and its game cards are bigger. Wi-Fi, SSH, Samba and
+  **Syncthing** are switches in the menu. See
+  [Installing on the GKD](docs/install-gkd.md).
+- **The Brick Pro,** next to the Brick and Brick Hammer - release is still WIP.
+
+**More to play** (just on the GKD for now) 
+- **See updated "Supported Systems" table below for details**
+- **PlayStation,** at twice its own resolution on the GKD. A multi-disc game
+  is one card: give it an `.m3u` and the in-game menu gets a Disc row, and the
+  game comes back on the disc you left it on.
+- **Arcade and Neo Geo,** through FBNeo, listed by each game's real title
+  rather than its zip's name.
+- **PICO-8.** Carts play in fake-08 by default, with full save state and rewind functionality. 
+  - Native PICO-8 with Splore is also fully supported (seriously, buy it) - Just put your raspberry-pi files in `Bios/` and switch the shelf.
+  - A cart you play in Splore lands on the shelf with its full artwork.
+- **Sega CD,** on the Genesis shelf.
+- **Achievements for disc games and arcade sets**
+
+**In a game**
+
+- **Rewind:** about thirty seconds of it on the GKD, on every console, at the speed you pick, from 1x to 10x.
+- **Configurable hotkeys** for Fast-forward, rewind, quick save and quick load. Hotkeys can be set with or without a modifier button (4 options on the GKD) and persist per console.
+- **Shaders on the GKD:** thirteen of them, scanlines to LCD grids, under
+  Display. Each console remembers its own.
+- **Stretch, Aspect or Integer** display modes on every console.
+- **Game Boy palettes:** sixteen to pick from per game, or Auto, which colors a game the way a Game Boy Color would.
+
+**On the shelf**
+
+- **Your gamelist.xml metadata** can be imported on the device to avoid needing to re-scrape.
+- **Delete Game,** on a game's info screen. The game goes; its saves, art and
+  play time stay.
+- **A Saves folder per console,** so two games with the same name on two
+  consoles never share a save.
+
+**Music**
+
+- **Music keeps playing through sleep.** A tap of POWER, or the configurable idle timer,
   while Muse plays turns only the screen off, and the album plays on.
   Now Playing's buttons work in the dark, iPod-style, and the volume keys work
-  without lighting the screen. Upstream (and NextUI) pause the music to sleep.
+  without lighting the screen.
+  - When the play queue is finished, the suspend  or auto-off timer will start.
 - **Muse Settings → Wake Screen On Press.** `Yes`: a playback button in the
   dark acts and wakes the screen. `No`: it acts and the screen stays dark,
   other buttons are ignored, and only POWER wakes.
 - **Muse Settings → Screen Off.** How long music plays untouched before the
   screen goes off: `5s / 10s / 15s / 30s / 1m / Never`, default `10s`, like
-  an iPod's backlight timer. It replaces Auto Sleep's or Auto Off's timer only
-  while music plays, whose shortest (30s) is too long for this. `Never` keeps
-  the screen on for as long as music plays.
-- **Suspend Timeout is also Auto Off's grace period.** When the music stops
-  in the dark, whether paused or at the album's end, the device waits the
-  Suspend Timeout, with the playback buttons still live, before it suspends,
-  or powers off when Auto Off is armed. There is no
-  separate setting for Auto Off's grace; set Suspend Timeout to change it.
-- **Settings → Mute Switch: `mute` / `muse button lock`.** In
-  `muse button lock` mode the switch stops muting and works like an iPod's
-  hold switch: while it is down and music plays with the screen dark, all
+  an iPod's backlight timer. 
+- **Settings → Mute Switch** (Brick) **/ Muse Settings → Sleep Button Lock** (GKD) - iPod style
+  hold switch: while it is on and music plays with the screen dark, all
   buttons and the volume keys are ignored. POWER and headset buttons still
-  work. Now Playing shows a padlock while the switch is down.
+  work, and Now Playing shows a padlock. 
 
 <div align="center">
   
@@ -100,12 +133,15 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 
 | Console | Put games in | File types | Core |
 |---|---|---|---|
+| PICO-8 | `Roms/Pico-8` | `.p8` `.png` | fake-08, or native PICO-8 |
+| Arcade | `Roms/Arcade` | `.zip` `.7z` | FBNeo |
 | NES | `Roms/NES` | `.nes` `.fds` `.unf` `.unif` `.zip` | FCEUmm |
 | Master System | `Roms/Master System` | `.sms` `.zip` | Genesis Plus GX |
 | Game Boy | `Roms/Game Boy` | `.gb` `.dmg` `.zip` | mGBA |
-| Genesis | `Roms/Genesis` | `.md` `.gen` `.bin` `.smd` `.zip` | Genesis Plus GX |
+| Genesis and Sega CD | `Roms/Genesis` | `.md` `.gen` `.bin` `.smd` `.zip` `.chd` `.cue` `.m3u` | Genesis Plus GX |
 | TurboGrafx-16 and CD | `Roms/TurboGrafx-16` | `.pce` `.sgx` `.cue` `.ccd` `.chd` `.toc` `.m3u` `.zip` | Beetle PCE Fast |
 | Game Gear | `Roms/Game Gear` | `.gg` `.zip` | Genesis Plus GX |
+| Neo Geo | `Roms/Neo Geo` | `.zip` `.7z` | FBNeo |
 | SNES | `Roms/SNES` | `.sfc` `.smc` `.zip` | Snes9x 2010 |
 | PlayStation | `Roms/PlayStation` | `.chd` `.cue` `.m3u` `.pbp` `.iso` `.img` | PCSX ReARMed |
 | Neo Geo Pocket | `Roms/Neo Geo Pocket` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop |
@@ -113,7 +149,14 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 | Neo Geo Pocket Color | `Roms/Neo Geo Pocket Color` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop |
 | Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA |
 
-**BIOS files** go loose in `Bios/`. Only TurboGrafx-CD games need one, `syscard3.pce`. PlayStation runs without one; add `scph5500.bin`, `scph5501.bin` and `scph5502.bin` (Japan, US, Europe) for the best compatibility, and each disc uses its own region's. Game Boy Advance runs without its BIOS; add `gba_bios.bin` if you want the original boot animation.
+**BIOS files** go loose in `Bios/`, never in a folder of their own.
+
+- **Neo Geo** needs `neogeo.zip`.
+- **TurboGrafx-CD** games need `syscard3.pce`.
+- **Sega CD** games need `bios_CD_U.bin`, `bios_CD_E.bin` and `bios_CD_J.bin` (US, Europe, Japan); each disc uses its own region's.
+- **PlayStation** runs without one; add `scph5500.bin`, `scph5501.bin` and `scph5502.bin` (Japan, US, Europe) for the best compatibility, and each disc uses its own region's.
+- **Game Boy Advance** runs without its BIOS; add `gba_bios.bin` if you want the original boot animation.
+- **Native PICO-8** needs `pico8_64` and `pico8.dat` from PICO-8's Raspberry Pi download. fake-08 needs nothing.
 
 ## Install
 
