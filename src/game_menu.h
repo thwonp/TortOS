@@ -106,7 +106,7 @@ int gi_rows(menu_row *out, const game_info *gi, bool net);
  * without opening a menu to get there. */
 
 typedef enum {
-	GM_CONTINUE, GM_SAVE, GM_LOAD, GM_DISPLAY, GM_CHEEVOS,
+	GM_CONTINUE, GM_SAVE, GM_LOAD, GM_DISPLAY, GM_SHADER, GM_CHEEVOS,
 	GM_HOTKEYS, GM_RESET, GM_QUIT,
 	GM_ROWS
 } gm_row;
@@ -114,6 +114,8 @@ typedef enum {
 /* What the in-game menu needs to know, gathered by the caller. */
 typedef struct {
 	const char *dmode;    /* the display mode's label */
+	const char *shader;   /* the shader's name (plorpos-gkd.72.4) */
+	bool        shaders;  /* a list to pick from - the GKD's, never a Brick's */
 	int         earned;
 	int         total;    /* 0: this game has no achievement set */
 } gm_ui;

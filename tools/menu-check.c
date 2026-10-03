@@ -837,8 +837,8 @@ static void info_rows(void)
 
 /* ---------- the in-game menu ---------------------------------------------- */
 
-/* Cheevos and Sleep are the only rows that can be dead: Cheevos exactly when
- * the game has no set, Sleep exactly when the kernel does not offer suspend.
+/* Cheevos and Shader are the only rows that can be dead: Cheevos exactly when
+ * the game has no set, Shader exactly when there is no list (every Brick).
  * Everything else is always something A does. */
 static void ingame_rows(void)
 {
@@ -848,12 +848,17 @@ static void ingame_rows(void)
 	int got[GM_ROWS], n, k;
 
 	u.dmode = "Native"; u.earned = 12; u.total = 40;
+	u.shader = "Real LCD"; u.shaders = true;
 	n = gm_rows(&u, rows, &b);
 
 	printf("in-game menu, a game with a set:\n");
-	ck(n == GM_ROWS, "eight rows");
+	ck(n == GM_ROWS, "nine rows");
 	ck(!strcmp(rows[GM_CONTINUE].label, "Continue"), "Continue leads");
 	ck(!strcmp(val(&rows[GM_DISPLAY]), "Native"), "Display carries the mode");
+	ck(GM_SHADER == GM_DISPLAY + 1 && !strcmp(rows[GM_SHADER].label, "Shader"),
+	   "Shader is under Display (plorpos-gkd.72.4)");
+	ck(!strcmp(val(&rows[GM_SHADER]), "Real LCD"), "and carries the shader's name");
+	ck(rows[GM_SHADER].live, "and is reachable with a list");
 	ck(!strcmp(val(&rows[GM_CHEEVOS]), "12 / 40"), "Cheevos counts the set");
 	ck(rows[GM_CHEEVOS].live, "and is reachable");
 	ck(!strcmp(rows[GM_CHEEVOS + 1].label, "Hotkeys"),
@@ -873,6 +878,15 @@ static void ingame_rows(void)
 	ck(!holds(got, k, GM_CHEEVOS), "and never rests on it");
 	ck(holds(got, k, GM_QUIT) && holds(got, k, GM_CONTINUE),
 	   "the rows either side of it still work");
+
+	u.shaders = false;
+	n = gm_rows(&u, rows, &b);
+	printf("in-game menu, no shader list (a Brick):\n");
+	ck(!strcmp(val(&rows[GM_SHADER]), "None"), "Shader says None");
+	ck(!rows[GM_SHADER].live, "and does nothing");
+	k = reachable(rows, n, got, GM_ROWS);
+	ck(!holds(got, k, GM_SHADER), "so the cursor never rests on it");
+	ck(holds(got, k, GM_DISPLAY), "and Display above it still works");
 }
 
 /* Native PICO-8's: the in-game menu's order, less what a frozen process

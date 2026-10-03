@@ -51,6 +51,7 @@
 #include "cards.h"
 #include "game_menu.h"
 #include "hkbind.h"
+#include "shaderlist.h"
 #include "ui.h"
 #include "wifi_menu.h"
 
@@ -93,6 +94,9 @@ typedef struct {
 	 * whatever sits at index 0 is what an untouched card plays at - see the
 	 * note on DMODES itself. */
 	int dmode;
+	/* Index into app.shaders, the GKD's in-game Shader list (plorpos-gkd.72.4).
+	 * Zero is None, so an untouched system draws the plain picture. */
+	int shader;
 	/* PICO-8's shelf only: run its carts with the owner's pico8_64 rather
 	 * than fake08. Zero is fake08, so a card nobody has touched - a new
 	 * install included - plays in diatom. */
@@ -145,6 +149,9 @@ static const struct { const char *name, *label; } DMODES[] = {
 
 typedef struct {
 	systems_cfg sys;
+	/* TortOS/shaders/shaders.cfg; None alone where there is no such file,
+	 * which is every Brick - and then nothing about shaders is ever sent. */
+	sl_list shaders;
 
 	SDL_Texture *sys_tex[CFG_MAX_SYSTEMS];
 	int sys_w[CFG_MAX_SYSTEMS], sys_h[CFG_MAX_SYSTEMS];
@@ -317,6 +324,51 @@ static void display_save(app *a)
 		snprintf(key, sizeof key, "display.%s", a->sys.systems[i].tag);
 		db_set_str(db_dev(), key, DMODES[a->view[i].dmode].name);
 	}
+}
+
+/* shader.<TAG>, beside display.<TAG> and keyed the same way. The list is read
+ * here too: its names are what the rows hold, so the two belong together. A
+ * name the list no longer has is None (sl_find) - an entry renamed or dropped
+ * from shaders.cfg sends its systems back to the plain picture. */
+static void shader_load(app *a)
+{
+	char path[CFG_STR * 2], key[CFG_STR + 16], name[SL_NAME];
+	int i;
+
+	snprintf(path, sizeof path, "%s/shaders/shaders.cfg", P_ROOT);
+	sl_load(&a->shaders, path);
+	for (i = 0; i < a->sys.count; i++) {
+		snprintf(key, sizeof key, "shader.%s", a->sys.systems[i].tag);
+		a->view[i].shader = db_get_str(db_dev(), key, name, sizeof name, NULL)
+		                    ? sl_find(&a->shaders, name) : 0;
+	}
+}
+
+/* One row, the system's whose choice changed - see display_save on why rows. */
+static void shader_save(app *a, int sys)
+{
+	char key[CFG_STR + 16];
+
+	snprintf(key, sizeof key, "shader.%s", a->sys.systems[sys].tag);
+	db_set_str(db_dev(), key, a->shaders.e[a->view[sys].shader].name);
+}
+
+/* Tell the running game which shader to draw (diatom's ADR-0041). Diatom
+ * keeps a chain across RUN, as it keeps the mode, so a launch always says one;
+ * and it refuses a chain it cannot build by keeping the one it has, so None
+ * goes first - a file that has gone missing then leaves the plain picture, not
+ * the last game's shader. None costs diatom nothing to apply. */
+static void shader_send(app *a, int sys)
+{
+	char f[1024], dir[CFG_STR * 2];
+	int i = a->view[sys].shader;
+
+	if (a->shaders.count <= 1) return;
+	plat_resident_line("SETDISPLAY\tshader=none");
+	if (i == 0) return;
+	snprintf(dir, sizeof dir, "%s/shaders", P_ROOT);
+	if (sl_fields(&a->shaders, i, dir, f, sizeof f))
+		plat_resident_line("SETDISPLAY\t%s", f);
 }
 
 /* engine.<TAG>, PICO-8's shelf only, beside display.<TAG>. No row means
@@ -4514,6 +4566,9 @@ typedef struct {
 	 * going anywhere, and the wait loop below it has to be told, or it goes
 	 * straight back to waiting on a game nobody is running. */
 	menu_result (*on_power)(app *a, void *ctx);
+	/* The row the cursor starts on: 0, the top, unless a list opens on the
+	 * entry already chosen (the in-game Shader list). */
+	int      start;
 } menu_style;
 
 /* SELECT: Muse, over whatever is on screen. Declared here, after menu_style,
@@ -4538,7 +4593,7 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 {
 	menu_row rows[MENU_RUN_ROWS];
 	const char *heading = NULL;
-	int sel = 0, n = 0, b;
+	int sel = st->start, n = 0, b;
 
 	while (a->running && !want_quit) {
 		n = build(ctx, rows, MENU_RUN_ROWS, &heading);
@@ -7472,6 +7527,8 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 	 * shelf's own is never set, so the label read Stretch whatever the
 	 * game was playing at (plorpos-gkd.64). */
 	u.dmode  = DMODES[owner_view(a)->dmode].label;
+	u.shader  = a->shaders.e[owner_view(a)->shader].name;
+	u.shaders = a->shaders.count > 1;
 	u.earned = chv_earned();
 	u.total  = chv_count();
 	return gm_rows(&u, out, b);
@@ -9220,6 +9277,14 @@ static int gm_width(app *a)
 		mw = menu_measure(rows, GM_ROWS, NULL);
 		if (mw > w) w = mw;
 	}
+	/* And every shader name, for the same reason: picking one must not
+	 * resize the panel the player comes back to. */
+	for (k = 0; k < a->shaders.count && rows[GM_SHADER].live; k++) {
+		int mw;
+		rows[GM_SHADER].value = a->shaders.e[k].name;
+		mw = menu_measure(rows, GM_ROWS, NULL);
+		if (mw > w) w = mw;
+	}
 	return w;
 }
 
@@ -9444,6 +9509,66 @@ static pwr_action power_check(app *a)
 	return pa;
 }
 
+/* The in-game Shader list (plorpos-gkd.72.4), over the same paused frame and
+ * under the same power rule as the menu it opens from. */
+typedef struct {
+	gm_ctx *gm;
+	int     sys;       /* the owner's: a per-system choice, as Display is */
+} sh_ctx;
+
+static int sh_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	sh_ctx *c = ctx;
+	app *a = c->gm->a;
+	int i, n = a->shaders.count < max ? a->shaders.count : max;
+
+	for (i = 0; i < n; i++)
+		rows[i] = (menu_row){ a->shaders.e[i].name,
+		                      i == a->view[c->sys].shader ? "Current" : NULL, true };
+	*heading = "Shader";
+	return n;
+}
+
+/* A applies the entry to the paused game, keeps it for the system, and goes
+ * back to the in-game menu (the user's call: the backdrop there is Diatom's
+ * raw frame, so the look shows on Continue either way). Only once Diatom has
+ * answered: a chain it refuses is not saved, and the old one stays on. */
+static menu_result sh_key(app *a, void *ctx, in_button key, int sel)
+{
+	sh_ctx *c = ctx;
+	char f[1024], dir[CFG_STR * 2];
+
+	if (key != IN_ACCEPT) return MENU_STAY;
+	if (sel == a->view[c->sys].shader) return MENU_DONE;
+	snprintf(dir, sizeof dir, "%s/shaders", P_ROOT);
+	if (!sl_fields(&a->shaders, sel, dir, f, sizeof f)) return MENU_DONE;
+	plat_resident_line("SETDISPLAY\t%s", f);
+	/* A two-pass compile measured 89 ms on the GKD (diatom ADR-0041); the
+	 * bound is for a Diatom that never answers, not for the usual case. */
+	if (!plat_resident_sync_rect(2000)) {
+		fprintf(stderr, "shader: %s not applied\n", a->shaders.e[sel].name);
+		return MENU_DONE;
+	}
+	a->view[c->sys].shader = sel;
+	shader_save(a, c->sys);
+	return MENU_DONE;
+}
+
+static void sh_backdrop(app *a, void *ctx) { gm_backdrop(a, ((sh_ctx *)ctx)->gm); }
+static menu_result sh_power(app *a, void *ctx) { return gm_power(a, ((sh_ctx *)ctx)->gm); }
+
+static void shader_screen(app *a, gm_ctx *gm)
+{
+	sh_ctx c = { gm, (int)(owner_view(a) - a->view) };
+	menu_style st = gm->st;
+
+	st.fixed_w  = 0;
+	st.backdrop = sh_backdrop;
+	st.on_power = sh_power;
+	st.start    = a->view[c.sys].shader;
+	menu_run(a, &st, sh_build, sh_key, &c);
+}
+
 static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 {
 	gm_ctx *c = ctx;
@@ -9498,6 +9623,9 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 	 * was a row that looked broken. */
 	case GM_DISPLAY:
 		gm_cycle_display(a, +1);
+		break;
+	case GM_SHADER:
+		shader_screen(a, c);
 		break;
 	case GM_CHEEVOS:
 		cheevos_screen(a, c->bg, false);
@@ -10199,6 +10327,7 @@ static void launch(app *a)
 			 * it lands before the first frame. */
 			plat_resident_line("SETDISPLAY\tmode=%s",
 			                   DMODES[a->view[o].dmode].name);
+			shader_send(a, o);
 
 			/* No idle anything during play: NextUI disables autosleep for
 			 * the whole of a running game (minarch.c's PWR_disableAutosleep)
@@ -11160,6 +11289,7 @@ static void rescan_all(app *a)
 
 	scan_all(a);
 	display_load(a);     /* indexes by tag, so it is safe to run again */
+	shader_load(a);
 	engine_load(a);
 	sort_load(a);
 	sort_all(a);
@@ -11998,6 +12128,7 @@ int main(int argc, char *argv[])
 	/* After the scan, because it indexes by system, and before anything can
 	 * launch, because the mode has to reach Diatom with the first RUN. */
 	display_load(&a);
+	shader_load(&a);
 	engine_load(&a);
 	sort_load(&a);
 	sort_all(&a);

@@ -93,13 +93,18 @@ int gi_rows(menu_row *out, const game_info *gi, bool net)
 int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 {
 	static const char *label[GM_ROWS] = {
-		"Continue", "Save", "Load", "Display", "Cheevos",
+		"Continue", "Save", "Load", "Display", "Shader", "Cheevos",
 		"Hotkeys", "Reset", "Quit"
 	};
 	int i;
 
 	for (i = 0; i < GM_ROWS; i++) out[i] = (menu_row){ label[i], NULL, true };
 	out[GM_DISPLAY].value = u->dmode;
+	/* Under Display, because it is more of the same question - how the game
+	 * looks. Where there is nothing to pick from it says None and is passed
+	 * over, as Cheevos is with no set. */
+	out[GM_SHADER].value = u->shaders ? u->shader : "None";
+	out[GM_SHADER].live  = u->shaders;
 
 	/* Most of a library has no set, and a row that says so plainly is better
 	 * than one that is missing: "none" answers the question the player opened

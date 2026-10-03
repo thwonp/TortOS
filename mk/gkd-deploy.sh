@@ -29,7 +29,7 @@ $S "grep -q ' $CARD ' /proc/mounts" || {
 	echo "!! $CARD is not mounted on the GKD -- nothing was deployed."
 	exit 1
 }
-$S "mkdir -p $P/cards $P/cores $P/res/web"
+$S "mkdir -p $P/cards $P/cores $P/res/web $P/shaders"
 
 # scp, not tar: a handful of files, and the card is exFAT, which keeps no
 # owners or modes for tar to restore (its fmask leaves every file executable).
@@ -54,6 +54,8 @@ case $WHAT in res)
 	put "$ROOT/res/web/"* "$GKD:$P/res/web/"
 	put "$ROOT/res/fbneo-titles.tsv" "$GKD:$P/res/"
 	put "$ROOT/res/fonts/menu.ttf" "$GKD:$P/res/web/menu.ttf"
+	# diatom's GLSL passes and the in-game menu's list of them (plorpos-gkd.72)
+	put "$ROOT/res/shaders/"* "$GKD:$P/shaders/"
 	echo "  + assets"
 esac
 case $WHAT in diatom)

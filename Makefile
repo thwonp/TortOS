@@ -25,7 +25,7 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
         adb adb-elf adb-res adb-vendor adb-restart adb-run adb-log \
         check check-cheevos check-hare check-httpd check-idle check-rahash \
         check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
-        check-db check-stats check-sort check-bt check-backlog check-ss check-hkbind \
+        check-db check-stats check-sort check-bt check-backlog check-ss check-hkbind check-shaderlist \
         check-titles hooks storeprobe deploy restart logs
 
 ifeq ($(PLATFORM),gkd)
@@ -41,7 +41,7 @@ endif
 CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
          check-db check-stats check-sort check-bt check-backlog check-ss \
-         check-muselib check-musequeue check-museart check-controls check-hkbind \
+         check-muselib check-musequeue check-museart check-controls check-hkbind check-shaderlist \
          check-gamelist check-logpack check-titles
 
 check:
@@ -467,6 +467,17 @@ build-native/hkbind-check: tools/hkbind-check.c src/hkbind.c src/hkbind.h FORCE
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
 	      -o $@ tools/hkbind-check.c src/hkbind.c
+
+# The in-game Shader list (plorpos-gkd.72.4): its parser, and the shipped
+# res/shaders/shaders.cfg with every file it names. Links src/shaderlist.c
+# and NOT SDL, same split as check-hkbind.
+check-shaderlist: build-native/shaderlist-check
+	@./build-native/shaderlist-check
+
+build-native/shaderlist-check: tools/shaderlist-check.c src/shaderlist.c src/shaderlist.h FORCE
+	@mkdir -p build-native
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
+	      -o $@ tools/shaderlist-check.c src/shaderlist.c
 
 # Play time. The assertion that earns this its place is that a LAUNCH writes
 # nothing: that is a claim about a path nobody watches, and it stops being true

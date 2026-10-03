@@ -239,7 +239,7 @@ void plat_draw_paused(SDL_Renderer *r, SDL_Texture *bg);
  * the new rect, and the menu wants it now so its backdrop can redraw where the
  * game is about to be, rather than on the next wait after resuming. A missed
  * reply costs a stale backdrop, never a hang. */
-bool plat_resident_sync_rect(int timeout_ms);
+bool plat_resident_sync_rect(int timeout_ms);   /* false: timed out, or ERROR */
 /* Read replies for up to timeout_ms until Diatom confirms the SAVE to path
  * (its SAVED line). False on an ERROR, a timeout, or no Diatom at all. */
 bool plat_resident_saved(const char *path, int timeout_ms);
