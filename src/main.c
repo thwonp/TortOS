@@ -10276,8 +10276,8 @@ static void pico8_bin(char *out, size_t n)
 }
 
 /* First on the shelf, before any cart, whenever native PICO-8 is there to
- * run it or there are carts beside it - a card with neither has no PICO-8
- * shelf to put it on. */
+ * run it. Without Bios/pico8_64 there is no Splore, only carts for fake08
+ * (plorpos-gkd.32.7). */
 static void splore_add(const system_cfg *s, game_list *l)
 {
 	char bin[CFG_STR * 2];
@@ -10285,7 +10285,7 @@ static void splore_add(const system_cfg *s, game_list *l)
 
 	if (!is_pico8(s)) return;
 	pico8_bin(bin, sizeof bin);
-	if (l->count == 0 && access(bin, X_OK) != 0) return;
+	if (access(bin, X_OK) != 0) return;
 	items = realloc(l->items, (size_t)(l->count + 1) * sizeof *items);
 	if (!items) return;
 	memmove(items + 1, items, (size_t)l->count * sizeof *items);
