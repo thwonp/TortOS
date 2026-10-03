@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* How long each game has been played.
  *
  * WALL CLOCK, from RUN to EXIT, and there is nothing to subtract: the device

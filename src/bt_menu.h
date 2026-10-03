@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* The Bluetooth screen, minus the screen.
  *
  * State and row building only. This file must never include SDL: ADR-0001 says

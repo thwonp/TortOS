@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* See net.h for why this shells out to curl and why the request is a file. */
 #include <errno.h>
 #include <fcntl.h>

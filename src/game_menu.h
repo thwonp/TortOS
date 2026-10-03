@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* What the game info screen contains, as rows rather than as pixels.
  *
  * Split out of main.c under ADR-0001 so a check can ask what this screen says

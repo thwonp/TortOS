@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* One store for settings, replacing fourteen files that had drifted into
  * three different scopes and four different formats.
  *

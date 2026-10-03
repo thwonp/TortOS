@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Report which games RetroAchievements recognizes, and which have a set.
 
     tools/ra-check.py [--roms DIR] [--system NAME] [--verbose]

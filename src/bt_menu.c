@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* See bt_menu.h. No SDL, deliberately. */
 #include "bt_menu.h"
 

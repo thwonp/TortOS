@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 #ifndef TORTOS_RAJSON_H
 #define TORTOS_RAJSON_H
 

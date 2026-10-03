@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* Shrinking fetched box art to the size it is actually drawn at.
  *
  * Its own file rather than part of artscrape.c, for two reasons. artscrape is

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* What a menu row is. No SDL, no renderer, nothing device-specific.
  *
  * Separated from main.c on purpose. ADR-0001 says a screen's build function

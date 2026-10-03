@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* The GKD 350H Ultra on vendor ROCKNIX, under sway: the device file for
  * PLATFORM=gkd, as platform_brick.c is for the Brick.
  *

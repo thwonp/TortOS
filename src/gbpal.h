@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* The in-game Palette list for Game Boy games (plorpos-gkd.76): a choice per
  * game, turned into the two mgba core options that make it. Split out of
  * main.c under ADR-0001 so tools/gbpal-check.c drives it with no SDL. */

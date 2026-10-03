@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Does the on-device gamelist.xml import read what a scraper writes, and agree
  * with tools/gamelist-import.py, which does the same job from a computer?
  *

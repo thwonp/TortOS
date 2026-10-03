@@ -286,4 +286,4 @@ TortOS is C and SDL2. Games run in [diatom](https://github.com/ericreinsmidt/dia
 
 ## License
 
-plorpOS is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE), and so is its fork of diatom: free to use, change and share, but not for commercial use. It is built on Eric Reinsmidt's TortOS and diatom, whose MIT notice is kept in [NOTICE](NOTICE). The cores keep their own licenses, two of them non-commercial. Full notices are in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
+plorpOS is [MIT](LICENSE), like Eric Reinsmidt's TortOS and diatom it is built on, and so is its fork of diatom. The exception is code derived from NextUI - sleep and suspend here, fast-forward, rewind and hotkeys in diatom - which keeps NextUI's [PolyForm Noncommercial License 1.0.0](LICENSES/PolyForm-Noncommercial-1.0.0.txt); [NOTICE](NOTICE) lists exactly which files and regions. A card or release bundles that code, so as a whole it is not for commercial use. The cores keep their own licenses, two of them non-commercial. Full notices are in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).

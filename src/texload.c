@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* See texload.h for why this exists. */
 #include <stdio.h>
 #include <stdint.h>

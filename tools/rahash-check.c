@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* Print the RetroAchievements hash of each ROM given, so it can be diffed
  * against the same rules written in Python.
  *

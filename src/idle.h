@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 #ifndef TORTOS_IDLE_H
 #define TORTOS_IDLE_H
 

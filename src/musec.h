@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 #ifndef TORTOS_MUSEC_H
 #define TORTOS_MUSEC_H
 

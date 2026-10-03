@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* See ssfetch.h for what is pure here and why. */
 #include <ctype.h>
 #include <stdio.h>

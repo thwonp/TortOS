@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Do the C and Python hashers agree, over every ROM in the library?
 
     make check-rahash

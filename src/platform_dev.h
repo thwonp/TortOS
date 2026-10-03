@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* Private to platform.c and the device file built with it (platform_brick.c).
  * Not for the rest of the launcher: that talks to platform.h.
  *

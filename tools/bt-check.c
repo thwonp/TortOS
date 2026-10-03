@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Bluetooth: the parts that take input from the air.
  *
  * A device name is arbitrary bytes chosen by whoever owns the headset, it

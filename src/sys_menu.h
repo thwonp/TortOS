@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* The two menus behind the MENU button, as rows rather than as pixels.
  *
  * MENU has two menus behind it, chosen by where it was pressed. From the

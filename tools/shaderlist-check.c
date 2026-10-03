@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Does the in-game Shader list read its file, and say what diatom expects?
  *
  * Links src/shaderlist.c and NOT SDL, the same split hkbind-check relies on.

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Render the TortOS boot animation and the still images that bracket it.
 
 Run from the repo root:  python3 tools/genboot.py

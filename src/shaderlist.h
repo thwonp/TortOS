@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* The in-game Shader list (plorpos-gkd.72.4): res/shaders/shaders.cfg read
  * into entries, and an entry turned into the SETDISPLAY fields diatom takes
  * (diatom's ADR-0041 - the launcher owns the list, diatom only compiles what

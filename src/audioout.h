@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* Where the system's sound goes, as a decision rather than as a device.
  *
  * Diatom's ADR-0029 says the launcher owns WHICH output and the port owns

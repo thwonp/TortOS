@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Import EmulationStation-style gamelist.xml / miyoogamelist.xml metadata into
 TortOS's library.db, for a card that already has this metadata from elsewhere
 and should not need a ScreenScraper account or a live lookup on-device.

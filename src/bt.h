@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* Bluetooth audio, over the stock BlueZ. Like wifi.h, none of this is TortOS's
  * own stack - it is a client of firmware that already works, and the four
  * things that were not obvious about getting it working are in the backlog.

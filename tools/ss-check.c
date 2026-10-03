@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Can this build talk to ScreenScraper, and does an account survive a restart?
  *
  * Two halves, deliberately. The first needs nothing: it asserts what a build

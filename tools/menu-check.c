@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* What does a menu contain, for a given state?
  *
  * This check is the point of ADR-0001. A screen's build function takes state

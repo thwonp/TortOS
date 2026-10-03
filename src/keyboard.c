@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* The on-screen keyboard.
  *
  * Typing a WPA2 key on a d-pad is the worst text entry a handheld ever asks

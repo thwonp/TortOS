@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Draw res/cards/FAVORITES.png, the card for the Favorites shelf.
 
 The other nine cards are drawn by hand and nothing generates them - gencards.py

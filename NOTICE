@@ -1,40 +1,40 @@
 plorpOS (working name) is a fork of TortOS by Eric Reinsmidt.
 
+LICENSING IS PER FILE.
+
+MIT is the default (LICENSE): Eric Reinsmidt's TortOS code, under the terms
+he released it with, and everything Thwonp wrote for this fork. That holds for
+every version of this fork, not only this one - including the v1.0.1-thwonp
+release and anything published while the fork was licensed PolyForm
+Noncommercial (2026-09-28 to 2026-10-03): Thwonp's code in those versions is
+available under the MIT License too. Each source file says which terms it is
+under on its first line (SPDX-License-Identifier).
+
+The exception is code derived from NextUI (https://github.com/LoveRetro/NextUI),
+which NextUI licenses under the PolyForm Noncommercial License 1.0.0. That code
+keeps those terms - full text in LICENSES/PolyForm-Noncommercial-1.0.0.txt -
+and may not be put to commercial use. It is:
+
+  src/chdread.c, src/chdread.h
+      CHD track and sector layout, after NextUI's chd_reader.c. Whole files.
+
+  src/main.c, src/platform.c, src/platform.h, src/platform_brick.c,
+  sd/tortos/radio.sh
+      Sleep and suspend, after NextUI's PWR_sleep, PWR_deepSleep, its
+      suspend script and the settings around them. Only the regions
+      between "BEGIN PolyForm-Noncommercial-1.0.0" and
+      "END PolyForm-Noncommercial-1.0.0" comments; the rest of each file
+      is MIT (SPDX: "MIT AND PolyForm-Noncommercial-1.0.0").
+
+  mk/patches/fbneo-rotate.patch
+      A change to FBNeo, whose own license is noncommercial
+      (LICENSE-FBNeo.txt).
+
+A built card or release bundles these parts, and noncommercial cores besides,
+so a card or release as a whole may not be sold or otherwise put to commercial
+use. The MIT parts, taken on their own, carry no such restriction.
+
+Third-party software on the card keeps its own license: see
+THIRD-PARTY-LICENSES.md.
+
 Required Notice: Copyright (c) 2026 Thwonp (https://github.com/thwonp/TortOS)
-
-plorpOS is licensed under the PolyForm Noncommercial License 1.0.0; see
-LICENSE. It may not be sold or otherwise put to commercial use.
-
-It is built on TortOS, which Eric Reinsmidt released under the MIT License, and
-runs diatom, his emulator, released under the same license. His code is used
-here under those terms, whose notice follows and must be kept with any copy:
-
----
-
-MIT License
-
-Copyright (c) 2026 Eric Reinsmidt
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
----
-
-A built card also redistributes libretro cores, runtime libraries and fonts
-that keep their own licenses - two of the cores non-commercial. Full notices
-are in THIRD-PARTY-LICENSES.md.

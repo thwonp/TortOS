@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Do the C and Python set converters agree, on real RetroAchievements data?
 
     RA_USER=... RA_PASS=... make check-raset

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* The game info screen's rows. See src/game_menu.h. */
 #include <stddef.h>
 #include <stdio.h>

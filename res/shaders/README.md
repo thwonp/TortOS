@@ -10,17 +10,20 @@ cover them; each file's terms are its own.
 | File | Author / origin (as stated in the file) | License (as stated in the file) |
 |---|---|---|
 | barrel-distortion.glsl | davej, 2015 | GPL v2 or later |
-| edge1pixel.glsl | decavoid | none stated |
+| edge1pixel.glsl | decavoid | none stated, here or upstream (glsl-shaders, slang-shaders) |
 | fast-sharpen.glsl | guest(r), 2005-2019 | GPL v2 or later |
 | lcd1x.glsl | (based on public-domain work) | GPL v2 or later |
-| lcd3x.glsl | cg2glsl conversion | none stated |
+| lcd3x.glsl | cg2glsl conversion of Gigaherz's handheld/shaders/lcd3x.cg | public domain (stated in the .cg) |
 | pixellate.glsl | Fes, 2011-2012 | ISC-style permission notice |
 | res-independent-scanlines.glsl | RiskyJumps | public domain |
-| retro-v2.glsl | cg2glsl conversion | none stated |
-| scanline.glsl | cg2glsl conversion | none stated |
+| retro-v2.glsl | cg2glsl conversion of Hyllian's handheld/shaders/retro-v2.cg, 2013 | GPL v2 or later (stated in the .cg) |
+| scanline.glsl | cg2glsl conversion of Themaister's misc/scanline.cg (same 0.05/0.15 constants) | public domain (stated in the .cg) |
 | sharp-shimmerless.glsl | zadpos | public domain |
 | sharp-shimmerless-grid.glsl | zadpos | public domain |
-| stock.glsl | cg2glsl conversion | none stated |
+| stock.glsl | libretro's stock.cg pass-through | none stated; nothing in it to license |
 
-"None stated" files are shipped pending plorpos-4g4, which traces each to its
-libretro original and its terms, or drops it before release.
+The three conversions were traced to their libretro common-shaders originals
+in plorpos-4g4 (2026-10-03). edge1pixel.glsl is the one with no terms found
+anywhere; it is kept and flagged in THIRD-PARTY-LICENSES.md rather than
+dropped. a71b077 brought 16 files; 54cd96b removed four (scale3x,
+sharp-bilinear, sharp-shimmerless-subpixel-vrgb, waterpaint), leaving these 12.

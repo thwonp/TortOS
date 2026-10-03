@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* The one piece of menu behavior that is pure enough to live away from the
  * renderer: where the cursor goes next. See src/menu.h. */
 #include "menu.h"

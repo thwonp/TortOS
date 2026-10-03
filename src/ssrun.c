@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* See ssrun.h. Apart from ssfetch.c on purpose: this half reaches for the
  * card, the shrinker and the shelf's paths, while that half is the reading and
  * the judging and is linked by tools/ss-check.c with no SDL anywhere near it.

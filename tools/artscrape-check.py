@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Run both normalizers over the same names and insist they agree.
 
     make check-artscrape

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* See stats.h. No SDL and no platform header, so the check can drive it
  * without a window - `now_ms` comes from the caller for the same reason
  * idle_check takes one.

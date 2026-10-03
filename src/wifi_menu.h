@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* The Wi-Fi screen's state and its row building, with no SDL and no renderer.
  *
  * Split from main.c so `make check` can ask what the menu contains for a given

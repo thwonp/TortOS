@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* What a shelf shows and the order it shows it in: src/titles.c.
  *
  *   - a gamelist's name, from the games table, beats everything;

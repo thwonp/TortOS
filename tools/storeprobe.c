@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* What a session record actually costs to commit.
  *
  * The game-stats work needs one durable write per game exit, and the argument

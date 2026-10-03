@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Where does the sound go, given what is plugged in and what was asked for?
  *
  * Eight combinations of three facts, and the whole rule is five lines - which

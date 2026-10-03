@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* What the two MENU-button menus contain. See src/sys_menu.h for why this is
  * a file of its own, and docs/menus.md for the rules the rows follow.
  *

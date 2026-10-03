@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* Convert a RetroAchievements patch response to a set file, with no network.
  *
  *     raset-check <gameid> <patch.json> <out.set>

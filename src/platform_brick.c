@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT AND PolyForm-Noncommercial-1.0.0 */
 /* The TrimUI Brick and Brick Pro: everything platform.c would say differently
  * about another device's hardware. What the two halves share privately is
  * platform_dev.h. The host build (mk/native.mk) compiles this file too. */
@@ -967,6 +967,7 @@ void apply_brightness(int b)
 	ioctl(disp_fd, DISP_LCD_SET_BRIGHTNESS, a);
 }
 
+/* BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: backlight off for sleep, NextUI's SetRawBrightness(0). See NOTICE. */
 /* The backlight OFF, for sleep - NextUI's SetRawBrightness(0). Not
  * apply_brightness(0): rung 0 is 2/255, still lit, which is a dim screen
  * rather than a dark one (found on hardware, 2026-09-28). cur_bright is left
@@ -977,6 +978,7 @@ void backlight_off(void)
 
 	if (disp_fd >= 0) ioctl(disp_fd, DISP_LCD_SET_BRIGHTNESS, a);
 }
+/* END PolyForm-Noncommercial-1.0.0 */
 
 void plat_settings_init(void)
 {
@@ -1058,6 +1060,7 @@ void plat_settings_init(void)
 
 #endif  /* __linux__ */
 
+/* BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: suspend, NextUI's PWR_deepSleep and its tg5040 suspend script. See NOTICE. */
 /* ---- sleep -----------------------------------------------------------
  *
  * Real suspend-to-RAM, not the pseudo-sleep this device already has under
@@ -1305,6 +1308,7 @@ bool plat_sleep(void)
 	return false;
 #endif
 }
+/* END PolyForm-Noncommercial-1.0.0 */
 
 /* ---- battery ---- */
 

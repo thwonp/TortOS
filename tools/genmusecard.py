@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Draw Muse's two cards: res/cards/classic/MUSE.png and res/cards/fancy/MUSE.png.
 
 Muse is not a console, so like Favorites it has no photograph in the classic

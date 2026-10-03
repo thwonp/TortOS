@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Export the TortOS mark and wordmark as SVG and PNG.
 
     python3 tools/genmark.py [outdir]      default: tortos_logo_ideas/exports

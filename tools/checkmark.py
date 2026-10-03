@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Prove src/main.c's copy of the mark still matches tools/markdef.py.
 
 markdef.py is the definition and the generators import it, but draw_shell() in

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* Does Muse play the tracks it should, in the order it should?
  *
  *     make check-musequeue

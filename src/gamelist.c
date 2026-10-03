@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* gamelist.xml import - see gamelist.h.
  *
  * Not an XML parser. An ES gamelist is flat: <game> blocks, each a handful of

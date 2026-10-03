@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Does the in-game Palette list send what mgba takes?
  *
  * Links src/gbpal.c and NOT SDL. A value mgba does not declare is not an

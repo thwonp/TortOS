@@ -2,8 +2,9 @@
 
 plorpOS (working name) itself - everything under `src/`, `tools/`, `mk/`, and
 the configs, scripts and generated art written for this project - is licensed
-**PolyForm Noncommercial 1.0.0**; see `LICENSE`. It is a fork of Eric
-Reinsmidt's TortOS, whose MIT notice is kept in `NOTICE`.
+**MIT** (`LICENSE`), except the NextUI-derived parts listed in `NOTICE`, which
+keep NextUI's **PolyForm Noncommercial 1.0.0** (`LICENSES/`). It is a fork of
+Eric Reinsmidt's TortOS, also MIT.
 
 A built TortOS card (`out/sd/`) also redistributes third-party software that
 keeps its own license. This file lists those components and their terms, and is
@@ -16,9 +17,10 @@ copied onto the card as `TortOS/THIRD-PARTY-LICENSES.md` by `mk/payload.sh`.
 - **Origin:** an independent frontend, built in its own repository and shipped
   as `TortOS/diatom`. This fork's copy: https://github.com/thwonp/diatom
   (upstream: https://github.com/ericreinsmidt/diatom)
-- **License:** **PolyForm Noncommercial 1.0.0**, like plorpOS; Eric
-  Reinsmidt's original is MIT, and his notice is in `NOTICE`. Its vendored
-  `libretro.h` and `rcheevos` stay MIT under their own notices.
+- **License:** **MIT**, like plorpOS, except its NextUI-derived parts
+  (fast-forward, rewind and the hotkeys), which are PolyForm Noncommercial
+  1.0.0 - its `NOTICE` lists them. Its vendored `libretro.h` and `rcheevos`
+  stay MIT and `lz4` BSD-2-Clause, under their own notices.
 - TortOS's launcher runs it as a resident process and talks to it over a Unix
   socket; it does not link against it. Diatom ships no cores of its own.
 
@@ -45,6 +47,7 @@ The SDL2 libraries TortOS links against are the device's own, in
 | `genesis_plus_gx_libretro.so` | Genesis, Master System, Game Gear | **Non-commercial** |
 | `mednafen_ngp_libretro.so` | Neo Geo Pocket, Neo Geo Pocket Color | GPL-2.0 (Beetle NeoPop, Mednafen-derived) |
 | `pcsx_rearmed_libretro.so` | PlayStation | GPL-2.0 (built from libretro/pcsx_rearmed source, `mk/build-pcsx-rearmed.sh`) |
+| `fake08_libretro.so` | PICO-8 | MIT, with components under their own terms (Lua MIT, Zepto 8 WTFPL 2, LodePNG custom, an oval routine CC BY-SA 3.0, others); full text in `LICENSE-fake08.md` (built from jtothebell/fake-08 source with three patches of ours, `mk/build-fake08.sh`; the patches are MIT) |
 | `fbneo_libretro.so` | Arcade, Neo Geo | **Non-commercial**, FBNeo's own license plus MAME's; full text in `LICENSE-FBNeo.txt` (built from libretro/FBNeo source with one patch, `mk/build-fbneo.sh`) |
 
 **snes9x2010, genesis_plus_gx and fbneo carry a non-commercial restriction.** They are not open source
@@ -72,28 +75,20 @@ left with it.
 
 ---
 
-## Launcher features derived from NextUI (sleep mode, hotkey shortcuts, fast-forward/rewind)
+## Launcher code derived from NextUI (sleep and suspend, CHD reading)
 
 - **Origin:** NextUI, an independent handheld-launcher fork.
   https://github.com/LoveRetro/NextUI
 - **License:** **PolyForm Noncommercial 1.0.0** (source-available, not OSI
-  open source). Full terms: https://polyformproject.org/licenses/noncommercial/1.0.0
-- This is a personal fork of TortOS (github.com/thwonp/TortOS) that will not
-  be upstreamed to github.com/ericreinsmidt/TortOS. Given that, the features
-  tracked as bd issues TortOS-1v7.1 (sleep mode), TortOS-1v7.2 (hotkey
-  submenu) and TortOS-1v7.3 (fast-forward/rewind) are built by porting or
-  adapting NextUI's source directly, rather than as clean-room
-  reimplementations.
-- **Same restriction this file already carries for `snes9x2010_libretro.so`
-  and `genesis_plus_gx_libretro.so` above: noncommercial only.** A build of
-  this fork that includes any of these three features may not be sold or
-  otherwise put to commercial use; hobby redistribution (a free public git
-  repo, sharing a card image with other hobbyists) is what PolyForm
-  Noncommercial's license is for and is what this fork relies on, the same
-  way the two non-commercial cores already do.
-- Since 2026-09-28 the whole fork is PolyForm Noncommercial 1.0.0 (root
-  `LICENSE`), so this carve-out no longer marks the only noncommercial code;
-  it is kept as the record of which features came from NextUI.
+  open source). Full text in `LICENSES/PolyForm-Noncommercial-1.0.0.txt`.
+- Which code: `src/chdread.{c,h}` whole, and the fenced sleep and suspend
+  regions of `src/main.c`, `src/platform.c`, `src/platform.h`,
+  `src/platform_brick.c` and `sd/tortos/radio.sh` - `NOTICE` has the list.
+  The launcher's fast-forward, rewind and hotkey bindings are this fork's own
+  (MIT); the ones ported from NextUI live in diatom and are marked there.
+- **Noncommercial only.** A card carrying this code may not be sold or
+  otherwise put to commercial use - the same restriction the noncommercial
+  cores above already put on it. Everything else in plorpOS is MIT.
 
 ## Disc hashing, linked into the launcher (`third_party/`)
 
@@ -110,11 +105,42 @@ pinned versions: `third_party/README.md`.
 - **miniz** (inflate, bundled with libchdr) - Rich Geldreich and contributors -
   **Unlicense** (public domain).
 
+## Shaders (`res/shaders/`, shipped as `TortOS/shaders/`)
+
+Copied unmodified from NextUI (`skeleton/BASE/Shaders/glsl`), which collected
+them from libretro's shader repositories; NextUI's license does not cover them.
+Each file's terms are its own, traced to the libretro original where the copy
+states none:
+
+| File | Origin | License |
+|------|--------|---------|
+| barrel-distortion.glsl | davej, 2015 | GPL-2.0-or-later |
+| fast-sharpen.glsl | guest(r), 2005-2019 | GPL-2.0-or-later |
+| lcd1x.glsl | as stated in the file | GPL-2.0-or-later |
+| retro-v2.glsl | Hyllian, 2013 (libretro common-shaders `handheld/shaders/retro-v2.cg`) | GPL-2.0-or-later |
+| pixellate.glsl | Fes, 2011-2012 | ISC-style notice, in the file |
+| lcd3x.glsl | Gigaherz (common-shaders `handheld/shaders/lcd3x.cg`) | public domain |
+| scanline.glsl | Themaister (common-shaders `misc/scanline.cg`) | public domain |
+| res-independent-scanlines.glsl | RiskyJumps | public domain |
+| sharp-shimmerless.glsl, sharp-shimmerless-grid.glsl | zadpos | public domain |
+| stock.glsl | libretro's pass-through (common-shaders `stock.cg`) | none stated; a pass-through with no expression in it |
+| edge1pixel.glsl | decavoid (glsl-shaders `pixel-art-scaling/shaders/edge1pixel.glsl`) | **none stated anywhere upstream** |
+
+GPL-2.0-or-later shaders are source files, shipped as source. `shaders.cfg`,
+the list itself, is this project's (MIT).
+
+## Certificates
+
+- `res/ssl/cacert.pem` - Mozilla's root CA list as published by the curl
+  project; **MPL-2.0**. Source and checksum in `res/ssl/README.md`.
+
 ## Fonts
 
 - `res/fonts/menu.ttf` - **Josefin Sans**, SIL Open Font License 1.1. Full text
   in `res/fonts/OFL.txt`. It is TortOS's UI face, the in-game menu's face, and
   the face the boot animation and the system cards are lettered in.
+- `res/fonts/wordmark.ttf` - **Josefin Sans** too, the same OFL 1.1
+  (`res/fonts/OFL.txt`), for the plorpOS wordmark.
 
 ---
 

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Does the in-game Hotkeys screen's binding parser keep its promises?
  *
  * Links src/hkbind.c and NOT SDL - same split db-check.c relies on, so the

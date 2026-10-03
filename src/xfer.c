@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* See xfer.h for why every path the browser sends comes through here. */
 #include <stdio.h>
 #include <string.h>

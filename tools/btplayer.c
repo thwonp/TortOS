@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* btplayer: a media player registered with BlueZ that plays nothing, so that
  * a headset's volume reaches the Brick.
  *

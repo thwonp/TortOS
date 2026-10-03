@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* See ss.h for where the two credentials come from and why. */
 #include <stdio.h>
 #include <string.h>

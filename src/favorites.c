@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* Favorites. See favorites.h for the keying; this is the storage.
  *
  * One row per favorite in the library database, keyed "fav.<tag>\t<file>".

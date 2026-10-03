@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* See btvol.h. alsa-lib's simple mixer against bluealsa's control plugin,
  * reached with dlopen like Muse reaches ALSA: the launcher links no libasound,
  * and forking amixer out of this process is what menu_wifi exists to avoid. */

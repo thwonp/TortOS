@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT AND PolyForm-Noncommercial-1.0.0
 # Wi-Fi and Bluetooth control, shared by launch.sh (boot) and plat_sleep()
 # (suspend/wake). Split out for the same reason as bt-alsa.sh: plat_sleep()
 # needs these definitions without launch.sh's boot-only side effects (mkdir,
@@ -40,6 +41,7 @@ radio_off() {
 	echo "wifi: supplicant still up after ${i}s, giving up" >> "$LOGS_PATH/tortos.log"
 }
 
+# BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: Wi-Fi rfkill around suspend, NextUI's suspend script. See NOTICE.
 # Power the Wi-Fi radio down or up around a suspend, on firmware whose own
 # Wi-Fi script does: the Brick Pro ships /etc/wifi/wifi_init.sh, whose `stop`
 # is `rfkill block wifi` and `start` unblocks - the firmware's own off state,
@@ -51,6 +53,7 @@ radio_off() {
 wifi_rfkill() {
 	[ -f /etc/wifi/wifi_init.sh ] && rfkill "$1" wifi 2> /dev/null
 }
+# END PolyForm-Noncommercial-1.0.0
 
 # Bring the radio up and take a lease. Associating is not connecting: the
 # supplicant joins a saved network on its own, but nothing on this device runs
@@ -75,6 +78,7 @@ wifi_on() {
 	echo "wifi: no association after ${i}s" >> "$LOGS_PATH/tortos.log"
 }
 
+# BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: the pre-suspend Wi-Fi stop, NextUI's suspend script before(). See NOTICE.
 # Single-shot Wi-Fi stop for plat_sleep()'s pre-suspend step only. Mirrors
 # NextUI's own before() exactly (one stop call, no retry): mid-session there is
 # no S96 startup race to win, so radio_off()'s 20s retry window would only add
@@ -85,6 +89,7 @@ wifi_stop_once() {
 	ifconfig wlan0 down 2> /dev/null
 	wifi_rfkill block
 }
+# END PolyForm-Noncommercial-1.0.0
 
 # ---- Bluetooth ----
 

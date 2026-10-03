@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """The Over The Hare mark: the tortoise has already gone past.
 
 Left to right: a hare's head, the speed lines the tortoise left behind, and

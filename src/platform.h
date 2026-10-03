@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT AND PolyForm-Noncommercial-1.0.0 */
 #ifndef TORTOS_PLATFORM_H
 #define TORTOS_PLATFORM_H
 
@@ -255,6 +255,7 @@ bool plat_resident_disc(int *index, int *count, int timeout_ms);
 void plat_request_poweroff(void);
 void plat_leds_off(void);
 
+/* BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: the sleep interface, NextUI's PWR_sleep and PWR_deepSleep. See NOTICE. */
 /* Real suspend-to-RAM - NextUI's PWR_deepSleep and its suspend script,
  * reached only from plat_light_sleep's escalation. See platform.c for what
  * "supported" actually probes. plat_sleep() blocks for the whole suspend and
@@ -285,6 +286,7 @@ void plat_screen(bool on);
  * Keep Awake Over USB setting it is gated on there - a computer always counts
  * (TortOS-2pv). Logs each change. Reads sysfs; callers throttle. */
 bool plat_usb_host(void);
+/* END PolyForm-Noncommercial-1.0.0 */
 
 /* The Suspend Timeout setting (main.c's PM_SUSPEND), in seconds: how long
  * light sleep waits unwoken before real suspend. Never 0. */

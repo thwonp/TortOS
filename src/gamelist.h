@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #ifndef TORTOS_GAMELIST_H
 #define TORTOS_GAMELIST_H
 

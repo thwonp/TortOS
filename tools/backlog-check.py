@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Structural checks on BACKLOG.md.
 
 The backlog is the other half of an open-item store split across two repos:

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Write res/fbneo-titles.tsv: every FBNeo arcade set's name and the game it is.
 
     tools/gen-fbneo-titles.py FBNEO_CLONE

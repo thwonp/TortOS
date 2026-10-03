@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* See musec.h. The protocol is src/muse/muse.c's. */
 #include "musec.h"
 

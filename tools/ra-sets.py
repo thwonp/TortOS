@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Fetch RetroAchievements sets for a ROM library and write them beside it.
 
     tools/ra-sets.py [--roms DIR] [--system NAME] [--force] [--dry-run]

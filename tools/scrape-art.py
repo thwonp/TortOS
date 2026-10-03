@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Fill in missing box art from libretro's thumbnail collection.
 
     tools/scrape-art.py [--roms DIR] [--dry-run] [--force] [--system NAME]

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Repaint each card's accent rule from config/systems.cfg.
 
 systems.cfg is the one place a system's color is written down. The card art is

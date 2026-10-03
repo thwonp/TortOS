@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 """The TortOS mark: one definition, everything else derives from it.
 
 The shell's colors and cell positions were duplicated across the boot

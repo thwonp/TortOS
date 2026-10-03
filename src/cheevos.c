@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* See cheevos.h for the division of labor with Diatom, and why the network
  * half of this is a host-side tool. */
 #include <stdio.h>

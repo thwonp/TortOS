@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Play time: does it record what happened, and does it stay off the launch?
  *
  * The second half is the one worth a check. "Launch does no I/O" is a claim

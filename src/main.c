@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+/* SPDX-License-Identifier: MIT AND PolyForm-Noncommercial-1.0.0
  *
  * TortOS - a custom firmware for the TrimUI Brick that plays eleven
  * 8-, 16- and 32-bit consoles.
@@ -1351,6 +1351,7 @@ static void chv_active_path(char *out, size_t n)
 	snprintf(out, n, "%s/cheevos-active.set", P_USERDATA);
 }
 
+/* BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: NextUI's Screen timeout and Suspend timeout ladders and defaults. See NOTICE. */
 /* Auto Sleep: how long without input before light sleep (screen off, CPU
  * awake - platform.c's plat_light_sleep). NextUI's "Screen timeout" exactly:
  * its ladder and its default (settings.cpp's screen_timeout_secs,
@@ -1395,6 +1396,7 @@ static void auto_poweroff_save(int seconds)
  * applies. Independent of both rows above. platform.c reads the same key. */
 static const int SUSPEND_TIMEOUT[] = { 5, 10, 15, 30, 45, 60, 90, 120, 240, 360, 600 };
 #define SUSPEND_TIMEOUT_COUNT ((int)(sizeof SUSPEND_TIMEOUT / sizeof SUSPEND_TIMEOUT[0]))
+/* END PolyForm-Noncommercial-1.0.0 */
 
 
 /* Defined with the Wi-Fi screen it began in, and used here because signing in
@@ -2648,6 +2650,7 @@ static bool battery_low(void)
 	return low;
 }
 
+/* BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: keep-awake on a USB host, NextUI's PWR_preventAutosleep. See NOTICE. */
 /* Charging, or attached to a computer (plat_usb_host) - cached. Both halves of Auto Off ask this - the shelf every
  * frame, the in-game tick ten times a second - and every call is two sysfs
  * files opened, read and closed. Two seconds is well inside the shortest
@@ -2675,6 +2678,7 @@ static bool keep_awake(void)
 	}
 	return awake;
 }
+/* END PolyForm-Noncommercial-1.0.0 */
 
 /* Has the player been away long enough for the armed idle action - Auto
  * Sleep's light sleep or Auto Off's shutdown, never both?
@@ -6919,6 +6923,7 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : 0;
 
 	(void)ctx;
+	/* BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: the sleep settings rows, NextUI's ladders and their exclusivity. See NOTICE. */
 	/* Auto Sleep, on the left/right idiom Display mode uses. */
 	if (d && sel == ST_SLEEP) {
 		int k, at = AUTO_OFF_COUNT - 1;
@@ -6976,6 +6981,7 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		db_set_int(db_dev(), "suspendtimeout", SUSPEND_TIMEOUT[at]);
 		return MENU_STAY;
 	}
+	/* END PolyForm-Noncommercial-1.0.0 */
 	/* Mute Switch: a toggle, so A flips it as well as left/right
 	 * (TortOS-ib9). */
 #if !defined(PLATFORM_GKD)
@@ -9426,6 +9432,7 @@ static menu_result gm_power(app *a, void *ctx)
 	return MENU_DONE;
 }
 
+/* BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: the sleep sequence, NextUI's Menu_beforeSleep and PWR_update sleep. See NOTICE. */
 /* NextUI's Menu_beforeSleep: before the device sleeps or powers off with a
  * game loaded, write it out - a battery that dies asleep loses whatever
  * sleep did not save. SLOT_AUTO, silently: a safety net, not a save the
@@ -9575,6 +9582,7 @@ static bool sleep_cycle(app *a)
 	a->idle.since_ms = plat_now_ms();
 	return awake;
 }
+/* END PolyForm-Noncommercial-1.0.0 */
 
 /* Every screen's power check, in one place: the button (a tap sleeps, a hold
  * powers off) and the idle clock. Auto Sleep's idle is the same sleep a tap
@@ -9909,6 +9917,7 @@ static void game_menu(app *a)
 	const char *pv = plat_resident_last_preview();
 
 	c.a = a;
+	/* BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: input flushed as the menu opens, NextUI's PAD_reset. See NOTICE. */
 	/* What was pressed in the game is not for this menu. The launcher reads
 	 * no input while a game runs, so it all waits in the queues, and the
 	 * first frame here replayed it: a stale MENU closed the menu before it
@@ -9917,6 +9926,7 @@ static void game_menu(app *a)
 	 * reason. */
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
+	/* END PolyForm-Noncommercial-1.0.0 */
 	if (pv && *pv) {
 		SDL_Surface *sf = IMG_Load(pv);
 
@@ -10588,12 +10598,14 @@ static void launch(app *a)
 			                   DMODES[a->view[o].dmode].name);
 			shader_send(a, o);
 
+			/* BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: autosleep off during play, NextUI's PWR_disableAutosleep. See NOTICE. */
 			/* No idle anything during play: NextUI disables autosleep for
 			 * the whole of a running game (minarch.c's PWR_disableAutosleep)
 			 * and turns it back on only in the in-game menu, which is the
 			 * launcher's own idle_due. Said rather than assumed, because
 			 * Diatom's clock is its own global and outlives any one game. */
 			plat_resident_line("SETIDLE\tms=0");
+			/* END PolyForm-Noncommercial-1.0.0 */
 
 			/* The first play of this game: nothing was cached, so there is a
 			 * set to go and find. Out here and not inside the chv_load branch

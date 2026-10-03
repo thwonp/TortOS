@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* The Wi-Fi screen, minus the screen.
  *
  * State and row building only. This file must never include SDL: ADR-0001 says

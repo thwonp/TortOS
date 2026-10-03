@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* Muse: TortOS's audio player, the engine half.
  *
  * A daemon over a Unix socket - the Diatom relationship again, and for the

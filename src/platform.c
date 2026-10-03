@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT AND PolyForm-Noncommercial-1.0.0 */
 #include "atomic.h"
 #include "db.h"
 #include "platform.h"
@@ -1401,6 +1401,7 @@ void plat_screen(bool on)
 /* ---- power: sleep and the button. The Brick's, shared unchanged - only
  * plat_sleep() and plat_sleep_supported() are the device file's. */
 
+/* BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: light sleep, NextUI's PWR_sleep, PLAT_shouldWake, resume_tick and PLAT_isUSBConnected. See NOTICE. */
 #ifdef __linux__
 /* Blocks up to ms for a POWER event with this value - 1 a press, 0 a
  * release - reading whatever else is queued on the way.
@@ -1574,6 +1575,7 @@ pwr_action plat_power_tap_or_hold(bool down)
 	 * sleep, and suspend support only matters at its escalation. */
 	return db_get_int(db_dev(), "power.tap", 1) ? PWR_SLEEP : PWR_POWEROFF;
 }
+/* END PolyForm-Noncommercial-1.0.0 */
 
 
 /* The settings indicator: a thin line across the very top on any volume or

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 */
+/* SPDX-License-Identifier: MIT */
 /* Talk to Muse by hand, over ssh, with no screen in front of it.
  *
  *   musectl [-s SOCKET] [-t SECONDS] 'PLAY<TAB>path=/mnt/SDCARD/Music/x.mp3' ...

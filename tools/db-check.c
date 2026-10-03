@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Does the settings store keep its promises?
  *
  * Fourteen config files became two databases, and the properties that used to

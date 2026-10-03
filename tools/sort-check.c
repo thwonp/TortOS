@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* What order does a shelf end up in?
  *
  * Sorting is the kind of code where a wrong sign compiles, runs, and looks
