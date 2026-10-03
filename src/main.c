@@ -1356,7 +1356,7 @@ static void chv_active_path(char *out, size_t n)
  * its ladder and its default (settings.cpp's screen_timeout_secs,
  * CFG_DEFAULT_SCREENTIMEOUTSECS). Seconds, 0 for never. The array and db key
  * keep their old auto_off/autooff names from when this row meant power-off. */
-static const int AUTO_OFF[] = { 0, 5, 10, 15, 30, 45, 60, 90, 120, 240, 360, 600 };
+static const int AUTO_OFF[] = { 0, 30, 60, 120, 300, 600 };
 #define AUTO_OFF_COUNT ((int)(sizeof AUTO_OFF / sizeof AUTO_OFF[0]))
 
 static int auto_off_load(void)
@@ -1393,7 +1393,7 @@ static void auto_poweroff_save(int seconds)
  * sleep_timeout_secs ladder and CFG_DEFAULT_SUSPENDTIMEOUTSECS. No 0 on
  * purpose, as in NextUI: once the screen is off some escalation always
  * applies. Independent of both rows above. platform.c reads the same key. */
-static const int SUSPEND_TIMEOUT[] = { 5, 10, 15, 30, 45, 60, 90, 120, 240, 360, 600 };
+static const int SUSPEND_TIMEOUT[] = { 30, 60, 120, 300, 600 };
 #define SUSPEND_TIMEOUT_COUNT ((int)(sizeof SUSPEND_TIMEOUT / sizeof SUSPEND_TIMEOUT[0]))
 
 
@@ -6925,8 +6925,9 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 	if (d && sel == ST_SLEEP) {
 		int k, at = AUTO_OFF_COUNT - 1;
 
-		/* The first rung at or above, not an exact match: 300s from the
-		 * pre-NextUI ladder steps from 240/360, not from never. */
+		/* The first rung at or above, not an exact match: a value from an
+		 * older ladder (45, 90, 240...) steps from the next rung, not from
+		 * never. */
 		for (k = 0; k < AUTO_OFF_COUNT; k++)
 			if (AUTO_OFF[k] >= a->auto_off) { at = k; break; }
 		at += d;
@@ -6968,10 +6969,12 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 	 * governs light sleep however it began. Clamped at both ends - there is
 	 * no "never", as in NextUI. */
 	if (d && sel == ST_SUSPEND) {
-		int k, at = 3;                    /* 30s, should the stored value be off-ladder */
+		int k, at = SUSPEND_TIMEOUT_COUNT - 1;
 
+		/* The first rung at or above, as Auto Sleep: an older ladder's 5 or
+		 * 45 steps from 30 or 60. */
 		for (k = 0; k < SUSPEND_TIMEOUT_COUNT; k++)
-			if (SUSPEND_TIMEOUT[k] == plat_suspend_timeout_secs()) { at = k; break; }
+			if (SUSPEND_TIMEOUT[k] >= plat_suspend_timeout_secs()) { at = k; break; }
 		at += d;
 		if (at < 0) at = 0;
 		if (at >= SUSPEND_TIMEOUT_COUNT) at = SUSPEND_TIMEOUT_COUNT - 1;
