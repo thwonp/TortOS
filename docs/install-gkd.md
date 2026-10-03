@@ -14,8 +14,8 @@ Download **`plorpOS-gkd-v1.0.zip`** from
 has two folders, and this guide as `INSTALL.md`:
 
 ```
-TortOS/     the launcher, emulator, cores and assets    -> the card
-system.d/   the three service folders                   -> the GKD's storage
+copy_to_sd/   plorpOS and the card's empty folders      -> the card
+system.d/     the three service folders                 -> the GKD's storage
 ```
 
 ## 1. Connect the GKD to Wi-Fi
@@ -64,20 +64,27 @@ scp -r system.d/* root@192.168.0.55:/storage/.config/system.d/
 ## 3. Prepare the card
 
 1. **Format it as exFAT.**
-2. **Copy the build's `TortOS/` folder to the root of the card,** and create
-   `Roms/`, `Bios/` and `Saves/` beside it.
-3. **Add games** to `Roms/`, one folder per console, named as in
-   [Supported systems](https://github.com/thwonp/TortOS/blob/plorpos-gkd-v1.0/README.md#supported-systems). BIOS files go loose in
-   `Bios/`.
+2. **Copy everything inside `copy_to_sd/` to the root of the card.**
+3. **Add games** to their console's folder in `Roms/`, albums to `Music/` and
+   books to `Audiobooks/`. BIOS files go loose in `Bios/`; which ones each
+   console needs is in
+   [Supported systems](https://github.com/thwonp/TortOS/blob/plorpos-gkd-v1.0/README.md#supported-systems).
 
 ```
-TortOS/    tortos.elf  diatom  muse  musectl  launch.sh  systems.cfg
-           menu.ttf  cacert.pem  LICENSE  NOTICE  ...
-           cards/  cores/  res/  shaders/  LICENSES/
-Roms/      NES/  SNES/  Game Boy/ ...
+TortOS/      tortos.elf  diatom  muse  musectl  launch.sh  systems.cfg
+             menu.ttf  cacert.pem  LICENSE  NOTICE  ...
+             cards/  cores/  res/  shaders/  LICENSES/
+Roms/        Pico-8/  Arcade/  NES/  SNES/  Game Boy/ ...   one per console
+Music/
+Audiobooks/
 Bios/
-Saves/     NES/  SNES/ ...   one per system, named as in Roms/, made on first play
+Saves/       made per console on first play
 ```
+
+`Roms/Pico-8/` also holds a hidden file, `.disable_splore`. Keep it: without it
+ROCKNIX puts an empty `Splore.png` there at every boot, for its own
+EmulationStation, and it would show up as a broken cart. It doesn't turn off
+Splore in plorpOS, which appears whenever `Bios/pico8_64` is there.
 
 Once plorpOS is running you can also transfer files to the card while it's in the GKD, over the
 **`games-external`** samba share, or connecting to it using "Over the Hare".

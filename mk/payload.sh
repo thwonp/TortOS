@@ -7,9 +7,9 @@
 # up in TortOS.
 #
 # GKD (PLATFORM=gkd): out/gkd/, the two folders docs/install-gkd.md installs -
-# TortOS/ for the card and system.d/ for the GKD's storage - and that guide as
-# INSTALL.md. Nothing for the card's root: ROCKNIX owns the GKD's boot, and the
-# guide has you make Roms/, Bios/ and Saves/.
+# copy_to_sd/ (TortOS/ and the card's empty Roms/, Music/, Audiobooks/, Bios/,
+# Saves/) for the card and system.d/ for the GKD's storage - and that guide as
+# INSTALL.md. No boot hook: ROCKNIX owns the GKD's boot.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 PLATFORM=${PLATFORM:-brick}
@@ -17,13 +17,15 @@ VERSION=${VERSION:-1.0}
 if [ "$PLATFORM" = gkd ]; then
 	B=$ROOT/build/gkd
 	OUT=$ROOT/out/gkd
+	CARD=$OUT/copy_to_sd
 	ZIP=$ROOT/out/plorpOS-gkd-v$VERSION.zip
 else
 	B=$ROOT/build
 	OUT=$ROOT/out/sd
+	CARD=$OUT
 	ZIP=$ROOT/out/TortOS-v$VERSION.zip
 fi
-P=$OUT/TortOS
+P=$CARD/TortOS
 
 [ -f "$B/tortos.elf" ] || { echo "run make PLATFORM=$PLATFORM first"; exit 1; }
 # A release ships with the ScreenScraper developer pair built in, or box art
@@ -44,7 +46,8 @@ DIATOM_ELF=${DIATOM_ELF:-$ROOT/../diatom/build/$PLATFORM/diatom}
 [ -f "$ROOT/vendor/cores/fceumm_libretro.so" ] || { echo "run mk/fetch-vendor.sh first"; exit 1; }
 
 rm -rf "$OUT"
-mkdir -p "$P/cards" "$P/cores" "$P/res/web"
+mkdir -p "$P/cards" "$P/cores" "$P/res/web" \
+         "$CARD/Roms" "$CARD/Music" "$CARD/Audiobooks" "$CARD/Bios" "$CARD/Saves"
 
 cp "$B/tortos.elf" "$P/"
 cp "$B/muse" "$P/"                        # the audio player's engine; Muse cannot play without it
@@ -57,10 +60,14 @@ if [ "$PLATFORM" = gkd ]; then
 	# The three systemd drop-ins, folders and all: each .conf only works
 	# inside its <service>.service.d/.
 	cp -R "$ROOT/sd/gkd/system.d" "$OUT/"
+	# ROCKNIX's boot touches an empty roms/pico-8/Splore.png (for its own
+	# EmulationStation) unless this file is there, and the shelf would list
+	# it as a cart. It does nothing to plorpOS's Splore (plorpos-gkd.32.8).
+	mkdir -p "$CARD/Roms/Pico-8"
+	touch "$CARD/Roms/Pico-8/.disable_splore"
 	cp "$ROOT/docs/install-gkd.md" "$OUT/INSTALL.md"
 else
-	mkdir -p "$OUT/.tmp_update" "$OUT/trimui/app" \
-	         "$OUT/Roms" "$OUT/Music" "$OUT/Audiobooks" "$OUT/Bios" "$OUT/Saves"
+	mkdir -p "$OUT/.tmp_update" "$OUT/trimui/app"
 	cp "$B/setbright" "$P/"               # brightness before the boot animation
 	cp "$B/btplayer" "$P/"                # lets a headset's volume through BlueZ
 	cp "$ROOT/sd/tortos/launch.sh" "$P/"
@@ -121,6 +128,21 @@ if [ -n "$missing" ]; then
 	exit 1
 fi
 
+# One ROM folder per system, with the .media folder box art goes in. Read from
+# systems.cfg (awk, not sed: folder names contain spaces).
+awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$3); print $3}' "$ROOT/config/systems.cfg" |
+while IFS= read -r folder; do
+	mkdir -p "$CARD/Roms/$folder/.media"
+done
+# Bios/ is created above and stays FLAT. It is handed to the core as its system
+# directory and a core asks for a filename inside it - mgba wants gba_bios.bin,
+# mednafen wants syscard3.pce - so a folder per system is a place a BIOS goes to
+# be ignored. This line used to read `mkdir -p "$OUT/Bios/GBA"`, directly under a
+# comment saying not to litter the card with empty Bios folders, and it shipped
+# in v1.0: an empty GBA/ that contradicted the README two directories away.
+# Nothing errors when a BIOS lands in it. mgba falls back to its built-in one and
+# the only symptom is the boot animation you were trying to enable not appearing.
+
 chmod +x "$P/launch.sh" "$P/tortos.elf" "$P/diatom" "$P/muse"
 if [ "$PLATFORM" = gkd ]; then
 	chmod +x "$P/musectl"
@@ -138,21 +160,6 @@ cp "$ROOT/sd/trimui/app/MainUI" "$ROOT/sd/trimui/app/runtrimui.sh" "$OUT/trimui/
 chmod +x "$OUT/.tmp_update/updater" "$OUT/.tmp_update/tg3040.sh" \
          "$OUT/trimui/app/MainUI" "$OUT/trimui/app/runtrimui.sh" \
          "$P/setbright" "$P/btplayer"
-
-# One ROM folder per system, with the .media folder box art goes in. Read from
-# systems.cfg (awk, not sed: folder names contain spaces).
-awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$3); print $3}' "$ROOT/config/systems.cfg" |
-while IFS= read -r folder; do
-	mkdir -p "$OUT/Roms/$folder/.media"
-done
-# Bios/ is created above and stays FLAT. It is handed to the core as its system
-# directory and a core asks for a filename inside it - mgba wants gba_bios.bin,
-# mednafen wants syscard3.pce - so a folder per system is a place a BIOS goes to
-# be ignored. This line used to read `mkdir -p "$OUT/Bios/GBA"`, directly under a
-# comment saying not to litter the card with empty Bios folders, and it shipped
-# in v1.0: an empty GBA/ that contradicted the README two directories away.
-# Nothing errors when a BIOS lands in it. mgba falls back to its built-in one and
-# the only symptom is the boot animation you were trying to enable not appearing.
 
 du -sh "$OUT"
 echo "payload ready: $OUT"
