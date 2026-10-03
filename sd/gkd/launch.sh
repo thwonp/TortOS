@@ -49,6 +49,16 @@ start_resident() {
 		--save "$CARD/Saves" --system "$CARD/Bios" >> "$LOG" 2>&1 &
 }
 
+# essway starts as soon as sway.service has, before sway has made its socket:
+# a diatom or launcher that gets there first fails SDL_Init (plorpos-gkd.77).
+# Bounded, so a sway that never comes up still ends in the fallback below.
+i=0
+while [ ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] && [ $i -lt 100 ]; do
+	sleep 0.05
+	i=$((i + 1))
+done
+[ $i -eq 100 ] && echo "no Wayland socket after 5 s; starting anyway" >> "$LOG"
+
 rm -f /tmp/tortos_poweroff
 cd "$DIR"
 FAILS=0
