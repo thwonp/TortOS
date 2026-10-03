@@ -11,19 +11,26 @@
 # or /usr/lib. Settings are TortOS's own code in src/platform.c, against the
 # device's ALSA control and display-engine interfaces.
 #
-# Cores come from libretro's own buildbot, pinned by sha256 - the same hashes
-# Diatom's CORES.md verifies, because they are the same binaries. The
-# buildbot path is unpinned; these hashes are the pin.
+# Cores are libretro's own buildbot binaries, pinned by sha256 - the same hashes
+# Diatom's CORES.md verifies, because they are the same binaries. They are
+# fetched from a mirror, not the buildbot: the buildbot serves latest/ only and
+# republishes on any upstream commit (weekly translation syncs included), so a
+# pin against it breaks within days. By 2026-10-03 every core below had been
+# republished, and snes9x2010's new build needs GLIBC_2.34, which the Brick
+# lacks. The mirror is a release on our own repo holding the exact pinned
+# bytes, unmodified; the hashes below are still what is trusted.
+#
+# Pinning a different core: verify it, attach it to a new release, point MIRROR
+# there, and update the hash here and in Diatom's CORES.md together.
 #
 # Usage: mk/fetch-vendor.sh
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 VENDOR=$ROOT/vendor
 DL=${1:-/tmp/tortos-vendor}
-BB=https://buildbot.libretro.com/nightly/linux/aarch64/latest
+MIRROR=https://github.com/thwonp/TortOS/releases/download/cores-2026-08
 
 command -v curl   > /dev/null || { echo "need curl" >&2; exit 1; }
-command -v unzip  > /dev/null || { echo "need unzip" >&2; exit 1; }
 command -v shasum > /dev/null || { echo "need shasum" >&2; exit 1; }
 
 mkdir -p "$DL" "$VENDOR/cores"
@@ -34,17 +41,18 @@ fetch_core() { # name sha256
 		echo "  ok      $1"
 		return
 	fi
-	curl -sSfL -o "$DL/$1.zip" "$BB/${1}_libretro.so.zip"
-	unzip -o -j "$DL/$1.zip" -d "$VENDOR/cores" > /dev/null
-	GOT=$(shasum -a 256 "$VENDOR/cores/${1}_libretro.so" | cut -d' ' -f1)
+	# Verified in $DL and only then installed, so a bad download never
+	# reaches vendor/cores.
+	curl -sSfL -o "$DL/${1}_libretro.so" "$MIRROR/${1}_libretro.so"
+	GOT=$(shasum -a 256 "$DL/${1}_libretro.so" | cut -d' ' -f1)
 	if [ "$GOT" != "$2" ]; then
 		echo "  MISMATCH $1" >&2
 		echo "    want $2" >&2
 		echo "    got  $GOT" >&2
-		echo "  The buildbot republished this core. Verify it, then update the" >&2
-		echo "  hash here and in Diatom's CORES.md together." >&2
+		echo "  The mirror does not hold the pinned binary; vendor/cores untouched." >&2
 		exit 1
 	fi
+	cp "$DL/${1}_libretro.so" "$VENDOR/cores/"
 	echo "  fetched $1"
 }
 
@@ -63,8 +71,9 @@ fetch_core snes9x2010        3933890f520abb9dbb0e5276460785b20ce54d25f552b369caf
 # has not synced since 2026-08-06.
 #
 # RESTORE THE LINE ABOVE AND DELETE THE BRIDGE the day that fork syncs. The
-# official binary will contain exactly the change we are carrying. See
-# MGBA-MBC2.md, which also records what to re-verify when swapping back.
+# official binary will contain exactly the change we are carrying; put it on a
+# mirror release with the others and pin its new hash. See MGBA-MBC2.md, which
+# also records what to re-verify when swapping back.
 # pcsx_rearmed IS NOT FETCHED either, and that one is permanent: the buildbot
 # binary needs GLIBC_2.34 and the Brick has 2.33. Run mk/build-pcsx-rearmed.sh,
 # which builds the same commit in the launcher's toolchain and pins its own sha.
