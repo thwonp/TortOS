@@ -594,10 +594,11 @@ checkmark:
 	python3 tools/checkmark.py
 
 payload: all checkmark
-	VERSION=$(VERSION) ./mk/payload.sh
+	PLATFORM=$(PLATFORM) VERSION=$(VERSION) ./mk/payload.sh
 
+# payload.sh names the zip: out/TortOS-v$(VERSION).zip for the Brick,
+# out/plorpOS-gkd-v$(VERSION).zip for PLATFORM=gkd.
 release: payload
-	@echo "out/TortOS-v$(VERSION).zip"
 
 # Copy the assembled payload onto a mounted FAT32 card. CARD must be set.
 install-card: payload
