@@ -73,7 +73,7 @@ int main(void)
 
 	printf("the shipped list (res/shaders/shaders.cfg):\n");
 	sl_load(&l, "res/shaders/shaders.cfg");
-	ck(l.count == 19, "None + 18 entries");
+	ck(l.count == 14, "None + 13 entries");
 	for (i = 1; i < l.count; i++) {
 		char buf[256], *p, *save = NULL, path[300], what[128];
 		int ok = 1;

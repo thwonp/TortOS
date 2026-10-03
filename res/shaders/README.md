@@ -17,14 +17,10 @@ cover them; each file's terms are its own.
 | pixellate.glsl | Fes, 2011-2012 | ISC-style permission notice |
 | res-independent-scanlines.glsl | RiskyJumps | public domain |
 | retro-v2.glsl | cg2glsl conversion | none stated |
-| scale3x.glsl | Andrea Mazzoleni, 2001-2004 | GPL |
 | scanline.glsl | cg2glsl conversion | none stated |
-| sharp-bilinear.glsl | Themaister | public domain |
 | sharp-shimmerless.glsl | zadpos | public domain |
 | sharp-shimmerless-grid.glsl | zadpos | public domain |
-| sharp-shimmerless-subpixel-vrgb.glsl | zadpos | public domain |
 | stock.glsl | cg2glsl conversion | none stated |
-| waterpaint.glsl | cg2glsl conversion | none stated |
 
 "None stated" files are shipped pending plorpos-4g4, which traces each to its
 libretro original and its terms, or drops it before release.
