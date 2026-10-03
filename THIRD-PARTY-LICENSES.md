@@ -124,7 +124,13 @@ states none:
 | res-independent-scanlines.glsl | RiskyJumps | public domain |
 | sharp-shimmerless.glsl, sharp-shimmerless-grid.glsl | zadpos | public domain |
 | stock.glsl | libretro's pass-through (common-shaders `stock.cg`) | none stated; a pass-through with no expression in it |
-| edge1pixel.glsl | decavoid (glsl-shaders `pixel-art-scaling/shaders/edge1pixel.glsl`) | **none stated anywhere upstream** |
+| edge1pixel.glsl | decavoid (glsl-shaders `pixel-art-scaling/shaders/edge1pixel.glsl`) | **No license could be found** (see below) |
+
+**edge1pixel.glsl: no license could be found.** Neither the file nor libretro's
+glsl-shaders or slang-shaders repositories, where it is published, state terms
+for it (checked 2026-10-03). It is shipped as published there, unmodified and
+credited to its author, decavoid, as libretro distributes it. It is not covered
+by this project's MIT license. If the author objects, it will be removed.
 
 GPL-2.0-or-later shaders are source files, shipped as source. `shaders.cfg`,
 the list itself, is this project's (MIT).

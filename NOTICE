@@ -20,8 +20,8 @@ and may not be put to commercial use. It is:
 
   src/main.c, src/platform.c, src/platform.h, src/platform_brick.c,
   sd/tortos/radio.sh
-      Sleep and suspend, after NextUI's PWR_sleep, PWR_deepSleep, its
-      suspend script and the settings around them. Only the regions
+      Sleep and suspend, after NextUI's PWR_sleep, PWR_deepSleep and its
+      suspend script. Only the regions
       between "BEGIN PolyForm-Noncommercial-1.0.0" and
       "END PolyForm-Noncommercial-1.0.0" comments; the rest of each file
       is MIT (SPDX: "MIT AND PolyForm-Noncommercial-1.0.0").

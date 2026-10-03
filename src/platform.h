@@ -275,10 +275,12 @@ bool plat_sleep(void);
  * music stopped), counted toward the Suspend Timeout; 0 otherwise. */
 bool plat_light_sleep(unsigned waited_ms);
 
+/* END PolyForm-Noncommercial-1.0.0 */
 /* The backlight alone, off or back at the player's level - no mute, no input
  * flush, no escalation. For main.c's music_dark, the screen-off that lets an
  * album play on where light sleep would pause it (TortOS-a5k). */
 void plat_screen(bool on);
+/* BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: the sleep interface, NextUI's PWR_sleep (plat_screen above is this project's own). See NOTICE. */
 
 /* A computer has enumerated the device - not merely a charger, which never
  * does. With charging, what keeps TortOS awake: it holds the idle clock and

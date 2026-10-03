@@ -24,6 +24,6 @@ cover them; each file's terms are its own.
 
 The three conversions were traced to their libretro common-shaders originals
 in plorpos-4g4 (2026-10-03). edge1pixel.glsl is the one with no terms found
-anywhere; it is kept and flagged in THIRD-PARTY-LICENSES.md rather than
-dropped. a71b077 brought 16 files; 54cd96b removed four (scale3x,
+anywhere: no license could be found, it is kept as published, credited to
+decavoid, and THIRD-PARTY-LICENSES.md says so (plorpos-gkd.81). a71b077 brought 16 files; 54cd96b removed four (scale3x,
 sharp-bilinear, sharp-shimmerless-subpixel-vrgb, waterpaint), leaving these 12.
