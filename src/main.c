@@ -3571,9 +3571,9 @@ static void anim_poweroff(app *a)
 static void power_off(app *a)
 {
 	fprintf(stderr, "power: off\n");
-	/* Here rather than only on the return path: launch.sh runs its leds_off at
-	 * the TOP of its restart loop, and a power-off breaks that loop instead of
-	 * going round it, so this is the last chance to darken them. */
+	/* Here rather than only on the return path: launch.sh runs its leds_off
+	 * before each restart of the launcher, and a power-off breaks that loop
+	 * instead of going round it, so this is the last chance to darken them. */
 	plat_leds_off();
 	remember_place(a);
 	book_keep(true);

@@ -314,9 +314,11 @@ echo interactive > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2> /dev
 # scheme depends on.
 pgrep trimui_inputd > /dev/null || trimui_inputd &
 
-# LEDs off again: trimui_inputd re-enables them when it starts.
-sleep 1
-leds_off
+# LEDs off again: trimui_inputd re-enables them when it starts. A second on,
+# in the background: in line, the sleep held up Diatom, the launcher and
+# everything after them by a full second, 1.05 s of the boot measured
+# 2026-10-02. The launcher puts them out itself as it starts, too.
+( sleep 1; leds_off ) &
 
 # One log per boot, carrying the launcher AND everything it starts. Without
 # this a failure inside a game goes to a console nobody reads.
@@ -326,14 +328,21 @@ leds_off
 # before anyone read the log, and a player's report can come several reboots
 # after the fault. Measured on the device 2026-09-29, a boot's log runs 3 to
 # 30 KB, so ten is 300 KB at most.
+#
+# Only the last boot's log is moved out of this one's way here; the older ones
+# shift along in the background, where nothing waits on them. In line, the
+# renames took 260 ms of the boot on the card, measured 2026-10-02.
 LOG=$LOGS_PATH/tortos.log
-i=9
-while [ $i -gt 1 ]; do
-	[ -f "$LOG.$((i - 1))" ] && mv -f "$LOG.$((i - 1))" "$LOG.$i"
-	i=$((i - 1))
-done
-[ -f "$LOG" ] && mv -f "$LOG" "$LOG.1"
+[ -f "$LOG" ] && mv -f "$LOG" "$LOG.prev"
 : > "$LOG"
+(
+	i=9
+	while [ $i -gt 1 ]; do
+		[ -f "$LOG.$((i - 1))" ] && mv -f "$LOG.$((i - 1))" "$LOG.$i"
+		i=$((i - 1))
+	done
+	[ -f "$LOG.prev" ] && mv -f "$LOG.prev" "$LOG.1"
+) &
 
 # The resident emulator. It holds the GL context and every core between
 # games, which takes a launch from ~1100ms to ~200ms. Started here so its ~1s
@@ -406,16 +415,23 @@ rm -f /tmp/tortos_poweroff
        -o -name 'desktop.ini' \) -type f -exec rm -f {} \;
 ) >/dev/null 2>&1 &
 
+# Whole seconds since boot into NOW, for telling a crash loop from a normal
+# exit. The shell's own read rather than $(cut ...), a process start for one
+# number.
+now_s() {
+	local up rest
+	read up rest < /proc/uptime
+	NOW=${up%%.*}
+}
+
 # Restart loop: only ever exits for a power-off.
 cd "$TORTOS_DIR"
 FAILS=0
 while : ; do
-	leds_off
-	start_resident          # bring it back if it died
-	START=$(cut -d. -f1 /proc/uptime)
+	now_s; START=$NOW
 	./tortos.elf >> "$LOG" 2>&1
 	[ -f /tmp/tortos_poweroff ] && break
-	END=$(cut -d. -f1 /proc/uptime)
+	now_s; END=$NOW
 	# A launcher that dies immediately, five times running, is not going to
 	# start on the sixth. Stop rather than strobe.
 	if [ $((END - START)) -lt 5 ]; then
@@ -425,6 +441,12 @@ while : ; do
 		FAILS=0
 	fi
 	sleep 1
+	# Before the next start rather than at the top of the loop, where the
+	# first pass repeated the two lines just before it - and asked whether
+	# Diatom was running the instant after starting it, which a check by name
+	# can miss and start a second one (seen on the GKD Pixel 2, 2026-10-01).
+	leds_off
+	start_resident          # bring it back if it died
 done
 
 sync
