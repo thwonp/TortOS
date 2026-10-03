@@ -106,7 +106,7 @@ int gi_rows(menu_row *out, const game_info *gi, bool net);
  * without opening a menu to get there. */
 
 typedef enum {
-	GM_CONTINUE, GM_SAVE, GM_LOAD, GM_DISPLAY, GM_SHADER, GM_CHEEVOS,
+	GM_CONTINUE, GM_SAVE, GM_LOAD, GM_DISPLAY, GM_SHADER, GM_PALETTE, GM_CHEEVOS,
 	GM_HOTKEYS, GM_RESET, GM_QUIT,
 	GM_ROWS
 } gm_row;
@@ -116,6 +116,7 @@ typedef struct {
 	const char *dmode;    /* the display mode's label */
 	const char *shader;   /* the shader's name (plorpos-gkd.72.4) */
 	bool        shaders;  /* a list to pick from - the GKD's, never a Brick's */
+	const char *palette;  /* this game's palette; NULL: not a Game Boy game (plorpos-gkd.76) */
 	int         earned;
 	int         total;    /* 0: this game has no achievement set */
 } gm_ui;
@@ -133,6 +134,13 @@ typedef enum { GMN_CONTINUE, GMN_RESET, GMN_SPLORE, GMN_QUIT, GMN_ROWS } gmn_row
 
 /* Splore ends the cart and opens Splore (plorpos-gkd.50.21); greyed in
  * Splore itself, where Reset is the same thing. */
+/* The rows gm_rows made, less the two that can never do anything here: Shader
+ * with no list (every Brick) and Palette on a game that is not a Game Boy
+ * game. Compacted in place; ids[i] is the gm_row that row i now shows, which
+ * is how a selection is read back. Cheevos stays when dead: its "none" answers
+ * the question the menu was opened to ask. Returns the new count. */
+int gm_compact(menu_row *rows, int n, int *ids);
+
 int gm_native_rows(bool in_splore, menu_row *out);
 
 #endif

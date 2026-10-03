@@ -52,6 +52,7 @@
 #include "game_menu.h"
 #include "hkbind.h"
 #include "shaderlist.h"
+#include "gbpal.h"
 #include "ui.h"
 #include "wifi_menu.h"
 
@@ -369,6 +370,30 @@ static void shader_send(app *a, int sys)
 	snprintf(dir, sizeof dir, "%s/shaders", P_ROOT);
 	if (sl_fields(&a->shaders, i, dir, f, sizeof f))
 		plat_resident_line("SETDISPLAY\t%s", f);
+}
+
+/* palette.GB.<file>, in the library database: a choice per game rather than
+ * per system (plorpos-gkd.76), so it travels with the card the way favorites
+ * do. Keyed on the file name, as save states are, so renaming a ROM loses it.
+ * -1 for a game that is not a Game Boy game; no row is Auto. */
+static int palette_of(app *a, int sys, const game_entry *g)
+{
+	char key[LIB_PATH + 32], name[CFG_STR];
+	const char *base;
+
+	if (strcmp(a->sys.systems[sys].tag, "GB")) return -1;
+	base = strrchr(g->file, '/');
+	snprintf(key, sizeof key, "palette.GB.%s", base ? base + 1 : g->file);
+	return db_get_str(db_lib(), key, name, sizeof name, NULL) ? gbpal_find(name) : 0;
+}
+
+static void palette_save(const game_entry *g, int i)
+{
+	char key[LIB_PATH + 32];
+	const char *base = strrchr(g->file, '/');
+
+	snprintf(key, sizeof key, "palette.GB.%s", base ? base + 1 : g->file);
+	db_set_str(db_lib(), key, gbpal_label(i));
 }
 
 /* engine.<TAG>, PICO-8's shelf only, beside display.<TAG>. No row means
@@ -7529,6 +7554,12 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 	u.dmode  = DMODES[owner_view(a)->dmode].label;
 	u.shader  = a->shaders.e[owner_view(a)->shader].name;
 	u.shaders = a->shaders.count > 1;
+	{
+		sysview *sv = &a->view[a->sys_cursor];
+		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
+		int pal = palette_of(a, o, &sv->list.items[sv->cursor]);
+		u.palette = pal < 0 ? NULL : gbpal_label(pal);
+	}
 	u.earned = chv_earned();
 	u.total  = chv_count();
 	return gm_rows(&u, out, b);
@@ -9264,6 +9295,16 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 /* Measured across every mode label, so cycling the row does not resize the
  * panel under the cursor - the same reason the shelf menus have a fixed width. */
+/* The width of the rows as drawn: compacted, as gm_menu_build shows them. */
+static int gm_measure(const menu_row *full)
+{
+	menu_row rows[GM_ROWS];
+	int ids[GM_ROWS];
+
+	memcpy(rows, full, sizeof rows);
+	return menu_measure(rows, gm_compact(rows, GM_ROWS, ids), NULL);
+}
+
 static int gm_width(app *a)
 {
 	menu_row rows[GM_ROWS];
@@ -9274,7 +9315,7 @@ static int gm_width(app *a)
 	for (k = 0; k < DMODE_COUNT; k++) {
 		int mw;
 		rows[GM_DISPLAY].value = DMODES[k].label;
-		mw = menu_measure(rows, GM_ROWS, NULL);
+		mw = gm_measure(rows);
 		if (mw > w) w = mw;
 	}
 	/* And every shader name, for the same reason: picking one must not
@@ -9282,7 +9323,13 @@ static int gm_width(app *a)
 	for (k = 0; k < a->shaders.count && rows[GM_SHADER].live; k++) {
 		int mw;
 		rows[GM_SHADER].value = a->shaders.e[k].name;
-		mw = menu_measure(rows, GM_ROWS, NULL);
+		mw = gm_measure(rows);
+		if (mw > w) w = mw;
+	}
+	for (k = 0; k < GBPAL_COUNT && rows[GM_PALETTE].live; k++) {
+		int mw;
+		rows[GM_PALETTE].value = gbpal_label(k);
+		mw = gm_measure(rows);
 		if (mw > w) w = mw;
 	}
 	return w;
@@ -9296,6 +9343,7 @@ typedef struct {
 	gm_bufs      bufs;
 	menu_style   st;
 	bool         resume;
+	int          ids[GM_ROWS];   /* drawn row -> gm_row, from gm_compact */
 } gm_ctx;
 
 static int gm_menu_build(void *ctx, menu_row *rows, int max,
@@ -9305,7 +9353,7 @@ static int gm_menu_build(void *ctx, menu_row *rows, int max,
 
 	(void)max;
 	*heading = NULL;       /* no title: the game behind it is the title */
-	return gm_build(c->a, rows, &c->bufs);
+	return gm_compact(rows, gm_build(c->a, rows, &c->bufs), c->ids);
 }
 
 /* The paused game, not the shelf. Diatom reports its rect with every DISPLAY
@@ -9569,10 +9617,71 @@ static void shader_screen(app *a, gm_ctx *gm)
 	menu_run(a, &st, sh_build, sh_key, &c);
 }
 
+/* The in-game Palette list (plorpos-gkd.76), a Game Boy game's own. Same
+ * shape as the Shader list above, but kept per game. */
+typedef struct {
+	gm_ctx           *gm;
+	const game_entry *g;
+	int               cur;
+} pal_ctx;
+
+static int pal_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	pal_ctx *c = ctx;
+	int i, n = GBPAL_COUNT < max ? GBPAL_COUNT : max;
+
+	for (i = 0; i < n; i++)
+		rows[i] = (menu_row){ gbpal_label(i), i == c->cur ? "Current" : NULL, true };
+	*heading = "Palette";
+	return n;
+}
+
+/* A sends it to the paused game and keeps it for this game. mgba reads the
+ * palette as the game runs, so a fixed one shows on Continue; Auto's per-game
+ * colours wait for the next launch (gbpal.c). No answer is waited for: an
+ * option diatom does not take is logged by it, and the choice is still the
+ * player's for the next launch. */
+static menu_result pal_key(app *a, void *ctx, in_button key, int sel)
+{
+	pal_ctx *c = ctx;
+	char p[64], col[64];
+
+	(void)a;
+	if (key != IN_ACCEPT) return MENU_STAY;
+	if (sel == c->cur) return MENU_DONE;
+	if (gbpal_opts(sel, p, sizeof p, col, sizeof col)) {
+		char *eq;
+		eq = strchr(p, '=');   plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - p), p, eq + 1);
+		eq = strchr(col, '='); plat_resident_line("SETOPT\tkey=%.*s\tvalue=%s", (int)(eq - col), col, eq + 1);
+	}
+	palette_save(c->g, sel);
+	return MENU_DONE;
+}
+
+static void pal_backdrop(app *a, void *ctx) { gm_backdrop(a, ((pal_ctx *)ctx)->gm); }
+static menu_result pal_power(app *a, void *ctx) { return gm_power(a, ((pal_ctx *)ctx)->gm); }
+
+static void palette_screen(app *a, gm_ctx *gm)
+{
+	sysview *sv = &a->view[a->sys_cursor];
+	int o = shelf_owner(a, a->sys_cursor, sv->cursor);
+	pal_ctx c = { gm, &sv->list.items[sv->cursor], 0 };
+	menu_style st = gm->st;
+
+	c.cur = palette_of(a, o, c.g);
+	if (c.cur < 0) return;
+	st.fixed_w  = 0;
+	st.backdrop = pal_backdrop;
+	st.on_power = pal_power;
+	st.start    = c.cur;
+	menu_run(a, &st, pal_build, pal_key, &c);
+}
+
 static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 {
 	gm_ctx *c = ctx;
 
+	sel = c->ids[sel];   /* a drawn row, read back as the row it shows */
 	/* Applied to the running game at once, not on resume: the whole point of
 	 * this row being here rather than on the shelf is judging the mode against
 	 * the game it is being applied to. Diatom takes SETDISPLAY while paused
@@ -9626,6 +9735,9 @@ static menu_result gm_key(app *a, void *ctx, in_button key, int sel)
 		break;
 	case GM_SHADER:
 		shader_screen(a, c);
+		break;
+	case GM_PALETTE:
+		palette_screen(a, c);
 		break;
 	case GM_CHEEVOS:
 		cheevos_screen(a, c->bg, false);
@@ -10136,7 +10248,8 @@ static void launch(app *a)
 	 * loader's own cap so the two cannot drift apart: the previous 20 was
 	 * already 18 full, and a silent bound check would have dropped every
 	 * option rather than failing loudly. */
-	char *argv[20 + 2 * 32];
+	char *argv[20 + 2 * 32 + 4];   /* and the palette's two (plorpos-gkd.76) */
+	char palp[64] = "", palc[64] = "";
 	bool resident = false, want_menu, native;
 	char pico8[CFG_STR * 2];
 	int n = 0;
@@ -10151,6 +10264,12 @@ static void launch(app *a)
 	const char *romfile = v->list.items[v->cursor].file;
 
 	snprintf(rom, sizeof rom, "%s/%s/%s", P_ROMS, s->folder, romfile);
+	/* A Game Boy game always says its palette, Auto included, so a value an
+	 * older card stored for the whole system cannot decide it. */
+	{
+		int pal = palette_of(a, o, &v->list.items[v->cursor]);
+		if (pal >= 0) gbpal_opts(pal, palp, sizeof palp, palc, sizeof palc);
+	}
 #if defined(PLATFORM_GKD)
 	/* Each shelf's saves in a folder named as its Roms folder, so the same
 	 * title on two shelves cannot share one .srm, and a core's own files
@@ -10304,6 +10423,7 @@ static void launch(app *a)
 			.tag = s->tag, .core = core, .rom = rom,
 			.resume = st, .exit_state = st, .preview = pv, .save = save,
 			.console = console, .cheevos = active[0] ? active : NULL,
+			.opts = { palp[0] ? palp : NULL, palc[0] ? palc : NULL },
 		};
 		if (plat_resident_send(&g)) {
 			int r;
@@ -10513,6 +10633,10 @@ static void launch(app *a)
 				argv[n++] = (char *)"--core-option";
 				argv[n++] = (char *)plat_coreopt(s->tag, ci);
 			}
+		}
+		if (palp[0]) {
+			argv[n++] = (char *)"--core-option"; argv[n++] = palp;
+			argv[n++] = (char *)"--core-option"; argv[n++] = palc;
 		}
 		argv[n] = NULL;
 		fprintf(stderr, "diatom exited %d\n", run_alone(a, argv, NULL, NULL));

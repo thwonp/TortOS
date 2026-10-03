@@ -833,6 +833,12 @@ bool plat_resident_send(const plat_game *g)
 				dsend("SETOPT\tkey=%.*s\tvalue=%s",
 				      (int)(eq - kv), kv, eq + 1);
 			}
+			for (i = 0; i < 2; i++) {
+				const char *kv = g->opts[i], *eq = kv ? strchr(kv, '=') : NULL;
+				if (!eq) continue;
+				dsend("SETOPT\tkey=%.*s\tvalue=%s",
+				      (int)(eq - kv), kv, eq + 1);
+			}
 		}
 
 		/* Quiet BEFORE RUN, and on every RUN. Diatom holds it across RUN

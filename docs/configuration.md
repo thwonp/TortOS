@@ -69,6 +69,14 @@ for one core is harmless everywhere else. They are sent **before** the game
 loads, because a core reads its `(Restart)` options during load and one set
 afterwards does nothing until the next launch.
 
+**Game Boy palettes** are per game rather than per system: the in-game menu's
+Palette row stores `palette.GB.<rom file>` (the label, e.g. `GB Pocket`), and a
+game with no row plays **Auto** - what a Game Boy Color does with nothing held,
+its own colours for the 144 games in its boot ROM and Dark Green for the rest.
+Every Game Boy launch sends the game's `mgba_gb_colors_preset` and
+`mgba_gb_colors` after the core options above, so a `coreopt.GB.mgba_gb_colors`
+stored on an older card is overridden. A save state does not carry the palette.
+
 One trap worth repeating: **a resume state beats these.** A save state carries
 the machine it was made on, so changing an option that selects hardware will not
 appear to work on a game you have already played. Test on a game that has never

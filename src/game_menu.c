@@ -93,7 +93,7 @@ int gi_rows(menu_row *out, const game_info *gi, bool net)
 int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 {
 	static const char *label[GM_ROWS] = {
-		"Continue", "Save", "Load", "Display", "Shader", "Cheevos",
+		"Continue", "Save", "Load", "Display", "Shader", "Palette", "Cheevos",
 		"Hotkeys", "Reset", "Quit"
 	};
 	int i;
@@ -105,6 +105,10 @@ int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 	 * over, as Cheevos is with no set. */
 	out[GM_SHADER].value = u->shaders ? u->shader : "None";
 	out[GM_SHADER].live  = u->shaders;
+	/* Under Shader, the same question again, and only a Game Boy game has
+	 * one - anything else says None and is passed over. */
+	out[GM_PALETTE].value = u->palette ? u->palette : "None";
+	out[GM_PALETTE].live  = u->palette != NULL;
 
 	/* Most of a library has no set, and a row that says so plainly is better
 	 * than one that is missing: "none" answers the question the player opened
@@ -118,6 +122,18 @@ int gm_rows(const gm_ui *u, menu_row *out, gm_bufs *b)
 	}
 	out[GM_CHEEVOS].value = b->cheevos;
 	return GM_ROWS;
+}
+
+int gm_compact(menu_row *rows, int n, int *ids)
+{
+	int i, k = 0;
+
+	for (i = 0; i < n; i++) {
+		if ((i == GM_SHADER || i == GM_PALETTE) && !rows[i].live) continue;
+		rows[k] = rows[i];
+		ids[k++] = i;
+	}
+	return k;
 }
 
 int gm_native_rows(bool in_splore, menu_row *out)

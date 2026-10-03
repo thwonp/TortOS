@@ -26,7 +26,7 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
         check check-cheevos check-hare check-httpd check-idle check-rahash \
         check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
         check-db check-stats check-sort check-bt check-backlog check-ss check-hkbind check-shaderlist \
-        check-titles hooks storeprobe deploy restart logs
+        check-gbpal check-titles hooks storeprobe deploy restart logs
 
 ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl
@@ -41,7 +41,7 @@ endif
 CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
          check-db check-stats check-sort check-bt check-backlog check-ss \
-         check-muselib check-musequeue check-museart check-controls check-hkbind check-shaderlist \
+         check-muselib check-musequeue check-museart check-controls check-hkbind check-shaderlist check-gbpal \
          check-gamelist check-logpack check-titles
 
 check:
@@ -478,6 +478,15 @@ build-native/shaderlist-check: tools/shaderlist-check.c src/shaderlist.c src/sha
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
 	      -o $@ tools/shaderlist-check.c src/shaderlist.c
+
+# The in-game Palette list (plorpos-gkd.76): every value one mgba declares.
+check-gbpal: build-native/gbpal-check
+	@./build-native/gbpal-check
+
+build-native/gbpal-check: tools/gbpal-check.c src/gbpal.c src/gbpal.h FORCE
+	@mkdir -p build-native
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
+	      -o $@ tools/gbpal-check.c src/gbpal.c
 
 # Play time. The assertion that earns this its place is that a LAUNCH writes
 # nothing: that is a claim about a path nobody watches, and it stops being true

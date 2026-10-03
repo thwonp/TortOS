@@ -149,13 +149,16 @@ bool plat_resident_ready(void);
 /* One game for the resident. `console` is a RetroAchievements console id and
  * `cheevos` a set file for Diatom to watch; 0 and NULL mean the game has no
  * achievements, which is the ordinary case (Diatom ADR-0026). `save` is the
- * game's save dir; NULL leaves it at Diatom's --save (plorpos-aev). */
+ * game's save dir; NULL leaves it at Diatom's --save (plorpos-aev). `opts`
+ * are this game's own core options, "key=value" or NULL, sent after the
+ * system's so they win - a Game Boy game's palette (plorpos-gkd.76). */
 typedef struct {
 	const char *tag, *core, *rom;
 	const char *resume, *exit_state, *preview;
 	const char *save;
 	int         console;
 	const char *cheevos;
+	const char *opts[2];
 } plat_game;
 bool plat_resident_send(const plat_game *g);
 int  plat_resident_wait(void);
