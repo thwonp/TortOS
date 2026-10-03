@@ -42,6 +42,7 @@ RUN apt-get -o Acquire::Check-Valid-Until=false update && apt-get install -y --n
         libc6-dev-arm64-cross \
         binutils-aarch64-linux-gnu \
         make \
+        cmake \
     && rm -rf /var/lib/apt/lists/*
 
 ENV CC=aarch64-linux-gnu-gcc

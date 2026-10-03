@@ -72,8 +72,8 @@ fetch_core snes9x2010        3933890f520abb9dbb0e5276460785b20ce54d25f552b369caf
 #
 # RESTORE THE LINE ABOVE AND DELETE THE BRIDGE the day that fork syncs. The
 # official binary will contain exactly the change we are carrying; put it on a
-# mirror release with the others and pin its new hash. See MGBA-MBC2.md, which
-# also records what to re-verify when swapping back.
+# mirror release with the others and pin its new hash. The header of
+# mk/build-mgba-bridge.sh says what to re-verify when swapping back.
 # pcsx_rearmed IS NOT FETCHED either, and that one is permanent: the buildbot
 # binary needs GLIBC_2.34 and the Brick has 2.33. Run mk/build-pcsx-rearmed.sh,
 # which builds the same commit in the launcher's toolchain and pins its own sha.
