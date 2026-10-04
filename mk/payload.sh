@@ -2,7 +2,7 @@
 # Assemble the installable payload and its release zip.
 #
 # Brick (the default): out/sd/. Copy the CONTENTS of out/sd/ to the root of a
-# FAT32 SD card, put it in a stock Brick or Brick Pro and power on: the first
+# FAT32 SD card, put it in a stock Brick or Brick Hammer and power on: the first
 # boot installs the runtrimui.sh hook and every boot after that comes straight
 # up in TortOS.
 #
@@ -13,7 +13,7 @@
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 PLATFORM=${PLATFORM:-brick}
-VERSION=${VERSION:-1.0}
+VERSION=${VERSION:-1.01}
 if [ "$PLATFORM" = gkd ]; then
 	B=$ROOT/build/gkd
 	OUT=$ROOT/out/gkd
@@ -23,7 +23,7 @@ else
 	B=$ROOT/build
 	OUT=$ROOT/out/sd
 	CARD=$OUT
-	ZIP=$ROOT/out/TortOS-v$VERSION.zip
+	ZIP=$ROOT/out/plorpOS-brick-v$VERSION.zip
 fi
 P=$CARD/TortOS
 
@@ -76,6 +76,7 @@ else
 	cp "$ROOT/res/boot/tortos-boot.mp4" "$P/"
 	cp "$ROOT/res/boot/bootlogo.bmp" "$P/"    # u-boot splash, applied on first boot
 	cp "$ROOT/res/boot/splash.png" "$P/"      # the pic2fb loading splash, likewise
+	cp "$ROOT/docs/install-brick.md" "$OUT/INSTALL.md"  # lands on the card root; harmless
 fi
 # Only systems.cfg is shipped now. tortos.cfg, turbo.cfg and coreopts.cfg are
 # compiled into the launcher and seed the settings database on first run, so

@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <b>A <ins>fast</ins>, focused custom firmware for the GKD 350H Ultra and the TrimUI Brick, Brick Hammer and Brick Pro.</b><br>
+  <b>A <ins>fast</ins>, focused custom firmware for the GKD 350H Ultra and the TrimUI Brick and Brick Hammer.</b><br>
   Plays fifteen classic consoles, and gets out of your way.
 </p>
 
@@ -29,7 +29,7 @@ TortOS does, it still does. On top of that:
   not stretched, and its game cards are bigger. Wi-Fi, SSH, Samba and
   **Syncthing** are switches in the menu. See
   [Installing on the GKD](docs/install-gkd.md).
-- **The Brick Pro,** next to the Brick and Brick Hammer - release is still WIP.
+- **The Brick Pro** is in the works, but not supported in this release.
 
 **More to play** (just on the GKD for now) 
 - **See updated "Supported Systems" table below for details**
@@ -133,21 +133,23 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 
 | Console | Put games in | File types | Core |
 |---|---|---|---|
-| PICO-8 | `Roms/Pico-8` | `.p8` `.png` | fake-08, or native PICO-8 |
-| Arcade | `Roms/Arcade` | `.zip` `.7z` | FBNeo |
+| PICO-8 (GKD only) | `Roms/Pico-8` | `.p8` `.png` | fake-08, or native PICO-8 |
+| Arcade (GKD only) | `Roms/Arcade` | `.zip` `.7z` | FBNeo |
 | NES | `Roms/NES` | `.nes` `.fds` `.unf` `.unif` `.zip` | FCEUmm |
 | Master System | `Roms/Master System` | `.sms` `.zip` | Genesis Plus GX |
 | Game Boy | `Roms/Game Boy` | `.gb` `.dmg` `.zip` | mGBA |
 | Genesis and Sega CD | `Roms/Genesis` | `.md` `.gen` `.bin` `.smd` `.zip` `.chd` `.cue` `.m3u` | Genesis Plus GX |
 | TurboGrafx-16 and CD | `Roms/TurboGrafx-16` | `.pce` `.sgx` `.cue` `.ccd` `.chd` `.toc` `.m3u` `.zip` | Beetle PCE Fast |
 | Game Gear | `Roms/Game Gear` | `.gg` `.zip` | Genesis Plus GX |
-| Neo Geo | `Roms/Neo Geo` | `.zip` `.7z` | FBNeo |
+| Neo Geo (GKD only) | `Roms/Neo Geo` | `.zip` `.7z` | FBNeo |
 | SNES | `Roms/SNES` | `.sfc` `.smc` `.zip` | Snes9x 2010 |
-| PlayStation | `Roms/PlayStation` | `.chd` `.cue` `.m3u` `.pbp` `.iso` `.img` | PCSX ReARMed |
+| PlayStation (GKD only) | `Roms/PlayStation` | `.chd` `.cue` `.m3u` `.pbp` `.iso` `.img` | PCSX ReARMed |
 | Neo Geo Pocket | `Roms/Neo Geo Pocket` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop |
 | Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | mGBA |
 | Neo Geo Pocket Color | `Roms/Neo Geo Pocket Color` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop |
 | Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA |
+
+The Brick doesn't have the consoles marked *GKD only* in this release.
 
 **BIOS files** go loose in `Bios/`, never in a folder of their own.
 
@@ -160,12 +162,12 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 
 ## Install
 
-You need a TrimUI Brick, Brick Hammer or Brick Pro, a microSD card and, just this once, a computer.
+You need a TrimUI Brick or Brick Hammer, a microSD card and, just this once, a computer. The Brick Pro is not supported in this release. The full guide is [Installing on the Brick](docs/install-brick.md), also in the zip as `INSTALL.md`.
 
 On the GKD 350H Ultra, see [Installing on the GKD](docs/install-gkd.md) instead.
 
 1. **Format the card as exFAT,** with a Master Boot Record partition scheme. On a Mac, open Disk Utility, choose *View > Show All Devices*, and erase the card itself rather than its volume.
-2. **Download `TortOS-v1.0.zip`** from [Releases](https://github.com/ericreinsmidt/TortOS/releases/latest) and unzip it.
+2. **Download `plorpOS-brick-v1.01.zip`** from [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
 3. **Copy everything inside it to the root of the card:** `TortOS/`, `.tmp_update/`, `trimui/`, `Roms/`, `Music/`, `Audiobooks/`, `Bios/` and `Saves/`.
 4. **Put the card in the Brick and turn it on.** The first boot installs TortOS, and every boot after that starts it.
 5. **Add games** to the folders in `Roms/`, from the computer now or over Wi-Fi later.
@@ -233,7 +235,7 @@ None of them is a driver, and none replaces anything the system needs to run.
 
 **In Muse,** A opens an album, plays a track or pauses it, L1 and R1 change track, left and right skip ten seconds (hold them to go faster: a minute a step after a second, five after three), and B goes back. A on a book carries on where you left it, and in a book with chapters L1 and R1 move by chapter. On Now Playing, Y changes the play mode for music: in order, repeat all, repeat one or shuffle. On a book, which always plays in order, Y changes the speed instead: 1x up to 2x, and 0.75x, kept for each book.
 
-The volume buttons and F1/F2 (brightness) work everywhere. On the Brick Pro the brightness keys are FN1/FN2, the left stick works as the d-pad in menus and games, and the right stick and both stick clicks do nothing. That is deliberate for now: every bundled core is digital-only, so there is nothing yet for analog input to drive.
+The volume buttons and F1/F2 (brightness) work everywhere. On the Brick Pro (not supported in this release) the brightness keys are FN1/FN2, the left stick works as the d-pad in menus and games, and the right stick and both stick clicks do nothing. That is deliberate for now: every bundled core is digital-only, so there is nothing yet for analog input to drive.
 
 **The Brick lists all of this itself,** under **MENU > Controls**: five pages, stepped through with left and right, so you never need this page to look a button up.
 

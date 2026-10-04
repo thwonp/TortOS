@@ -53,7 +53,7 @@ check:
 	printf '\nok: every check passed\n'
 
 # One version number: the zip name and the About page both read it from here.
-VERSION ?= 1.0
+VERSION ?= 1.01
 
 # It reaches the code on the compile line, where make cannot see it change, so
 # v1.0.1 first built as a 1.0 elf. A different VERSION from the last build's
@@ -601,7 +601,7 @@ checkmark:
 payload: all checkmark
 	PLATFORM=$(PLATFORM) VERSION=$(VERSION) ./mk/payload.sh
 
-# payload.sh names the zip: out/TortOS-v$(VERSION).zip for the Brick,
+# payload.sh names the zip: out/plorpOS-brick-v$(VERSION).zip for the Brick,
 # out/plorpOS-gkd-v$(VERSION).zip for PLATFORM=gkd.
 release: payload
 
