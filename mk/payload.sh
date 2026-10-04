@@ -85,7 +85,20 @@ fi
 # below reads it to refuse a card whose cores are missing, and the loop further
 # down reads it to create the ROM folders. Both run on the host, before any
 # database exists.
-cp "$ROOT/config/systems.cfg" "$P/"
+#
+# The Brick ships without the cores it has not been released on yet
+# (plorpos-gkd.84): fbneo (Arcade, Neo Geo), pcsx_rearmed (PlayStation) and
+# fake08 (PICO-8) each come back under their own bead. Their shelves go with
+# them, so the card's systems.cfg - not config/ - is what everything below
+# reads: the cores copied, the check, the ROM folders.
+if [ "$PLATFORM" = gkd ]; then
+	cp "$ROOT/config/systems.cfg" "$P/"
+else
+	awk -F'|' 'BEGIN { drop["fbneo"]; drop["pcsx_rearmed"]; drop["fake08"] }
+	           { c = $4; gsub(/^[ \t]+|[ \t]+$/, "", c) }
+	           !($1 == "sys" && c in drop)' \
+	    "$ROOT/config/systems.cfg" > "$P/systems.cfg"
+fi
 cp -R "$ROOT/res/cards/." "$P/cards/"     # the classic/ and fancy/ sets, as adb-deploy.sh pushes them
 cp "$ROOT/res/fonts/menu.ttf" "$P/"       # the UI face, and the in-game menu's
 # Over The Hare's page. The launcher serves these off the card at P_WEB, so a
@@ -96,7 +109,6 @@ cp "$ROOT/res/fonts/menu.ttf" "$P/"       # the UI face, and the in-game menu's
 # rather than being kept in the repo twice: the launcher reads $P/menu.ttf and
 # a browser asks for /web/menu.ttf.
 cp "$ROOT/res/web/"* "$P/res/web/"
-cp "$ROOT/res/fbneo-titles.tsv" "$P/res/"   # Arcade and Neo Geo titles (src/titles.c)
 cp "$ROOT/res/fonts/menu.ttf" "$P/res/web/menu.ttf"
 # The device has curl and OpenSSL but nothing to trust - see res/ssl/README.md.
 # Without this, every HTTPS request fails verification and achievements never
@@ -105,22 +117,29 @@ cp "$ROOT/res/ssl/cacert.pem" "$P/"
 cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$P/"  # MIT, and which files are not (NOTICE)
 cp -r "$ROOT/LICENSES" "$P/"            # PolyForm Noncommercial, for the NextUI-derived parts
 cp "$ROOT/THIRD-PARTY-LICENSES.md" "$P/"  # notices for the redistributed software
-cp "$ROOT/LICENSE-FBNeo.txt" "$P/"     # FBNeo requires its full text, verbatim
-cp "$ROOT/LICENSE-fake08.md" "$P/"     # fake08's MIT notice and its components' terms
+# What a core needs on the card besides itself, only when it ships.
+if grep -q '^sys|[^|]*|[^|]*|fbneo|' "$P/systems.cfg"; then
+	cp "$ROOT/res/fbneo-titles.tsv" "$P/res/"   # Arcade and Neo Geo titles (src/titles.c)
+	cp "$ROOT/LICENSE-FBNeo.txt" "$P/"     # FBNeo requires its full text, verbatim
+fi
+if grep -q '^sys|[^|]*|[^|]*|fake08|' "$P/systems.cfg"; then
+	cp "$ROOT/LICENSE-fake08.md" "$P/"     # fake08's MIT notice and its components' terms
+fi
 cp "$DIATOM_ELF" "$P/diatom"
-cp "$ROOT/vendor/cores/"*.so "$P/cores/"
 
-# Every system on the shelf must have its core on the card.
+# The cores are the ones the card's systems.cfg names - no more, no fewer.
 #
-# The copy above is a glob: it ships whatever vendor/cores happens to hold and
-# says nothing about what is missing. That is how a card was nearly built with
-# four of nine systems dead - systems.cfg gained SNES and the Sega machines,
-# vendor/ still held the original three, and nothing failed. A shelf whose
-# cards open onto nothing is a worse failure than a build that refuses.
+# This used to be a glob over vendor/cores, which ships whatever that folder
+# happens to hold and says nothing about what is missing. That is how a card was
+# nearly built with four of nine systems dead - systems.cfg gained SNES and the
+# Sega machines, vendor/ still held the original three, and nothing failed. A
+# shelf whose cards open onto nothing is a worse failure than a build that
+# refuses.
 missing=
 for core in $(awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$4); print $4}' \
-              "$ROOT/config/systems.cfg" | sort -u); do
-	[ -f "$P/cores/${core}_libretro.so" ] || missing="$missing $core"
+              "$P/systems.cfg" | sort -u); do
+	cp "$ROOT/vendor/cores/${core}_libretro.so" "$P/cores/" 2>/dev/null ||
+		missing="$missing $core"
 done
 if [ -n "$missing" ]; then
 	echo "payload: systems.cfg needs cores that vendor/ does not have:$missing" >&2
@@ -130,7 +149,7 @@ fi
 
 # One ROM folder per system, with the .media folder box art goes in. Read from
 # systems.cfg (awk, not sed: folder names contain spaces).
-awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$3); print $3}' "$ROOT/config/systems.cfg" |
+awk -F'|' '$1=="sys"{gsub(/^[ \t]+|[ \t]+$/,"",$3); print $3}' "$P/systems.cfg" |
 while IFS= read -r folder; do
 	mkdir -p "$CARD/Roms/$folder/.media"
 done

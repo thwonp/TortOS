@@ -50,6 +50,9 @@ The SDL2 libraries TortOS links against are the device's own, in
 | `fake08_libretro.so` | PICO-8 | MIT, with components under their own terms (Lua MIT, Zepto 8 WTFPL 2, LodePNG custom, an oval routine CC BY-SA 3.0, others); full text in `LICENSE-fake08.md` (built from jtothebell/fake-08 source with three patches of ours, `mk/build-fake08.sh`; the patches are MIT) |
 | `fbneo_libretro.so` | Arcade, Neo Geo | **Non-commercial**, FBNeo's own license plus MAME's; full text in `LICENSE-FBNeo.txt` (built from libretro/FBNeo source with one patch, `mk/build-fbneo.sh`) |
 
+The GKD card ships all nine. The Brick card ships the first six only - no
+pcsx_rearmed, fake08 or fbneo, and so no `LICENSE-fake08.md` or `LICENSE-FBNeo.txt`.
+
 **snes9x2010, genesis_plus_gx and fbneo carry a non-commercial restriction.** They are not open source
 under either the OSI or FSF definition and they restrict commercial
 redistribution outright, which constrains what a card carrying them may be
