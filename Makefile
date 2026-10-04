@@ -63,8 +63,13 @@ VERSION ?= 1.0
 # seconds and one written in the second the last build finished is not newer;
 # and the deletion alone is not enough, because the container can still see
 # the deleted elf (the same stale view described under build/tortos.elf).
-ifneq ($(VERSION),$(shell cat build/version 2>/dev/null))
-$(shell mkdir -p build && rm -f build/tortos.elf && echo '$(VERSION)' > build/version)
+#
+# One stamp per build directory (plorpos-gkd.85.4): with one shared stamp, a
+# Brick build at the new VERSION left the GKD's elf at the old one, and the
+# GKD build never passed -B at all - a 1.01 GKD zip would have said 1.0.
+VBUILD := $(if $(filter gkd,$(PLATFORM)),build/gkd,build)
+ifneq ($(VERSION),$(shell cat $(VBUILD)/version 2>/dev/null))
+$(shell mkdir -p $(VBUILD) && rm -f $(VBUILD)/tortos.elf && echo '$(VERSION)' > $(VBUILD)/version)
 VERSION_CHANGED := -B
 endif
 
@@ -163,7 +168,7 @@ build/gkd/tortos.elf build/gkd/muse build/gkd/musectl &: \
 	@[ -d sysroot-gkd/usr/include/SDL2 ] || { \
 		echo "no GKD sysroot; run: mk/fetch-gkd-sysroot.sh (needs the GKD over ssh)" >&2; exit 1; }
 	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work -w /work $(IMAGE) \
-		make -f mk/cross.mk PLATFORM=gkd BUILD=build/gkd SYSROOT=/work/sysroot-gkd \
+		make $(VERSION_CHANGED) -f mk/cross.mk PLATFORM=gkd BUILD=build/gkd SYSROOT=/work/sysroot-gkd \
 		VERSION=$(VERSION) creds build/gkd/tortos.elf build/gkd/muse build/gkd/musectl
 	@# The same staleness checks as the Brick's, for the same reason.
 	@for src in $(SRC_GKD) $(wildcard src/*.h) mk/cross.mk build/gkd/ss_creds.h; do \
