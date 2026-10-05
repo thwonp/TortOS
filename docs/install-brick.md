@@ -4,12 +4,13 @@ plorpOS runs from the microSD card. The first boot puts a small hook on the
 Brick that looks for the card; take the card out and the Brick starts its stock
 system as before.
 
-It runs on the **TrimUI Brick** and the **Brick Hammer** (the same board). The
-Brick Pro is not supported in this release.
+It runs on the **TrimUI Brick**, the **Brick Hammer** (the same board) and the
+**Brick Pro**, from the same zip. One card works in all of them: set it up once
+and move it between a Brick and a Brick Pro, saves and all.
 
 You need the Brick, a microSD card and, just this once, a computer.
 
-Download **`plorpOS-brick-v1.3.zip`** from
+Download **`plorpOS-brick-v1.4.zip`** from
 [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
 It goes on the card as it is, this guide (`INSTALL.md`) included:
 

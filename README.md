@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <b>A <ins>fast</ins>, focused custom firmware for the GKD 350H Ultra and the TrimUI Brick and Brick Hammer.</b><br>
+  <b>A <ins>fast</ins>, focused custom firmware for the GKD 350H Ultra and the TrimUI Brick, Brick Hammer and Brick Pro.</b><br>
   Plays fifteen classic consoles, and gets out of your way.
 </p>
 
@@ -29,7 +29,10 @@ TortOS does, it still does. On top of that:
   not stretched, and its game cards are bigger. Wi-Fi, SSH, Samba and
   **Syncthing** are switches in the menu. See
   [Installing on the GKD](docs/install-gkd.md).
-- **The Brick Pro** is in the works, but not supported in this release.
+- **The Brick Pro.** One card works in both the Brick and the Brick Pro: set
+  it up once and move it between them, saves and all. plorpOS tells the two
+  apart when it starts. The left stick is a second d-pad, and the
+  right stick and both stick clicks can be hotkeys.
 
 **More to play**
 - **See updated "Supported Systems" table below for details**
@@ -48,7 +51,7 @@ TortOS does, it still does. On top of that:
 
 - **Rewind:** about thirty seconds of it, on every console, at the speed you pick, from 1x to 10x. A PlayStation game on the Brick holds less, 6 to 15 seconds.
 - **Configurable hotkeys** for Fast-forward, rewind, quick save, quick load and
-  screenshots. Hotkeys can be set with or without a modifier button (4 options on the GKD) and persist per console.
+  screenshots. Hotkeys can be set with or without a modifier button and persist per console. See [How do hotkeys work?](#faq)
 - **Shaders:** fifteen of them, scanlines to LCD grids and Pixel
   Transparency, on the in-game menu's Shader row, on both devices. Each console remembers its own.
 - **Screenshots:** a hotkey saves a PNG of the screen, shader included, to
@@ -169,12 +172,12 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 
 ## Install
 
-You need a TrimUI Brick or Brick Hammer, a microSD card and, just this once, a computer. The Brick Pro is not supported in this release. The full guide is [Installing on the Brick](docs/install-brick.md), also in the zip as `INSTALL.md`.
+You need a TrimUI Brick, Brick Hammer or Brick Pro, a microSD card and, just this once, a computer. One card works in all three, so you can move it between a Brick and a Brick Pro. The full guide is [Installing on the Brick](docs/install-brick.md), also in the zip as `INSTALL.md`.
 
 On the GKD 350H Ultra, see [Installing on the GKD](docs/install-gkd.md) instead.
 
 1. **Format the card as exFAT,** with a Master Boot Record partition scheme. On a Mac, open Disk Utility, choose *View > Show All Devices*, and erase the card itself rather than its volume.
-2. **Download `plorpOS-brick-v1.3.zip`** from [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
+2. **Download `plorpOS-brick-v1.4.zip`** from [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
 3. **Copy everything inside it to the root of the card:** `TortOS/`, `.tmp_update/`, `trimui/`, `Roms/`, `Music/`, `Audiobooks/`, `Bios/` and `Saves/`.
 4. **Put the card in the Brick and turn it on.** The first boot installs plorpOS, and every boot after that starts it.
 5. **Add games** to the folders in `Roms/`, from the computer now or over Wi-Fi later.
@@ -242,7 +245,7 @@ None of them is a driver, and none replaces anything the system needs to run.
 
 **In Muse,** A opens an album, plays a track or pauses it, L1 and R1 change track, left and right skip ten seconds (hold them to go faster: a minute a step after a second, five after three), and B goes back. A on a book carries on where you left it, and in a book with chapters L1 and R1 move by chapter. On Now Playing, Y changes the play mode for music: in order, repeat all, repeat one or shuffle. On a book, which always plays in order, Y changes the speed instead: 1x up to 2x, and 0.75x, kept for each book.
 
-The volume buttons work everywhere. Brightness is F1/F2 on the Brick, and Home with the volume buttons on the GKD. On the Brick Pro (not supported in this release) the brightness keys are FN1/FN2, the left stick works as the d-pad in menus and games, and the right stick and both stick clicks do nothing. That is deliberate for now: every bundled core is digital-only, so there is nothing yet for analog input to drive.
+The volume buttons work everywhere. Brightness is F1/F2 on the Brick, and Home with the volume buttons on the GKD. On the Brick Pro the brightness keys are FN1/FN2 and the left stick works as the d-pad in menus and games. Games never see the right stick or the stick clicks, since every bundled core is digital-only, but they can all be hotkeys.
 
 **plorpOS lists all of this itself,** under **MENU > Controls**: five pages, stepped through with left and right, so you never need this page to look a button up.
 
@@ -291,6 +294,27 @@ Sign in to your RetroAchievements account under **MENU > Wi-Fi Services > Cheevo
 </details>
 
 <details>
+<summary><b>How do hotkeys work?</b></summary>
+
+Open **Hotkeys** in the in-game menu. There are five actions: **Fast-Forward** and **Rewind** (both work while held), **Quick Save**, **Quick Load** and **Screenshot**. Pick one, press **A**, then press its trigger. **X** clears an action, and **MENU** cancels while it waits for a press. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** is on the same screen.
+
+**The modifier** is one button you hold for a chord, like MENU + X. It's the first row, the same for every console, and **MENU** by default:
+- **Brick:** Menu or Select.
+- **Brick Pro:** Menu, Select, L Stick Click or R Stick Click.
+- **GKD:** Menu, Home, Stick Click or Select.
+
+With MENU as the modifier, a tap of MENU still opens the in-game menu when you let go, unless you pressed another button while holding it.
+
+**Triggers:**
+- **L1, R1, L2, R2, A, B, X, Y:** with the modifier held, or alone. A button bound alone does the action instead of its job in that console's games.
+- **D-pad and stick directions:** with the modifier held only, so moving always works.
+- **The Brick Pro's right stick:** its four directions, with the modifier held or alone. Games never see it, so binding it alone costs nothing.
+
+One button can hold two actions, one alone and one with the modifier. On the Brick Pro the left stick's triggers read "L Stick".
+
+</details>
+
+<details>
 <summary><b>What do Auto Sleep, Suspend Timeout and Auto Off do?</b></summary>
 
 They're under **MENU > System Settings**. The device has two ways to rest: **sleep** turns the screen off and pauses a game (music keeps playing), and a tap of POWER brings you straight back. **Suspend** is a much deeper rest that barely touches the battery.
@@ -309,6 +333,8 @@ Auto Sleep and Auto Off only count time on the shelf and in the menus, the in-ga
 Yes. Put them in pairing mode, open **MENU > Bluetooth**, press **Y** to search and **A** to pair. They reconnect by themselves from then on. Wired headphones always win when they're plugged in.
 
 The device's volume buttons set the headphones' volume, and the headphones' own volume buttons move the device's. On a few headphones, the device's buttons set only the starting volume; after that, change it on the headphones themselves. Play, pause and skip on the headphones control Muse.
+
+**On the Brick and Brick Pro, Wi-Fi starts before Bluetooth,** at power-on and after sleep. The two share one radio chip, and on the Brick Pro starting them together could freeze the device. So the headphones wait until Wi-Fi has connected, or has given up after 15 seconds, and take around 20 to 30 seconds to come back after sleep. Turn Wi-Fi off under **MENU > Wi-Fi Services** when you don't need it, and they reconnect sooner.
 
 </details>
 

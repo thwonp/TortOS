@@ -113,7 +113,7 @@ matters to you - a card is the one part of this that gets reformatted.
 | **Volume rocker** | volume, everywhere, including in game |
 | **F1/F2** | brightness, everywhere, including in game |
 | **Left stick** (Brick Pro) | the d-pad, in menus and in game; FN1/FN2 are its brightness keys |
-| **Right stick, stick clicks** (Brick Pro) | nothing, by design: the bundled cores are all digital |
+| **Right stick, stick clicks** (Brick Pro) | never seen by games (the bundled cores are all digital), but hotkeys: either click can be the modifier, and the right stick's directions are triggers with the modifier or alone. The left stick's triggers read "L Stick" |
 | **MENU** (on the systems row) | the plorpOS menu - settings that are about the firmware |
 | **MENU** (inside a system) | that system's menu, below |
 | **MENU** (in game) | the in-game menu: Continue, Save, Load, Display, Cheevos, Hotkeys, Reset, Quit |
