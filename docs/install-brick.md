@@ -9,7 +9,7 @@ Brick Pro is not supported in this release.
 
 You need the Brick, a microSD card and, just this once, a computer.
 
-Download **`plorpOS-brick-v1.01.zip`** from
+Download **`plorpOS-brick-v1.1.zip`** from
 [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
 It goes on the card as it is, this guide (`INSTALL.md`) included:
 

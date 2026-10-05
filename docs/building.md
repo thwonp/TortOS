@@ -11,7 +11,7 @@ mk/fetch-sysroot.sh  # the device's SDL2  -> sysroot/           (once, needs adb
 make            # the launcher            -> build/tortos.elf
 make vendor     # five libretro cores     -> vendor/
 mk/build-mgba-bridge.sh  # the sixth      -> vendor/            (see below)
-make payload    # the installable card    -> out/sd/ and out/plorpOS-brick-v1.01.zip
+make payload    # the installable card    -> out/sd/ and out/plorpOS-brick-v1.1.zip
 make native     # host build of the launcher, for working on how it looks
 make boot       # regenerate the boot animation
 make check      # every check below, offline, in a second or two

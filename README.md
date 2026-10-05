@@ -167,7 +167,7 @@ You need a TrimUI Brick or Brick Hammer, a microSD card and, just this once, a c
 On the GKD 350H Ultra, see [Installing on the GKD](docs/install-gkd.md) instead.
 
 1. **Format the card as exFAT,** with a Master Boot Record partition scheme. On a Mac, open Disk Utility, choose *View > Show All Devices*, and erase the card itself rather than its volume.
-2. **Download `plorpOS-brick-v1.01.zip`** from [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
+2. **Download `plorpOS-brick-v1.1.zip`** from [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
 3. **Copy everything inside it to the root of the card:** `TortOS/`, `.tmp_update/`, `trimui/`, `Roms/`, `Music/`, `Audiobooks/`, `Bios/` and `Saves/`.
 4. **Put the card in the Brick and turn it on.** The first boot installs TortOS, and every boot after that starts it.
 5. **Add games** to the folders in `Roms/`, from the computer now or over Wi-Fi later.
