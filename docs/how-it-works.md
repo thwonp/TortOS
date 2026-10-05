@@ -45,7 +45,9 @@ from `RUN` to `RUNNING`, and about 70 ms from pressing A, measured on Contra
 on the device. Every core is mapped at startup, during the boot animation, and
 never unloaded, so no launch pays for opening one: six mapped plus one running
 measured **15.0 MB** against the device's 975, which is what makes holding all
-of them affordable rather than reckless. They are opened `RTLD_LOCAL`, so
+of them affordable rather than reckless. All nine on the Brick - FBNeo, PCSX
+ReARMed and fake-08 included - cost 31 MB of free memory at boot, and the
+least free in any game measured was 604 MB. They are opened `RTLD_LOCAL`, so
 libraries exporting the same twenty `retro_*` symbols cannot see each other.
 
 Mapping them replaced reading them. The boot script used to pull the cores into

@@ -31,7 +31,7 @@ TortOS does, it still does. On top of that:
   [Installing on the GKD](docs/install-gkd.md).
 - **The Brick Pro** is in the works, but not supported in this release.
 
-**More to play** (just on the GKD for now) 
+**More to play**
 - **See updated "Supported Systems" table below for details**
 - **PlayStation,** at twice its own resolution on the GKD. A multi-disc game
   is one card: give it an `.m3u` and the in-game menu gets a Disc row, and the
@@ -39,14 +39,14 @@ TortOS does, it still does. On top of that:
 - **Arcade and Neo Geo,** through FBNeo, listed by each game's real title
   rather than its zip's name.
 - **PICO-8.** Carts play in fake-08 by default, with full save state and rewind functionality. 
-  - Native PICO-8 with Splore is also fully supported (seriously, buy it) - Just put your raspberry-pi files in `Bios/` and switch the shelf.
+  - Native PICO-8 with Splore is also fully supported (seriously, buy it) - Just put your raspberry-pi files in `Bios/` and switch the shelf. On the Brick, Menu quits native PICO-8.
   - A cart you play in Splore lands on the shelf with its full artwork.
 - **Sega CD,** on the Genesis shelf.
 - **Achievements for disc games and arcade sets**
 
 **In a game**
 
-- **Rewind:** about thirty seconds of it on the GKD, on every console, at the speed you pick, from 1x to 10x.
+- **Rewind:** about thirty seconds of it, on every console, at the speed you pick, from 1x to 10x. A PlayStation game on the Brick holds less, 6 to 15 seconds.
 - **Configurable hotkeys** for Fast-forward, rewind, quick save, quick load and
   screenshots. Hotkeys can be set with or without a modifier button (4 options on the GKD) and persist per console.
 - **Shaders on the GKD:** fifteen of them, scanlines to LCD grids and Pixel
@@ -138,23 +138,21 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 
 | Console | Put games in | File types | Core |
 |---|---|---|---|
-| PICO-8 (GKD only) | `Roms/Pico-8` | `.p8` `.png` | fake-08, or native PICO-8 |
-| Arcade (GKD only) | `Roms/Arcade` | `.zip` `.7z` | FBNeo |
+| PICO-8 | `Roms/Pico-8` | `.p8` `.png` | fake-08, or native PICO-8 |
+| Arcade | `Roms/Arcade` | `.zip` `.7z` | FBNeo |
 | NES | `Roms/NES` | `.nes` `.fds` `.unf` `.unif` `.zip` | FCEUmm |
 | Master System | `Roms/Master System` | `.sms` `.zip` | Genesis Plus GX |
 | Game Boy | `Roms/Game Boy` | `.gb` `.dmg` `.zip` | mGBA |
 | Genesis and Sega CD | `Roms/Genesis` | `.md` `.gen` `.bin` `.smd` `.zip` `.chd` `.cue` `.m3u` | Genesis Plus GX |
 | TurboGrafx-16 and CD | `Roms/TurboGrafx-16` | `.pce` `.sgx` `.cue` `.ccd` `.chd` `.toc` `.m3u` `.zip` | Beetle PCE Fast |
 | Game Gear | `Roms/Game Gear` | `.gg` `.zip` | Genesis Plus GX |
-| Neo Geo (GKD only) | `Roms/Neo Geo` | `.zip` `.7z` | FBNeo |
+| Neo Geo | `Roms/Neo Geo` | `.zip` `.7z` | FBNeo |
 | SNES | `Roms/SNES` | `.sfc` `.smc` `.zip` | Snes9x 2010 |
-| PlayStation (GKD only) | `Roms/PlayStation` | `.chd` `.cue` `.m3u` `.pbp` `.iso` `.img` | PCSX ReARMed |
+| PlayStation | `Roms/PlayStation` | `.chd` `.cue` `.m3u` `.pbp` `.iso` `.img` | PCSX ReARMed |
 | Neo Geo Pocket | `Roms/Neo Geo Pocket` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop |
 | Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | mGBA |
 | Neo Geo Pocket Color | `Roms/Neo Geo Pocket Color` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop |
 | Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA |
-
-The Brick doesn't have the consoles marked *GKD only* in this release.
 
 **BIOS files** go loose in `Bios/`, never in a folder of their own.
 
@@ -172,7 +170,7 @@ You need a TrimUI Brick or Brick Hammer, a microSD card and, just this once, a c
 On the GKD 350H Ultra, see [Installing on the GKD](docs/install-gkd.md) instead.
 
 1. **Format the card as exFAT,** with a Master Boot Record partition scheme. On a Mac, open Disk Utility, choose *View > Show All Devices*, and erase the card itself rather than its volume.
-2. **Download `plorpOS-brick-v1.1.zip`** from [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
+2. **Download `plorpOS-brick-v1.2.zip`** from [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
 3. **Copy everything inside it to the root of the card:** `TortOS/`, `.tmp_update/`, `trimui/`, `Roms/`, `Music/`, `Audiobooks/`, `Bios/` and `Saves/`.
 4. **Put the card in the Brick and turn it on.** The first boot installs TortOS, and every boot after that starts it.
 5. **Add games** to the folders in `Roms/`, from the computer now or over Wi-Fi later.
