@@ -49,7 +49,14 @@ plorpOS.
 ## Upgrading a TortOS card
 
 Copy everything inside the zip over the card, replacing what's there. Your
-settings, saves, favorites and play time are kept.
+settings, save states, favorites and play time are kept.
+
+Battery saves (`.srm` files) now live in a folder per console, named like the
+console's `Roms/` folder: `Saves/Game Boy Advance/`, `Saves/SNES/` and so on.
+Saves from an older build are loose in `Saves/` and are not picked up there.
+Move each one into its console's folder, creating the folder if it isn't there
+yet. A game played before its save is moved starts without it; its new save
+lands in the console's folder, so move the old one over it.
 
 ## Adding games over Wi-Fi
 
