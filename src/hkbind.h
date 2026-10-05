@@ -9,8 +9,9 @@
  * screen filter), each bound to at most one trigger - exactly the set
  * Diatom's hotkeys_set accepts (its ADR-0035 and ADR-0039), so a binding made
  * here can never be one Diatom would refuse. A trigger is a face button or
- * shoulder with the modifier held (`x`) or alone (`d.x`), or a d-pad or stick
- * direction with the modifier held (`up`, `sright`). */
+ * shoulder with the modifier held (`x`) or alone (`d.x`), a d-pad or stick
+ * direction with the modifier held (`up`, `sright`), or a direction of the
+ * Brick Pro's right stick on either layer (`rsup`, `d.rsup`; ADR-0044). */
 #ifndef TORTOS_HKBIND_H
 #define TORTOS_HKBIND_H
 
@@ -19,18 +20,19 @@
 /* Trigger 0 is None. The name is the input alone ("X", "Stick Up"); the
  * screen puts the modifier's own label in front where hk_trig_mod says so. */
 extern const char *const HK_TRIG_NAME[];
-#define HK_TRIG_COUNT 25
+#define HK_TRIG_COUNT 33
 int hk_trig_mod(int t);     /* needs the modifier held */
-int hk_trig_stick(int t);   /* a stick direction - absent without a stick */
+int hk_trig_stick(int t);   /* the (left) stick's direction - "L Stick" on the Pro */
 
 /* Press-to-bind (plorpos-gkd.43.3): the trigger an input makes, pressed with
- * the modifier held (`mod`) or alone - 0 (None) for a direction alone, which
- * is never a trigger. Inputs are named here, not as the launcher's in_button,
+ * the modifier held (`mod`) or alone - 0 (None) for a d-pad or left-stick
+ * direction alone, which is never a trigger. Inputs are named here, not as the launcher's in_button,
  * so this stays SDL-free and checkable. */
 enum {
 	HK_IN_L1, HK_IN_R1, HK_IN_L2, HK_IN_R2, HK_IN_A, HK_IN_B, HK_IN_X, HK_IN_Y,
 	HK_IN_UP, HK_IN_DOWN, HK_IN_LEFT, HK_IN_RIGHT,
 	HK_IN_SUP, HK_IN_SDOWN, HK_IN_SLEFT, HK_IN_SRIGHT,
+	HK_IN_RSUP, HK_IN_RSDOWN, HK_IN_RSLEFT, HK_IN_RSRIGHT,
 	HK_IN_COUNT
 };
 int hk_trig_from(int input, int mod);

@@ -9299,6 +9299,8 @@ static const struct { in_button b; int hk; } HK_CAPTURE[] = {
 	{ IN_L1, HK_IN_L1 }, { IN_R1, HK_IN_R1 }, { IN_L2, HK_IN_L2 }, { IN_R2, HK_IN_R2 },
 	{ IN_ACCEPT, HK_IN_A }, { IN_BACK, HK_IN_B }, { IN_X, HK_IN_X }, { IN_Y, HK_IN_Y },
 	{ IN_SUP, HK_IN_SUP }, { IN_SDOWN, HK_IN_SDOWN },
+	{ IN_RSUP, HK_IN_RSUP }, { IN_RSDOWN, HK_IN_RSDOWN },
+	{ IN_RSLEFT, HK_IN_RSLEFT }, { IN_RSRIGHT, HK_IN_RSRIGHT },
 	{ IN_SLEFT, HK_IN_SLEFT }, { IN_SRIGHT, HK_IN_SRIGHT },
 	{ IN_UP, HK_IN_UP }, { IN_DOWN, HK_IN_DOWN },
 	{ IN_LEFT, HK_IN_LEFT }, { IN_RIGHT, HK_IN_RIGHT },
@@ -9309,6 +9311,7 @@ static in_button hk_modifier_button(const char *wire)
 {
 	if (!strcmp(wire, "select")) return IN_SELECT;
 	if (!strcmp(wire, "l3"))     return IN_L3;
+	if (!strcmp(wire, "r3"))     return IN_R3;
 	if (!strcmp(wire, "home"))   return IN_HOME;
 	return IN_MENU;
 }
@@ -9434,9 +9437,11 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 			if (capturing && i == sel - FIRST_ACT)
 				snprintf(vals[i], sizeof vals[i], "Press...");
 			else
-				snprintf(vals[i], sizeof vals[i], "%s%s%s",
+				snprintf(vals[i], sizeof vals[i], "%s%s%s%s",
 				         hk_trig_mod(t) ? mod_label[mod] : "",
-				         hk_trig_mod(t) ? " + " : "", HK_TRIG_NAME[t]);
+				         hk_trig_mod(t) ? " + " : "",
+				         hk_trig_stick(t) && plat_two_sticks() ? "L " : "",
+				         HK_TRIG_NAME[t]);
 			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[i], vals[i], true };
 		}
 		rows[RW_ROW] = (menu_row){ "Rewind Speed", RW_NAME[rw], true };

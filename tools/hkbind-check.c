@@ -83,10 +83,12 @@ int main(void)
 		int in;
 		for (in = 0; in < HK_IN_COUNT; in++) {
 			int m = hk_trig_from(in, 1), d = hk_trig_from(in, 0);
+			int alone = in < HK_IN_UP || in >= HK_IN_RSUP;
 			ck(m > 0 && hk_trig_mod(m), "every input makes a modifier trigger");
-			ck(in < HK_IN_UP ? d > 0 && !hk_trig_mod(d) : d == 0,
-			   "buttons alone are direct; directions alone are nothing");
-			ck(!hk_trig_stick(m) == (in < HK_IN_SUP), "only the stick makes stick triggers");
+			ck(alone ? d > 0 && !hk_trig_mod(d) && d != m : d == 0,
+			   "buttons and the right stick alone are direct; other directions alone are nothing");
+			ck(!hk_trig_stick(m) == (in < HK_IN_SUP || in >= HK_IN_RSUP),
+			   "only the left stick makes (left) stick triggers");
 		}
 	}
 	hk_parse("x:ff,d.x:rewind,up:savestate,sright:loadstate", b);
@@ -95,6 +97,20 @@ int main(void)
 	ck(b[2] == hk_trig_from(HK_IN_UP, 1),     "Mod + Up is up");
 	ck(b[3] == hk_trig_from(HK_IN_SRIGHT, 1), "Mod + Stick Right is sright");
 	ck(hk_trig_from(HK_IN_COUNT, 1) == 0 && hk_trig_from(-1, 0) == 0, "out of range is None");
+
+	printf("the Brick Pro's right stick, both layers (plorpos-pky.17):\n");
+	hk_parse("rsup:ff,d.rsup:rewind,d.rsleft:savestate,rsright:loadstate", b);
+	ck(!strcmp(HK_TRIG_NAME[b[0]], "R Stick Up") && hk_trig_mod(b[0]) && !hk_trig_stick(b[0]),
+	   "ff row -> R Stick Up, with the modifier");
+	ck(!strcmp(HK_TRIG_NAME[b[1]], "R Stick Up") && !hk_trig_mod(b[1]),
+	   "rewind row -> R Stick Up, direct");
+	ck(b[1] == hk_trig_from(HK_IN_RSUP, 0) && b[0] == hk_trig_from(HK_IN_RSUP, 1),
+	   "press-to-bind makes the same two");
+	ck(b[2] == hk_trig_from(HK_IN_RSLEFT, 0) && b[3] == hk_trig_from(HK_IN_RSRIGHT, 1),
+	   "R Stick Left alone is d.rsleft; Mod + R Stick Right is rsright");
+	hk_serialize(b, out, sizeof out);
+	ck(!strcmp(out, "rsup:ff,d.rsup:rewind,d.rsleft:savestate,rsright:loadstate"),
+	   "round-trips byte for byte");
 
 	printf("empty spec means every row is None:\n");
 	hk_parse("", b);

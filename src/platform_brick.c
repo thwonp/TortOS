@@ -95,7 +95,7 @@ bool plat_is_brick_pro(void)
 	return pro;
 }
 
-bool plat_has_stick(void) { return plat_is_brick_pro(); }
+bool plat_two_sticks(void) { return plat_is_brick_pro(); }
 
 /* SDL joystick button indices on the Brick's "TRIMUI Player1" device.
  *
@@ -125,8 +125,9 @@ static int fd_joy = -1;   /* TRIMUI Player1: raw, for the front F1/F2 keys */
 
 /* The d-pad and the left stick both drive IN_LEFT..IN_DOWN; each keeps its
  * own state so letting go of one does not release a direction the other
- * still holds. Order: left, right, up, down. */
-static bool hat_dir[4], stick_dir[4];
+ * still holds. The Pro's right stick drives only IN_RSLEFT..IN_RSDOWN.
+ * Order: left, right, up, down. */
+static bool hat_dir[4], stick_dir[4], rstick_dir[4];
 
 /* True while native PICO-8's menu is up: the pad is grabbed on fd_joy, so
  * SDL's joystick sees nothing and the menu reads the pad from fd_joy itself
@@ -326,6 +327,7 @@ void plat_input_flush(void)
 	/* Their releases were in what was just thrown away. */
 	memset(hat_dir, 0, sizeof hat_dir);
 	memset(stick_dir, 0, sizeof stick_dir);
+	memset(rstick_dir, 0, sizeof rstick_dir);
 #ifdef __linux__
 	{
 		struct input_event ev;
@@ -438,9 +440,10 @@ static in_button map_joy_button(int jb)
 	case JOY_START: return IN_START;
 	case JOY_SELECT: return IN_SELECT;
 	case JOY_MENU: return IN_MENU;
-	/* The Pro's left stick click. The plain Brick's 9 is its front
-	 * brightness key, read from the raw node in poll_raw_fd. */
+	/* The Pro's stick clicks. The plain Brick's 9 and 10 are its front
+	 * brightness keys, read from the raw node in poll_raw_fd. */
 	case JOY_L3: return plat_is_brick_pro() ? IN_L3 : IN_NONE;
+	case JOY_R3: return plat_is_brick_pro() ? IN_R3 : IN_NONE;
 	case JOY_VOLUP: return IN_VOLUP;
 	case JOY_VOLDN: return IN_VOLDN;
 	default: return IN_NONE;
@@ -534,8 +537,10 @@ static void set_dirs(in_state *st)
 	set_btn(st, IN_RIGHT, hat_dir[1] || stick_dir[1]);
 	set_btn(st, IN_UP,    hat_dir[2] || stick_dir[2]);
 	set_btn(st, IN_DOWN,  hat_dir[3] || stick_dir[3]);
-	for (int i = 0; i < 4; i++)
+	for (int i = 0; i < 4; i++) {
 		set_btn(st, (in_button)(IN_SLEFT + i), stick_dir[i]);
+		set_btn(st, (in_button)(IN_RSLEFT + i), rstick_dir[i]);
+	}
 }
 
 void plat_input_poll(in_state *st)
@@ -577,6 +582,11 @@ void plat_input_poll(in_state *st)
 			 * virtual pad advertises these axes too but never moves them. */
 			if (e.jaxis.axis == 0 || e.jaxis.axis == 1) {
 				stick_axis(&stick_dir[e.jaxis.axis == 0 ? 0 : 2], e.jaxis.value);
+				set_dirs(st);
+			}
+			/* Its right stick: hotkey triggers only (diatom ADR-0044). */
+			if (e.jaxis.axis == 3 || e.jaxis.axis == 4) {
+				stick_axis(&rstick_dir[e.jaxis.axis == 3 ? 0 : 2], e.jaxis.value);
 				set_dirs(st);
 			}
 			/* L2/R2: axes 2 and 5, resting at -32768 and slamming to

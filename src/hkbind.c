@@ -7,7 +7,8 @@
 
 /* Cycling order: the modifier layer first (what every binding was before
  * plorpos-gkd.43.2, so indexes 1-8 kept their meaning), then the same buttons
- * direct, then the directions, which only exist with the modifier. */
+ * direct, then the directions, which only exist with the modifier - except
+ * the Brick Pro's right stick, last, on both layers (diatom's ADR-0044). */
 #define HK_BUTTONS(p) p "l1", p "r1", p "l2", p "r2", p "a", p "b", p "x", p "y"
 const char *const HK_TRIG_NAME[] = {
 	"None",
@@ -15,6 +16,8 @@ const char *const HK_TRIG_NAME[] = {
 	"L1", "R1", "L2", "R2", "A", "B", "X", "Y",
 	"Up", "Down", "Left", "Right",
 	"Stick Up", "Stick Down", "Stick Left", "Stick Right",
+	"R Stick Up", "R Stick Down", "R Stick Left", "R Stick Right",
+	"R Stick Up", "R Stick Down", "R Stick Left", "R Stick Right",
 };
 static const char *const HK_TRIG_WIRE[] = {
 	NULL,
@@ -22,16 +25,25 @@ static const char *const HK_TRIG_WIRE[] = {
 	HK_BUTTONS("d."),
 	"up", "down", "left", "right",
 	"sup", "sdown", "sleft", "sright",
+	"rsup", "rsdown", "rsleft", "rsright",
+	"d.rsup", "d.rsdown", "d.rsleft", "d.rsright",
 };
-enum { HK_FIRST_DIRECT = 9, HK_FIRST_DPAD = 17, HK_FIRST_STICK = 21 };
+enum { HK_FIRST_DIRECT = 9, HK_FIRST_DPAD = 17, HK_FIRST_STICK = 21,
+       HK_FIRST_RSTICK = 25, HK_FIRST_RSTICK_DIRECT = 29 };
 
-int hk_trig_mod(int t)   { return t > 0 && (t < HK_FIRST_DIRECT || t >= HK_FIRST_DPAD); }
-int hk_trig_stick(int t) { return t >= HK_FIRST_STICK && t < HK_TRIG_COUNT; }
+int hk_trig_mod(int t)
+{
+	return t > 0 && (t < HK_FIRST_DIRECT
+	                 || (t >= HK_FIRST_DPAD && t < HK_FIRST_RSTICK_DIRECT));
+}
+int hk_trig_stick(int t) { return t >= HK_FIRST_STICK && t < HK_FIRST_RSTICK; }
 
 int hk_trig_from(int input, int mod)
 {
 	if (input < 0 || input >= HK_IN_COUNT) return 0;
 	if (input < HK_IN_UP) return (mod ? 1 : HK_FIRST_DIRECT) + input;
+	if (input >= HK_IN_RSUP)
+		return (mod ? HK_FIRST_RSTICK : HK_FIRST_RSTICK_DIRECT) + (input - HK_IN_RSUP);
 	return mod ? HK_FIRST_DPAD + (input - HK_IN_UP) : 0;
 }
 const char *const HK_ACTION_LABEL[] = {

@@ -54,8 +54,9 @@ extern const char *const plat_pico8_preload;
  * holds a wget that can do HTTPS (sd/tortos/pico8/wget). */
 extern const char *const plat_pico8_path;
 
-/* A stick whose directions can be hotkey triggers (diatom ADR-0039). */
-bool plat_has_stick(void);
+/* Two sticks (the Brick Pro): the first is then labelled "L Stick" (diatom
+ * ADR-0044). */
+bool plat_two_sticks(void);
 
 typedef enum {
 	IN_LEFT, IN_RIGHT, IN_UP, IN_DOWN,
@@ -69,6 +70,9 @@ typedef enum {
 	 * stick, set in the same frame. Order: left, right, up, down. */
 	IN_L2, IN_R2, IN_L3, IN_HOME,
 	IN_SLEFT, IN_SRIGHT, IN_SUP, IN_SDOWN,
+	/* The Brick Pro's right stick: its click and its directions, which
+	 * drive nothing else (diatom's ADR-0044). Same order. */
+	IN_R3, IN_RSLEFT, IN_RSRIGHT, IN_RSUP, IN_RSDOWN,
 	IN_COUNT,
 	IN_NONE = -1,
 } in_button;

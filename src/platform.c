@@ -244,15 +244,15 @@ void plat_hotkey_set(const char *tag, const char *spec)
 /* ---- the hotkey modifier: one key, chosen per device, held for every binding
  * above (diatom's ADR-0038, plorpos-gkd.43.1). Global, not per system, so the
  * muscle memory is the same in every game. The first entry is the default.
- * Stick Click is the Brick Pro's; on the plain Brick that index is a front
- * brightness key. */
+ * The stick clicks are the Brick Pro's; on the plain Brick those indexes are
+ * its front brightness keys. */
 #if defined(PLATFORM_GKD)
 /* The GKD's free Home key and its stick click as well (ADR-0037). */
 static const char *const HKMOD_WIRE[]  = { "menu", "home", "l3", "select" };
 static const char *const HKMOD_LABEL[] = { "Menu", "Home", "Stick Click", "Select" };
 #else
-static const char *const HKMOD_WIRE[]  = { "menu", "select", "l3" };
-static const char *const HKMOD_LABEL[] = { "Menu", "Select", "Stick Click" };
+static const char *const HKMOD_WIRE[]  = { "menu", "select", "l3", "r3" };
+static const char *const HKMOD_LABEL[] = { "Menu", "Select", "L Stick Click", "R Stick Click" };
 #endif
 
 int plat_hotkey_modifiers(const char *const **wire, const char *const **label)
@@ -262,7 +262,7 @@ int plat_hotkey_modifiers(const char *const **wire, const char *const **label)
 #if defined(PLATFORM_GKD)
 	return 4;
 #else
-	return plat_is_brick_pro() ? 3 : 2;
+	return plat_is_brick_pro() ? 4 : 2;
 #endif
 }
 
