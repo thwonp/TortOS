@@ -72,6 +72,8 @@ const char *const plat_child_env[] = {
 const char plat_child_libpath[] = ":/usr/trimui/lib";
 /* The firmware SDL has no sensors and pico8_64 asks for them (tools/pico8sdl.c). */
 const char *const plat_pico8_preload = "/mnt/SDCARD/TortOS/pico8sdl.so";
+/* Splore downloads with wget, and the firmware's BusyBox wget has no TLS. */
+const char *const plat_pico8_path = "/mnt/SDCARD/TortOS/pico8";
 
 /* The brightness keys, as the Controls page names them. */
 const char *plat_bright_keys(void) { return plat_is_brick_pro() ? "FN1/FN2" : "F1/F2"; }

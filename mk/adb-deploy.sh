@@ -60,9 +60,11 @@ case $WHAT in elf|all)
 	$A push "$ROOT/sd/tortos/launch.sh"     "$P/" > /dev/null
 	$A push "$ROOT/sd/tortos/bt-alsa.sh"    "$P/" > /dev/null
 	$A push "$ROOT/sd/tortos/radio.sh"      "$P/" > /dev/null
+	$A shell "mkdir -p $P/pico8" > /dev/null
+	$A push "$ROOT/sd/tortos/pico8/wget"    "$P/pico8/" > /dev/null
 	$A push "$ROOT/sd/.tmp_update/updater"   /mnt/SDCARD/.tmp_update/ > /dev/null
 	$A push "$ROOT/sd/.tmp_update/tg3040.sh" /mnt/SDCARD/.tmp_update/ > /dev/null
-	$A shell "chmod +x $P/tortos.elf $P/setbright $P/muse $P/musectl $P/btplayer $P/launch.sh \
+	$A shell "chmod +x $P/tortos.elf $P/setbright $P/muse $P/musectl $P/btplayer $P/launch.sh $P/pico8/wget \
 	          /mnt/SDCARD/.tmp_update/updater /mnt/SDCARD/.tmp_update/tg3040.sh"
 	echo "  + launcher"
 esac

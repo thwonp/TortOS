@@ -72,6 +72,8 @@ else
 	cp "$B/setbright" "$P/"               # brightness before the boot animation
 	cp "$B/btplayer" "$P/"                # lets a headset's volume through BlueZ
 	cp "$B/pico8sdl.so" "$P/"             # native PICO-8 on the firmware SDL (tools/pico8sdl.c)
+	mkdir -p "$P/pico8"
+	cp "$ROOT/sd/tortos/pico8/wget" "$P/pico8/"  # Splore's downloads over HTTPS (the shim says why)
 	cp "$ROOT/sd/tortos/launch.sh" "$P/"
 	cp "$ROOT/sd/tortos/bt-alsa.sh" "$P/" # sourced by launch.sh, run by the launcher
 	cp "$ROOT/sd/tortos/radio.sh" "$P/"   # sourced by launch.sh AND by plat_sleep()
@@ -171,7 +173,7 @@ cp "$ROOT/sd/trimui/app/MainUI" "$ROOT/sd/trimui/app/runtrimui.sh" "$OUT/trimui/
 
 chmod +x "$OUT/.tmp_update/updater" "$OUT/.tmp_update/tg3040.sh" \
          "$OUT/trimui/app/MainUI" "$OUT/trimui/app/runtrimui.sh" \
-         "$P/setbright" "$P/btplayer"
+         "$P/setbright" "$P/btplayer" "$P/pico8/wget"
 
 du -sh "$OUT"
 echo "payload ready: $OUT"

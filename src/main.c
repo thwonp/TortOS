@@ -10439,7 +10439,7 @@ static int run_pico8(app *a, const char *bin, const char *folder,
                      const char *rom, bool splore, const char *dmode)
 {
 	char home[CFG_STR * 2], desk[CFG_STR * 2 + 16], root[CFG_STR * 2];
-	char rect[48], preload[CFG_STR * 2 + 16];
+	char rect[48], preload[CFG_STR * 2 + 16], path[1024];
 	char *argv[18];
 	int n = 0, ow = 0, oh = 0, flags;
 
@@ -10455,11 +10455,19 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	}
 
 	/* Through env(1) when the device needs a library preloaded into PICO-8
-	 * alone; env execs it, so the pid plat_run signals is pico8_64's. */
+	 * alone, or a PATH of its own; env execs it, so the pid plat_run signals
+	 * is pico8_64's. */
+	if (plat_pico8_preload || plat_pico8_path)
+		argv[n++] = (char *)"/usr/bin/env";
 	if (plat_pico8_preload) {
 		snprintf(preload, sizeof preload, "LD_PRELOAD=%s", plat_pico8_preload);
-		argv[n++] = (char *)"/usr/bin/env";
 		argv[n++] = preload;
+	}
+	if (plat_pico8_path) {
+		const char *was = getenv("PATH");
+		snprintf(path, sizeof path, "PATH=%s:%s", plat_pico8_path,
+		         was ? was : "/usr/bin:/bin");
+		argv[n++] = path;
 	}
 	argv[n++] = (char *)bin;
 	argv[n++] = (char *)"-home";      argv[n++] = home;

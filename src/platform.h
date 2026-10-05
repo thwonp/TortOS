@@ -50,6 +50,9 @@ extern const char *const plat_child_env[];
 extern const char plat_child_libpath[];
 /* A library preloaded into native PICO-8 (pico8_64), or NULL. */
 extern const char *const plat_pico8_preload;
+/* A folder put first on native PICO-8's PATH alone, or NULL: the Brick's
+ * holds a wget that can do HTTPS (sd/tortos/pico8/wget). */
+extern const char *const plat_pico8_path;
 
 /* A stick whose directions can be hotkey triggers (diatom ADR-0039). */
 bool plat_has_stick(void);
