@@ -782,6 +782,9 @@ static void (*d_on_unlock)(int id);
 
 void plat_resident_on_unlock(void (*fn)(int id)) { d_on_unlock = fn; }
 
+static void (*d_on_shot)(bool ok, const char *path);
+void plat_resident_on_shot(void (*fn)(bool ok, const char *path)) { d_on_shot = fn; }
+
 static void (*d_on_tick)(void);
 
 void plat_resident_on_tick(void (*fn)(void)) { d_on_tick = fn; }
@@ -1045,6 +1048,18 @@ static void d_note_cheevo(const char *l)
 	if (d_on_unlock) d_on_unlock(atoi(i + 3));
 }
 
+/* "SHOT\tpath=/.../Screenshots/Game-20261005-101500.png\tok=1": the path runs
+ * to the tab, and a game's name can hold anything but one. */
+static void d_note_shot(const char *l)
+{
+	const char *p = strstr(l, "path="), *ok = strstr(l, "\tok=");
+	char path[1024];
+
+	if (!p || !ok || ok < p || !d_on_shot) return;
+	snprintf(path, sizeof path, "%.*s", (int)(ok - (p + 5)), p + 5);
+	d_on_shot(ok[4] == '1', path);
+}
+
 /* "DISPLAY\tmode=native\tfilter=nearest\trect=256x224+384+272" */
 static void d_note_display(const char *l)
 {
@@ -1246,6 +1261,7 @@ static int diatom_wait(void)
 			else if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
 			else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
 			else if (strncmp(l, "CHEEVO\t", 7) == 0) d_note_cheevo(l);
+			else if (strncmp(l, "SHOT\t", 5) == 0) d_note_shot(l);
 			else if (strncmp(l, "EXIT", 4) == 0) {
 				/* A crash and a quit arrive on the SAME line, and only the
 				 * reason tells them apart. This threw the line away and

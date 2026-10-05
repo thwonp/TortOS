@@ -170,6 +170,10 @@ int  plat_resident_wait(void);
  * to size. NULL to stop. */
 void plat_resident_on_unlock(void (*fn)(int id));
 
+/* The same, when the Screenshot hotkey's file is on the card or failed
+ * (Diatom's SHOT, plorpos-gkd.86.2): whether it worked, and the file. */
+void plat_resident_on_shot(void (*fn)(bool ok, const char *path));
+
 /* Called from inside plat_resident_wait roughly ten times a second, which is
  * the rate its socket poll already runs at. For work the launcher wants to do
  * WHILE a game is running and cannot do anywhere else, because this process is

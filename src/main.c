@@ -2394,6 +2394,20 @@ static void on_cheevo_unlocked(int id)
 	}
 }
 
+/* The Screenshot hotkey's file reached the card (plorpos-gkd.86.2). Like an
+ * unlock: mid-game, so rendered here and composited by Diatom - which waits
+ * until the file is written before it says so, so the notice is never in it. */
+static void on_shot(bool ok, const char *path)
+{
+	const char *name = strrchr(path, '/');
+	char p[CFG_STR * 2];
+
+	snprintf(p, sizeof p, "%s/notice.dtov", P_USERDATA);
+	if (notice_render(ok ? "Screenshot saved" : "Screenshot failed",
+	                  name ? name + 1 : path, p))
+		plat_resident_line("OVERLAY\tpath=%s\tms=2000", p);
+}
+
 /* ---------- where you were ------------------------------------------------ */
 
 /* Coming back to the shelf you left is worth four lines of file handling: the
@@ -2799,10 +2813,13 @@ static void draw_battery(SDL_Renderer *r)
 	redraw_at(g_batt_next);
 	if (!g_batt_ok) return;
 
-	TTF_Font *f = ui_font(UI_F_META);
-	/* Sized for "100", the widest it gets, so the disc never changes size. */
-	int rad = ui_text_width(f, "100") / 2 + 6;
-	int cx = TORTOS_SCREEN_W - 25 - rad, cy = 25 + rad;
+	TTF_Font *f = ui_font(UI_F_BADGE);
+	/* Sized for "100", the widest it gets, so the disc never changes size -
+	 * and small, in the corner: clear of a long shelf title, which runs to
+	 * about x 920, and of the GKD's in-game menu, whose panel reaches x 999
+	 * from y 41 (measured 2026-10-05; user: no overlap, one size for all). */
+	int rad = ui_text_width(f, "100") / 2 + 3;
+	int cx = TORTOS_SCREEN_W - 10 - rad, cy = 4 + rad;
 	char num[8];
 
 	SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
@@ -12479,6 +12496,7 @@ int main(int argc, char *argv[])
 	{	char cp[CFG_STR * 2];
 		chv_earned_load();
 		plat_resident_on_unlock(on_cheevo_unlocked);
+		plat_resident_on_shot(on_shot);
 		plat_resident_on_tick(on_game_tick);
 
 		/* Without this every HTTPS request fails verification, because the
