@@ -51,12 +51,13 @@ mkdir -p "$P/cards" "$P/cores" "$P/res/web" \
 
 cp "$B/tortos.elf" "$P/"
 cp "$B/muse" "$P/"                        # the audio player's engine; Muse cannot play without it
+# diatom's GLSL passes and the in-game menu's list of them, one list on both
+# devices (plorpos-gkd.72, plorpos-reo.4)
+mkdir -p "$P/shaders"
+cp "$ROOT/res/shaders/"* "$P/shaders/"
 if [ "$PLATFORM" = gkd ]; then
 	cp "$B/musectl" "$P/"
 	cp "$ROOT/sd/gkd/launch.sh" "$P/"
-	# diatom's GLSL passes and the in-game menu's list of them (plorpos-gkd.72)
-	mkdir -p "$P/shaders"
-	cp "$ROOT/res/shaders/"* "$P/shaders/"
 	# The three systemd drop-ins, folders and all: each .conf only works
 	# inside its <service>.service.d/.
 	cp -R "$ROOT/sd/gkd/system.d" "$OUT/"

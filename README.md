@@ -49,8 +49,8 @@ TortOS does, it still does. On top of that:
 - **Rewind:** about thirty seconds of it, on every console, at the speed you pick, from 1x to 10x. A PlayStation game on the Brick holds less, 6 to 15 seconds.
 - **Configurable hotkeys** for Fast-forward, rewind, quick save, quick load and
   screenshots. Hotkeys can be set with or without a modifier button (4 options on the GKD) and persist per console.
-- **Shaders on the GKD:** fifteen of them, scanlines to LCD grids and Pixel
-  Transparency, under Display. Each console remembers its own.
+- **Shaders:** fifteen of them, scanlines to LCD grids and Pixel
+  Transparency, under Display, on both devices. Each console remembers its own.
 - **Screenshots:** a hotkey saves a PNG of the screen, shader included, to
   `Screenshots/` on the card.
 - **Stretch, Aspect or Integer** display modes on every console.

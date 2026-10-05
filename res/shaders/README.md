@@ -1,6 +1,6 @@
 # Shaders
 
-GLSL shaders for diatom's GLES path on the GKD 350H Ultra (plorpos-gkd.72),
+GLSL shaders for diatom's GLES path on the GKD 350H Ultra and the Brick (plorpos-gkd.72, plorpos-reo.4),
 listed for the in-game menu by `shaders.cfg`. They are third-party files,
 copied unmodified - headers, notices and all - from NextUI
 (`skeleton/BASE/Shaders/glsl`, LoveRetro/NextUI at 73522546), which collected
