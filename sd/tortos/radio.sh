@@ -103,6 +103,15 @@ BT_RECONNECT_PIDFILE=/tmp/tortos_bt_reconnect.pid
 # Bluetooth, off unless asked for, because both radios are battery drain and
 # boot time, and the state the player left it in wins over the shipped
 # default.
+# Stop one process by name and wait up to 2 s for it to be gone.
+bt_stop_proc() {
+	killall -q "$1" 2> /dev/null
+	n=0
+	while pidof "$1" > /dev/null && [ $n -lt 20 ]; do
+		sleep 0.1; n=$((n + 1))
+	done
+}
+
 bt_off() {
 	if [ -f "$BT_RECONNECT_PIDFILE" ]; then
 		kill "$(cat "$BT_RECONNECT_PIDFILE")" 2> /dev/null
@@ -115,8 +124,28 @@ bt_off() {
 	rm -f /tmp/tortos_btsink
 	# btplayer too: a bluetoothd started again later has forgotten its
 	# registration, so bt_on starts a fresh one.
-	killall -q btplayer bluealsa bluetoothd hciattach 2> /dev/null
+	killall -q btplayer 2> /dev/null
+	# Then in order, each step finished before the next. Killing bluealsa,
+	# bluetoothd and hciattach at once, with a headset streaming, pulls the
+	# UART link out from under L2CAP channels still being released, and the
+	# stock 4.9 kernel then drops a channel's refcount after freeing it: slab
+	# corruption, and now and then a freeze a few seconds after the next wake
+	# (plorpos-pky.11). Measured on the Pro, in game with a headset: 1 hit in
+	# 3 the old way, 0 in 20 this way, same ~2.2 s. Close the links while
+	# bluetoothd still owns them, then the daemons, then the adapter, and
+	# only then the UART and the rail.
+	for mac in $(hcitool con 2> /dev/null | awk '/ACL/{print $3}'); do
+		bluetoothctl disconnect "$mac" > /dev/null 2>&1
+	done
+	i=0
+	while hcitool con 2> /dev/null | grep -q ACL && [ $i -lt 30 ]; do
+		sleep 0.1; i=$((i + 1))
+	done
+	bt_stop_proc bluealsa
+	bt_stop_proc bluetoothd
 	/etc/init.d/bluetooth stop 2> /dev/null
+	hciconfig hci0 down 2> /dev/null
+	bt_stop_proc hciattach
 	rfkill block bluetooth 2> /dev/null
 	echo 0 > /sys/class/rfkill/rfkill0/state 2> /dev/null
 }
