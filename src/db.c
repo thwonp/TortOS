@@ -189,6 +189,7 @@ static const char GAMES_SCHEMA[] =
 	"  note TEXT,"
 	"  synopsis TEXT,"
 	"  scraped INTEGER,"
+	"  custom_title TEXT,"
 	"  PRIMARY KEY(folder, file)"
 	");";
 
@@ -221,6 +222,9 @@ db *db_open(const char *path, db_scope scope)
 	 * first: on a database that already has it, sqlite refuses with
 	 * "duplicate column name" and nothing changes. */
 	if (scope == DB_LIBRARY) run(d, "ALTER TABLE games ADD COLUMN title TEXT;");
+	/* And the player's own name for a game, from the shelf's X menu
+	 * (plorpos-gkd.86.4), by the same migration. */
+	if (scope == DB_LIBRARY) run(d, "ALTER TABLE games ADD COLUMN custom_title TEXT;");
 
 	/* The device database holds the RetroAchievements session token, so it
 	 * asks for 0600. Sidecars included: a -wal holding the same pages at 0644
@@ -356,7 +360,9 @@ void db_game_titles(db *d, const char *folder,
 	sqlite3_stmt *st = NULL;
 
 	if (!d || !folder || !fn) return;
-	if (sq_prepare(d->h, "SELECT file,title FROM games WHERE folder=? AND title<>'';",
+	/* The player's name over the gamelist's, wherever there is one. */
+	if (sq_prepare(d->h, "SELECT file,COALESCE(NULLIF(custom_title,''),title) FROM games"
+	               " WHERE folder=? AND (title<>'' OR custom_title<>'');",
 	               -1, &st, NULL) != SQ_OK)
 		return;
 	sq_bind_text(st, 1, folder, -1, SQ_TRANSIENT);
@@ -366,6 +372,33 @@ void db_game_titles(db *d, const char *folder,
 		if (file && title) fn(ctx, (const char *)file, (const char *)title);
 	}
 	sq_finalize(st);
+}
+
+bool db_game_rename(db *d, const char *folder, const char *file, const char *title)
+{
+	sqlite3_stmt *st = NULL;
+	bool ok;
+
+	if (!d || !folder || !file) return false;
+	/* No ON CONFLICT on the device's sqlite 3.12.2 (see db_game_set): make
+	 * the row if the game has none - nothing scraped or imported it - then
+	 * set the one column. */
+	if (sq_prepare(d->h, "INSERT OR IGNORE INTO games(folder,file) VALUES(?1,?2);",
+	               -1, &st, NULL) != SQ_OK)
+		return false;
+	sq_bind_text(st, 1, folder, -1, SQ_TRANSIENT);
+	sq_bind_text(st, 2, file,   -1, SQ_TRANSIENT);
+	ok = sq_step(st) == SQ_DONE;
+	sq_finalize(st);
+	if (!ok || sq_prepare(d->h, "UPDATE games SET custom_title=NULLIF(?3,'')"
+	                            " WHERE folder=?1 AND file=?2;", -1, &st, NULL) != SQ_OK)
+		return false;
+	sq_bind_text(st, 1, folder, -1, SQ_TRANSIENT);
+	sq_bind_text(st, 2, file,   -1, SQ_TRANSIENT);
+	sq_bind_text(st, 3, title ? title : "", -1, SQ_TRANSIENT);
+	ok = sq_step(st) == SQ_DONE;
+	sq_finalize(st);
+	return ok;
 }
 
 int db_game_import(db *d, const char *folder, const char *file,
@@ -398,7 +431,13 @@ bool db_game_get(db *d, const char *folder, const char *file, game_meta *out)
 	if (sq_prepare(d->h,
 	               "SELECT year,publisher,developer,players,genres,esrb,note,synopsis,"
 	               "title"
-	               " FROM games WHERE folder=? AND file=?;", -1, &st, NULL) != SQ_OK)
+	               /* A row only a rename made (db_game_rename) describes
+	                * nothing - every column but the name is empty - so it is
+	                * no row here: an import fills it whole, and the info
+	                * screen says nothing was scraped. */
+	               " FROM games WHERE folder=? AND file=? AND COALESCE(scraped,year,"
+	               "publisher,developer,players,genres,esrb,note,synopsis,title) IS NOT NULL;",
+	               -1, &st, NULL) != SQ_OK)
 		return false;
 	sq_bind_text(st, 1, folder, -1, SQ_TRANSIENT);
 	sq_bind_text(st, 2, file, -1, SQ_TRANSIENT);
@@ -431,13 +470,18 @@ bool db_game_set(db *d, const char *folder, const char *file, const game_meta *m
 	 * source of titles; a ScreenScraper reply and a --meta record from an older
 	 * importer carry none, and a whole-row replace would otherwise blank the
 	 * shelf name a gamelist gave. The VALUES are evaluated before the old row
-	 * is replaced, so the subquery still sees it. */
+	 * is replaced, so the subquery still sees it.
+	 *
+	 * The player's own name (custom_title) is never an import's to change, so
+	 * it is carried over the same way, always: a gamelist imported again over
+	 * a renamed game keeps the rename. */
 	if (sq_prepare(d->h,
 	               "INSERT OR REPLACE INTO games(folder,file,year,publisher,developer,"
-	               "players,genres,esrb,note,synopsis,scraped,title)"
+	               "players,genres,esrb,note,synopsis,scraped,title,custom_title)"
 	               " VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,"
 	               "COALESCE(NULLIF(?12,''),"
-	               "(SELECT title FROM games WHERE folder=?1 AND file=?2)));",
+	               "(SELECT title FROM games WHERE folder=?1 AND file=?2)),"
+	               "(SELECT custom_title FROM games WHERE folder=?1 AND file=?2));",
 	               -1, &st, NULL) != SQ_OK)
 		return false;
 	sq_bind_text(st,  1, folder,        -1, SQ_TRANSIENT);

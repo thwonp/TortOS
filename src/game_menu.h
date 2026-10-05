@@ -65,7 +65,7 @@ static inline int gm_save_slot(const bool *have)
 	return GM_SLOTS;
 }
 
-#define GI_MAX 6          /* four facts at most, two actions */
+#define GI_MAX 7          /* four facts at most, three actions */
 
 /* The genre line, from the scrape. Sized from the card rather than guessed:
  * measured 2026-09-17 over 1,704 rows, the whole comma-separated value has a

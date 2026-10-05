@@ -106,15 +106,22 @@ typedef struct {
 	char synopsis[GAME_SYNOPSIS_MAX];
 } game_meta;
 
-/* False when there is no row. `out` is zeroed either way, so a screen can draw
- * from it without asking twice. */
+/* False when there is no row - or only a rename's, which describes nothing.
+ * `out` is zeroed either way, so a screen can draw from it without asking
+ * twice. */
 bool db_game_get(db *d, const char *folder, const char *file, game_meta *out);
 bool db_game_set(db *d, const char *folder, const char *file, const game_meta *m);
 
-/* Every game in a folder that has a title, as (file, title). */
+/* Every game in a folder that has a title, as (file, title): the player's own
+ * name where there is one, the gamelist's otherwise. */
 void db_game_titles(db *d, const char *folder,
                     void (*fn)(void *ctx, const char *file, const char *title),
                     void *ctx);
+
+/* The player's name for a game (plorpos-gkd.86.4), kept apart from the
+ * imported title so neither an import nor a scrape can undo it. Empty or NULL
+ * clears it, and the game is called what it was before. */
+bool db_game_rename(db *d, const char *folder, const char *file, const char *title);
 
 /* One game from an import (a gamelist, or --meta): the whole row when there is
  * none or when overwrite. Otherwise the row stays as it is, except that a

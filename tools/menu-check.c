@@ -827,6 +827,8 @@ static void info_rows(void)
 	n = gi_rows(rows, &gi, false);
 	printf("game info, a game on the card:\n");
 	ck(!strcmp(rows[n - 1].label, "Delete Game"), "Delete Game comes last");
+	ck(!strcmp(rows[n - 2].label, "Rename") && rows[n - 2].live,
+	   "Rename just above it, live without a network (plorpos-gkd.86.4)");
 	ck(rows[n - 1].live, "and needs no network");
 	k = reachable(rows, n, got, GI_MAX);
 	ck(got[k - 1] == n - 1, "and is reachable");

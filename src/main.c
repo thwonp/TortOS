@@ -4849,6 +4849,7 @@ static void wifi_backdrop(void *ctx)
 	SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
 	SDL_SetRenderDrawColor(a->r, 0, 0, 0, 150);
 	SDL_RenderFillRect(a->r, NULL);
+	draw_battery(a->r);   /* the keyboard draws over this and presents itself */
 }
 
 static menu_result wifi_key(app *a, void *ctx, in_button key, int sel)
@@ -5876,6 +5877,35 @@ static void game_delete(app *a, int owner, const game_entry *g)
 	}
 }
 
+/* Rename, from the info screen (plorpos-gkd.86.4): the player's name for the
+ * game, kept in the games table apart from any imported title (db.h), so a
+ * scrape or a gamelist imported again never undoes it. Then the card is read
+ * again, as after Delete - every shelf the game is on, Favorites too, shows
+ * and sorts by the new name - and the cursor follows the game to wherever its
+ * name put it. Empty gives it back the name it had. */
+static void game_rename(app *a, int owner, const game_entry *g, const char *name)
+{
+	char tag[sizeof a->sys.systems[0].tag], file[sizeof g->file];
+	sysview *v;
+	int i;
+
+	snprintf(tag, sizeof tag, "%s", a->sys.systems[owner].tag);
+	snprintf(file, sizeof file, "%s", g->file);   /* g goes with the rescan */
+	if (!db_game_rename(db_lib(), a->sys.systems[owner].folder, file, name))
+		fprintf(stderr, "rename: %s/%s: not saved\n", tag, file);
+	else
+		fprintf(stderr, "rename: %s/%s -> %s\n", tag, file, name[0] ? name : "(its own name)");
+	rescan_all(a);
+	v = &a->view[a->sys_cursor];
+	for (i = 0; i < v->list.count; i++) {
+		if (strcmp(v->list.items[i].file, file)) continue;
+		if (strcmp(a->sys.systems[shelf_owner(a, a->sys_cursor, i)].tag, tag)) continue;
+		v->cursor = i;
+		cf_reset(&v->cf, v->cursor);
+		break;
+	}
+}
+
 static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 {
 	info_ctx *c = ctx;
@@ -5897,6 +5927,26 @@ static menu_result info_key(app *a, void *ctx, in_button key, int sel)
 		    && m.synopsis[0])
 			synopsis_screen(a, c->g->title, m.synopsis, c->st.accent);
 		return MENU_STAY;
+	}
+
+	if (!strcmp(rows[sel].label, "Rename")) {
+		char name[sizeof c->g->title], *p;
+		size_t len;
+		kb_result kr;
+
+		snprintf(name, sizeof name, "%s", c->g->title);
+		kr = kb_prompt(a->r, &a->in, "Rename", name, (int)sizeof name,
+		               c->st.accent, wifi_backdrop, power_due_ctx, a);
+		plat_input_flush();
+		memset(&a->in, 0, sizeof a->in);
+		if (kr == KB_POWER) { power_off(a); return MENU_DONE; }
+		if (kr != KB_ACCEPT) return MENU_STAY;
+		p = name + strspn(name, " ");
+		while ((len = strlen(p)) && p[len - 1] == ' ') p[len - 1] = '\0';
+		if (!strcmp(p, c->g->title)) return MENU_STAY;
+		/* Closes the screen, as Delete does: the rescan moves the game. */
+		game_rename(a, c->owner, c->g, p);
+		return MENU_DONE;
 	}
 
 	if (!strcmp(rows[sel].label, "Delete Game")) {

@@ -116,6 +116,48 @@ int main(void)
 	   !strcmp(snes.items[3].file, "Axelay (USA).sfc"),
 	   "two dumps of one title keep their order by name, and the title decides the rest");
 
+	/* The player's own name, from the X menu (plorpos-gkd.86.4). */
+	{
+		game_entry items[8];
+		game_list l = { items, 0, true, 0, {{0}} };
+		game_meta m;
+
+		ck(db_game_rename(d, "Arcade", "mk3.zip", "My MK"), "a game a gamelist named can be renamed");
+		ck(db_game_rename(d, "Arcade", "unknown.zip", "Aaa Mystery"),
+		   "and one nothing has a row for");
+		add(&l, "mk3.zip"); add(&l, "1943.zip"); add(&l, "unknown.zip");
+		titles_apply(&l, d, "Arcade", DAT);
+		ck(!strcmp(title_of(&l, "mk3.zip"), "My MK"), "the rename beats the gamelist's name");
+		ck(!strcmp(title_of(&l, "unknown.zip"), "Aaa Mystery"), "and the filename");
+		ck(!strcmp(l.items[0].file, "1943.zip") && !strcmp(l.items[1].file, "unknown.zip") &&
+		   !strcmp(l.items[2].file, "mk3.zip"), "and sorts by the new names");
+		ck(!db_game_get(d, "Arcade", "unknown.zip", &m),
+		   "a row only a rename made is not a scraped game");
+
+		memset(&m, 0, sizeof m);
+		snprintf(m.title, sizeof m.title, "MK3 again");
+		snprintf(m.synopsis, sizeof m.synopsis, "Fight.");
+		ck(db_game_import(d, "Arcade", "mk3.zip", &m, true) == 1, "a gamelist imported again, overwriting");
+		snprintf(m.title, sizeof m.title, "Mystery from a list");
+		ck(db_game_import(d, "Arcade", "unknown.zip", &m, false) == 1,
+		   "an import fills a rename-only row whole, not as a row it must leave alone");
+		ck(db_game_get(d, "Arcade", "unknown.zip", &m) && !strcmp(m.synopsis, "Fight."),
+		   "with all of it");
+		l.count = 0;
+		add(&l, "mk3.zip"); add(&l, "unknown.zip");
+		titles_apply(&l, d, "Arcade", DAT);
+		ck(!strcmp(title_of(&l, "mk3.zip"), "My MK") && !strcmp(title_of(&l, "unknown.zip"), "Aaa Mystery"),
+		   "and neither import undid a rename");
+
+		ck(db_game_rename(d, "Arcade", "mk3.zip", ""), "an empty name clears it");
+		ck(db_game_rename(d, "Arcade", "unknown.zip", NULL), "and so does none");
+		l.count = 0;
+		add(&l, "mk3.zip"); add(&l, "unknown.zip");
+		titles_apply(&l, d, "Arcade", DAT);
+		ck(!strcmp(title_of(&l, "mk3.zip"), "MK3 again"), "back to the gamelist's name");
+		ck(!strcmp(title_of(&l, "unknown.zip"), "Mystery from a list"), "both of them");
+	}
+
 	db_close(d);
 	scrub();
 	if (fails) { printf("\n%d FAILED\n", fails); return 1; }
