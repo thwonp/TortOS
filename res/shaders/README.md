@@ -20,10 +20,11 @@ cover them; each file's terms are its own.
 | scanline.glsl | cg2glsl conversion of Themaister's misc/scanline.cg (same 0.05/0.15 constants) | public domain (stated in the .cg) |
 | sharp-shimmerless.glsl | zadpos | public domain |
 | sharp-shimmerless-grid.glsl | zadpos | public domain |
+| PT_SkyWalker541.glsl | SkyWalker541, v1.8.0 (github.com/SkyWalker541/PT-SkyWalker541 at f201f21, `Standard RetroArch/shaders_glsl/handheld/shaders/`) - not from NextUI | MIT (the repository's LICENSE; full text in THIRD-PARTY-LICENSES.md) |
 | stock.glsl | libretro's stock.cg pass-through | none stated; nothing in it to license |
 
 The three conversions were traced to their libretro common-shaders originals
 in plorpos-4g4 (2026-10-03). edge1pixel.glsl is the one with no terms found
 anywhere: no license could be found, it is kept as published, credited to
 decavoid, and THIRD-PARTY-LICENSES.md says so (plorpos-gkd.81). a71b077 brought 16 files; 54cd96b removed four (scale3x,
-sharp-bilinear, sharp-shimmerless-subpixel-vrgb, waterpaint), leaving these 12.
+sharp-bilinear, sharp-shimmerless-subpixel-vrgb, waterpaint), leaving these 12; plorpos-gkd.86.1 added PT_SkyWalker541.glsl, unmodified, from its own repository.
