@@ -61,12 +61,15 @@ wifi_rfkill() {
 # address and every fetch fails in a way that looks like a dead network rather
 # than a missing lease. Also used to bring Wi-Fi back up after a suspend cycle
 # that had it running before sleep - backgrounded there (see plat_sleep()), so
-# its own retry window never blocks wake.
+# its own retry window never blocks wake. The window is 15 s: Bluetooth
+# waits for it (plorpos-pky.11), and a Brick whose Wi-Fi never associates
+# kept its headset away ~40 s at 25 s. The Pro associates in under 5 s
+# (max 4.6 s, 24 wakes). A network slower than 15 s gets no lease.
 wifi_on() {
 	i=0
 	wifi_rfkill unblock
 	/etc/init.d/wpa_supplicant start > /dev/null 2>&1
-	while [ $i -lt 25 ]; do
+	while [ $i -lt 15 ]; do
 		if wpa_cli -p /etc/wifi/sockets -i wlan0 status 2> /dev/null \
 		   | grep -q '^wpa_state=COMPLETED'; then
 			udhcpc -i wlan0 -S -t 5 -T 7 -b -q > /dev/null 2>&1

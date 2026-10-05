@@ -1499,7 +1499,7 @@ bool plat_sleep(void)
 	 * suspend needed (plorpos-pky.11). Measured, radios cycled in game with
 	 * a headset: both at once 1 freeze in 5, Bluetooth first 1 in 9, Wi-Fi
 	 * first 0 in 23. The price: a headset is back ~18 s after wake instead
-	 * of ~13 s, and ~40 s when Wi-Fi cannot associate (wifi_on's 25 s). */
+	 * of ~13 s, and ~30 s when Wi-Fi cannot associate (wifi_on's 15 s). */
 	if (bt_was_up && wifi_was_up) radio_sh_call("wifi_on; bt_on", true);
 	else if (bt_was_up) radio_sh_call("bt_on", true);
 	else if (wifi_was_up) radio_sh_call("wifi_on", true);
