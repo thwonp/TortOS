@@ -67,6 +67,8 @@ const char *const plat_child_env[] = {
 	NULL
 };
 const char plat_child_libpath[] = ":/usr/trimui/lib";
+/* The firmware SDL has no sensors and pico8_64 asks for them (tools/pico8sdl.c). */
+const char *const plat_pico8_preload = "/mnt/SDCARD/TortOS/pico8sdl.so";
 
 /* The brightness keys, as the Controls page names them. */
 const char *plat_bright_keys(void) { return plat_is_brick_pro() ? "FN1/FN2" : "F1/F2"; }
@@ -248,20 +250,23 @@ void plat_input_quit(void)
 	/* keep the raw descriptors; they are display-independent */
 }
 
-/* Not wired: Menu reaches the launcher through the joystick, which is closed
- * while a game runs. The Brick's native PICO-8 is plorpos-gkd.50.13. */
+/* Menu on the pad's raw node, which stays open while a child has the screen.
+ * With no compositor to take a frozen child off it (child_hide below), Menu
+ * in native PICO-8 is Quit - plat_run ends the child and never draws over it
+ * (plorpos-gkd.50.13). */
 int menu_key(int *code)
 {
-	*code = 0;
-	return -1;
+	*code = BTN_MODE;
+	return fd_joy;
 }
 
 /* Not wired either: plorpos-gkd.50.13. */
 int levels_fd(void) { return -1; }
 bool levels_alt(void) { return false; }
 
-/* No compositor to take a frozen window off the screen, and Menu never gets
- * here anyway (menu_key). plorpos-gkd.50.13. */
+/* No compositor to take a frozen window off the screen, so plat_run reads
+ * Menu as Quit rather than drawing a menu over a child that still holds the
+ * display - two presenters wedge this device. plorpos-gkd.50.13. */
 bool child_hide(pid_t pid) { (void)pid; return false; }
 void child_restore(pid_t pid, bool show) { (void)pid; (void)show; }
 /* Not on the Brick yet: plorpos-gkd.50.13. */

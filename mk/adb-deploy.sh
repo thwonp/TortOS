@@ -51,6 +51,7 @@ case $WHAT in elf|all)
 	$A push "$ROOT/build/muse"              "$P/" > /dev/null
 	$A push "$ROOT/build/musectl"           "$P/" > /dev/null
 	$A push "$ROOT/build/btplayer"          "$P/" > /dev/null
+	$A push "$ROOT/build/pico8sdl.so"       "$P/" > /dev/null
 	# systems.cfg only. tortos.cfg, coreopts.cfg and turbo.cfg are compiled
 	# into the launcher and seed the settings database, so there is nothing
 	# left to push - and pushing a stale copy would leave a file on the card

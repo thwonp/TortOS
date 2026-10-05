@@ -49,6 +49,7 @@ const char *const plat_child_env[] = {
 	NULL
 };
 const char plat_child_libpath[] = "";
+const char *const plat_pico8_preload = NULL;
 
 bool plat_is_brick_pro(void) { return false; }
 bool plat_has_stick(void) { return true; }

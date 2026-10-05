@@ -10303,7 +10303,7 @@ static int run_alone(app *a, char *const argv[], run_menu_fn on_menu,
  * Bios/pico8.dat beside it). Native is PICO-8 itself - Splore, the real
  * runtime - at the cost of most of what diatom gives a game: no states, no
  * rewind, and an in-game menu of only Continue, Reset and Quit (native_menu;
- * the GKD only - on the Brick Menu just quits, plorpos-gkd.50.13). */
+ * the GKD only - on the Brick Menu quits, plorpos-gkd.50.13). */
 #define SPLORE "Splore"
 
 static bool is_pico8(const system_cfg *s) { return !strcmp(s->core, "fake08"); }
@@ -10451,8 +10451,8 @@ static int run_pico8(app *a, const char *bin, const char *folder,
                      const char *rom, bool splore, const char *dmode)
 {
 	char home[CFG_STR * 2], desk[CFG_STR * 2 + 16], root[CFG_STR * 2];
-	char rect[48];
-	char *argv[16];
+	char rect[48], preload[CFG_STR * 2 + 16];
+	char *argv[18];
 	int n = 0, ow = 0, oh = 0, flags;
 
 	snprintf(home, sizeof home, "%s/Saves/pico-8", P_CARD);
@@ -10466,6 +10466,13 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 		snprintf(root, sizeof root, "%s/%s", P_ROMS, folder);
 	}
 
+	/* Through env(1) when the device needs a library preloaded into PICO-8
+	 * alone; env execs it, so the pid plat_run signals is pico8_64's. */
+	if (plat_pico8_preload) {
+		snprintf(preload, sizeof preload, "LD_PRELOAD=%s", plat_pico8_preload);
+		argv[n++] = (char *)"/usr/bin/env";
+		argv[n++] = preload;
+	}
 	argv[n++] = (char *)bin;
 	argv[n++] = (char *)"-home";      argv[n++] = home;
 	argv[n++] = (char *)"-root_path"; argv[n++] = root;

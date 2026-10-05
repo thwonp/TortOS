@@ -70,6 +70,7 @@ else
 	mkdir -p "$OUT/.tmp_update" "$OUT/trimui/app"
 	cp "$B/setbright" "$P/"               # brightness before the boot animation
 	cp "$B/btplayer" "$P/"                # lets a headset's volume through BlueZ
+	cp "$B/pico8sdl.so" "$P/"             # native PICO-8 on the firmware SDL (tools/pico8sdl.c)
 	cp "$ROOT/sd/tortos/launch.sh" "$P/"
 	cp "$ROOT/sd/tortos/bt-alsa.sh" "$P/" # sourced by launch.sh, run by the launcher
 	cp "$ROOT/sd/tortos/radio.sh" "$P/"   # sourced by launch.sh AND by plat_sleep()
@@ -87,19 +88,9 @@ fi
 # down reads it to create the ROM folders. Both run on the host, before any
 # database exists.
 #
-# The Brick ships without the cores it has not been released on yet
-# (plorpos-gkd.84): fake08 (PICO-8) comes back under its own bead; fbneo
-# (Arcade, Neo Geo) and pcsx_rearmed (PlayStation) came back in plorpos-reo.1
-# and .2. Their shelves go with them, so the card's systems.cfg - not config/ -
-# is what everything below reads: the cores copied, the check, the ROM folders.
-if [ "$PLATFORM" = gkd ]; then
-	cp "$ROOT/config/systems.cfg" "$P/"
-else
-	awk -F'|' 'BEGIN { drop["fake08"] }
-	           { c = $4; gsub(/^[ \t]+|[ \t]+$/, "", c) }
-	           !($1 == "sys" && c in drop)' \
-	    "$ROOT/config/systems.cfg" > "$P/systems.cfg"
-fi
+# Both devices ship every system since plorpos-reo: the Brick dropped fbneo,
+# pcsx_rearmed and fake08 for v1.01 and v1.1 (plorpos-gkd.84).
+cp "$ROOT/config/systems.cfg" "$P/"
 cp -R "$ROOT/res/cards/." "$P/cards/"     # the classic/ and fancy/ sets, as adb-deploy.sh pushes them
 cp "$ROOT/res/fonts/menu.ttf" "$P/"       # the UI face, and the in-game menu's
 # Over The Hare's page. The launcher serves these off the card at P_WEB, so a

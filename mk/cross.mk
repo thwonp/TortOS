@@ -96,6 +96,12 @@ $(BUILD)/btplayer: tools/btplayer.c
 	mkdir -p $(BUILD)
 	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -o $@ $< -ldl
 
+# Preloaded into native PICO-8 on the Brick: the firmware SDL has no sensors
+# and PICO-8 asks for them. See the file.
+$(BUILD)/pico8sdl.so: tools/pico8sdl.c
+	mkdir -p $(BUILD)
+	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -shared -fPIC -o $@ $< -ldl
+
 $(BUILD)/setbright: tools/setbright.c
 	mkdir -p $(BUILD)
 	$(CC) -O2 -mcpu=cortex-a53 -Wall -std=gnu11 -o $@ $<

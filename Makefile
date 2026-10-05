@@ -98,7 +98,7 @@ THIRD_PARTY := mk/third_party.mk $(shell find third_party -name '*.[ch]')
 
 build/tortos.elf: $(SRC_BRICK) $(wildcard src/*.h) tools/setbright.c mk/cross.mk $(THIRD_PARTY) \
                   $(wildcard src/muse/*.c) $(wildcard src/muse/*.h) tools/musectl.c \
-                  tools/btplayer.c \
+                  tools/btplayer.c tools/pico8sdl.c \
                   build/ss_creds.h
 	@docker image inspect $(IMAGE) > /dev/null 2>&1 || { \
 		echo "toolchain image missing; run: make toolchain" >&2; exit 1; }
@@ -107,7 +107,7 @@ build/tortos.elf: $(SRC_BRICK) $(wildcard src/*.h) tools/setbright.c mk/cross.mk
 	@# -e VAR with no value passes the HOST's value through, so the pair
 	@# reaches the container without appearing in this command line.
 	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work -w /work $(IMAGE) \
-		make $(VERSION_CHANGED) -f mk/cross.mk SYSROOT=/work/sysroot VERSION=$(VERSION) creds build/tortos.elf build/setbright build/muse build/musectl build/btplayer
+		make $(VERSION_CHANGED) -f mk/cross.mk SYSROOT=/work/sysroot VERSION=$(VERSION) creds build/tortos.elf build/setbright build/muse build/musectl build/btplayer build/pico8sdl.so
 	@# Refuse to be quiet about an output older than its own source.
 	@#
 	@# Docker on macOS can show the container a stale mtime for a file the host
@@ -142,7 +142,7 @@ build/tortos.elf: $(SRC_BRICK) $(wildcard src/*.h) tools/setbright.c mk/cross.mk
 			exit 1; \
 		fi; \
 	done
-	@for pair in musectl:tools/musectl.c btplayer:tools/btplayer.c; do \
+	@for pair in musectl:tools/musectl.c btplayer:tools/btplayer.c pico8sdl.so:tools/pico8sdl.c; do \
 		bin=build/$${pair%%:*}; src=$${pair#*:}; \
 		if [ "$$src" -nt "$$bin" ]; then \
 			echo "STALE: $$bin is older than $$src" >&2; \

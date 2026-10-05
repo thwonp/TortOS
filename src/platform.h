@@ -48,6 +48,8 @@ const char *plat_bright_keys(void);
  * from the device file; main.c's build_child_env() adds the rest. */
 extern const char *const plat_child_env[];
 extern const char plat_child_libpath[];
+/* A library preloaded into native PICO-8 (pico8_64), or NULL. */
+extern const char *const plat_pico8_preload;
 
 /* A stick whose directions can be hotkey triggers (diatom ADR-0039). */
 bool plat_has_stick(void);
