@@ -106,6 +106,10 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
     <td align="center" colspan="3"><img src="res/readme/muse.png" width="240" alt="Muse's shelf of albums, with xx in focus"><br><sub>Your albums, in Muse</sub></td>
     <td align="center" colspan="3"><img src="res/readme/nowplaying.png" width="240" alt="Muse's Now Playing"><br><sub>Now Playing, on SELECT from anywhere</sub></td>
   </tr>
+  <tr>
+    <td align="center" colspan="3"><img src="res/readme/splore.png" width="240" alt="The PICO-8 shelf, with the gold Splore cart first"><br><sub>Splore, first on the PICO-8 shelf</sub></td>
+    <td align="center" colspan="3"><img src="res/readme/pico8-menu.png" width="240" alt="The PICO-8 shelf's menu, with its Core row"><br><sub>fake-08 or native PICO-8, per shelf</sub></td>
+  </tr>
 </table>
 
 </div>
