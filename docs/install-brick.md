@@ -51,11 +51,6 @@ plorpOS.
 Copy everything inside the zip over the card, replacing what's there. Your
 settings, saves, favorites and play time are kept.
 
-This release has no Arcade, Neo Geo, PlayStation or PICO-8 on the Brick, so
-their shelves disappear. Their cores and ROM folders from the older install
-stay on the card, unused; delete `Roms/Arcade`, `Roms/Neo Geo`,
-`Roms/PlayStation` and `Roms/Pico-8` if you want the space back.
-
 ## Adding games over Wi-Fi
 
 1. Join a network under **MENU > Wi-Fi Services > Wi-Fi**.
