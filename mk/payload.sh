@@ -88,14 +88,15 @@ fi
 # database exists.
 #
 # The Brick ships without the cores it has not been released on yet
-# (plorpos-gkd.84): fbneo (Arcade, Neo Geo), pcsx_rearmed (PlayStation) and
-# fake08 (PICO-8) each come back under their own bead. Their shelves go with
-# them, so the card's systems.cfg - not config/ - is what everything below
-# reads: the cores copied, the check, the ROM folders.
+# (plorpos-gkd.84): pcsx_rearmed (PlayStation) and fake08 (PICO-8) each come
+# back under their own bead; fbneo (Arcade, Neo Geo) came back in
+# plorpos-reo.1. Their shelves go with them, so the card's systems.cfg - not
+# config/ - is what everything below reads: the cores copied, the check, the
+# ROM folders.
 if [ "$PLATFORM" = gkd ]; then
 	cp "$ROOT/config/systems.cfg" "$P/"
 else
-	awk -F'|' 'BEGIN { drop["fbneo"]; drop["pcsx_rearmed"]; drop["fake08"] }
+	awk -F'|' 'BEGIN { drop["pcsx_rearmed"]; drop["fake08"] }
 	           { c = $4; gsub(/^[ \t]+|[ \t]+$/, "", c) }
 	           !($1 == "sys" && c in drop)' \
 	    "$ROOT/config/systems.cfg" > "$P/systems.cfg"
