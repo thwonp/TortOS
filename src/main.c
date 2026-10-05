@@ -10550,17 +10550,13 @@ static void launch(app *a)
 		if (pal >= 0) gbpal_opts(pal, palp, sizeof palp, palc, sizeof palc);
 	}
 	disc = disc_of(a, o, &v->list.items[v->cursor]);
-#if defined(PLATFORM_GKD)
 	/* Each shelf's saves in a folder named as its Roms folder, so the same
 	 * title on two shelves cannot share one .srm, and a core's own files
-	 * (memory cards, fbneo/) sit with their system (plorpos-aev). The Brick
-	 * keeps upstream's flat Saves. PICO-8's is Saves/pico-8 on exFAT, which
+	 * (memory cards, fbneo/) sit with their system (plorpos-aev; the Brick
+	 * too since plorpos-reo.3). PICO-8's is Saves/pico-8 on exFAT, which
 	 * ignores case: fake08 and native PICO-8 share cdata/, in one format. */
 	snprintf(save, sizeof save, "%s/Saves/%s", P_CARD, s->folder);
 	mkdir(save, 0755);
-#else
-	snprintf(save, sizeof save, "%s/Saves", P_CARD);
-#endif
 	snprintf(bios, sizeof bios, "%s/Bios", P_CARD);
 
 	/* A disc that needs firmware, before anything tries to run it.

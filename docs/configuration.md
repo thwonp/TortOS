@@ -51,8 +51,7 @@ sys | display name | Roms/ folder | core | tag | card art | accent | extensions 
 
 The **tag** keys the per-system display mode and the favorites list. It is not
 what saves and states hang off - states are keyed on the folder and `.srm` files
-are named after the ROM, flat in `Saves/` on the Brick and in
-`Saves/<folder>/` on the GKD. `system_cfg` declares `tag[8]`, so up
+are named after the ROM, in `Saves/<folder>/`. `system_cfg` declares `tag[8]`, so up
 to seven characters, and changing a tag orphans that system's display mode and
 favorites.
 
