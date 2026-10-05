@@ -63,6 +63,7 @@
 #include <errno.h>
 #include <ftw.h>
 #include <ctype.h>
+#include <dirent.h>
 #include <math.h>
 #include <signal.h>
 #include <stdio.h>
@@ -9472,8 +9473,10 @@ static int museart_jobs(museart_job *jobs, int max)
 		bool have;
 
 		/* Not a book: MusicBrainz knows records, and a book's cover is its
-		 * own file or the picture in its folder. */
-		if (g_muse.albums[i].n <= 0 || g_muse.albums[i].book) continue;
+		 * own file or the picture in its folder. Nor Singles, which is no
+		 * record at all and has its own cover. */
+		if (g_muse.albums[i].n <= 0 || g_muse.albums[i].book ||
+		    g_muse.albums[i].singles) continue;
 		muse_album_dir(i, dir, sizeof dir);
 		snprintf(key, sizeof key, "museart.%s", dir);
 		if (db_has(db_lib(), key)) continue;
@@ -12170,6 +12173,226 @@ static void muse_order_view(sysview *v)
 	v->jump_by_year = v->sort == ML_BY_YEAR;
 }
 
+/* A free name for `name` in `dir`: itself, or with " (2)", " (3)" ... before
+ * its extension. False when none fits. */
+static bool free_name(const char *dir, const char *name, char *out, size_t n)
+{
+	const char *dot = strrchr(name, '.');
+	int stem = dot ? (int)(dot - name) : (int)strlen(name);
+	int k;
+
+	if (snprintf(out, n, "%s/%s", dir, name) >= (int)n) return false;
+	for (k = 2; access(out, F_OK) == 0; k++) {
+		if (k > 99) return false;
+		if (snprintf(out, n, "%s/%.*s (%d)%s", dir, stem, name, k, dot ? dot : "")
+		    >= (int)n) return false;
+	}
+	return true;
+}
+
+/* Songs loose at the top of Music/, in no folder, moved into Music/Singles,
+ * where Muse reads them as an album (ml_album's `singles`): loose, they were
+ * on no shelf. Eric's call, 2026-10-05. A name already taken there gets " (2)"
+ * and on, so nothing is overwritten. And Singles gets its cover, shipped with
+ * TortOS (tools/gensingles.py), at Music/.media/Singles.png, where every
+ * album's is kept, unless it already has one. A rename on the same card, so
+ * it costs a folder read when there is nothing to move. */
+static void muse_tidy_singles(void)
+{
+	char music[LIB_PATH], singles[LIB_PATH + 16];
+	char from[LIB_PATH * 2], to[LIB_PATH * 2 + 16], cover[LIB_PATH * 2], src[LIB_PATH * 2];
+	char (*loose)[256] = NULL;
+	int nloose = 0, cap = 0, moved = 0, i;
+	struct dirent *e;
+	struct stat st;
+	DIR *d;
+
+	snprintf(music, sizeof music, "%s/Music", P_CARD);
+	snprintf(singles, sizeof singles, "%s/%s", music, ML_SINGLES);
+	if (!(d = opendir(music))) return;
+	/* Listed first, moved after: renaming out of a folder being read is
+	 * allowed to show or skip entries. */
+	while ((e = readdir(d))) {
+		if (e->d_name[0] == '.' || !ml_is_audio(e->d_name)) continue;
+		if (snprintf(from, sizeof from, "%s/%s", music, e->d_name) >= (int)sizeof from ||
+		    stat(from, &st) != 0 || !S_ISREG(st.st_mode) ||
+		    strlen(e->d_name) >= sizeof loose[0])
+			continue;
+		if (nloose == cap) {
+			char (*more)[256] = realloc(loose, (size_t)(cap ? cap * 2 : 16) * sizeof *loose);
+
+			if (!more) break;
+			loose = more;
+			cap = cap ? cap * 2 : 16;
+		}
+		snprintf(loose[nloose++], sizeof loose[0], "%s", e->d_name);
+	}
+	closedir(d);
+	for (i = 0; i < nloose; i++) {
+		mkdir(singles, 0755);
+		snprintf(from, sizeof from, "%s/%s", music, loose[i]);
+		if (free_name(singles, loose[i], to, sizeof to) && rename(from, to) == 0) moved++;
+		else fprintf(stderr, "muse: could not move %s into %s\n", loose[i], ML_SINGLES);
+	}
+	free(loose);
+	if (moved)
+		fprintf(stderr, "muse: moved %d loose song%s into Music/%s\n",
+		        moved, moved == 1 ? "" : "s", ML_SINGLES);
+
+	if (stat(singles, &st) != 0 || !S_ISDIR(st.st_mode)) return;
+	snprintf(cover, sizeof cover, "%s/.media/%s.jpg", music, ML_SINGLES);
+	if (file_nonempty(cover)) return;
+	snprintf(cover, sizeof cover, "%s/.media/%s.png", music, ML_SINGLES);
+	if (file_nonempty(cover)) return;
+	snprintf(src, sizeof src, "%s/.media", music);
+	mkdir(src, 0755);
+	snprintf(src, sizeof src, "%s/singles.png", P_ROOT);
+	copy_file(src, cover);
+}
+
+/* ---- Muse: albums filed under their artists -----------------------------
+ *
+ * An album folder straight in Music/ is its own artist on the shelf, so
+ * Trompe Le Monde sorted under T rather than with the Pixies. Its tags say who
+ * it is by, and Muse's player reads them (src/muse/tags.h): with a clear
+ * answer it moves to Music/<artist>/<album>, its cover and Album Art's memory
+ * of it with it, and the shelf is read again once. Eric's call, 2026-10-05.
+ *
+ * Left where it is when the tags give no clear answer (a podcast, a mix), when
+ * the answer is its own name, when Music/<artist>/<album> is already there,
+ * and for now when Muse is playing from it. Never Singles, never a book. The
+ * player is not up at the first scan of a boot, so this happens a moment
+ * after, one album at a time, from the main loop. */
+typedef struct { char dir[LIB_PATH]; unsigned asked; bool done; } flat_album;
+static flat_album *g_flat;
+static int         g_nflat;
+static bool        g_muse_moved;            /* something moved: read it again */
+
+/* The albums straight in Music/, after a scan. */
+static void flat_albums_find(void)
+{
+	int i;
+
+	free(g_flat);
+	g_nflat = 0;
+	g_flat = calloc((size_t)(g_muse.nalbums > 0 ? g_muse.nalbums : 1), sizeof *g_flat);
+	if (!g_flat) return;
+	for (i = 0; i < g_muse.nalbums; i++) {
+		const ml_album *al = &g_muse.albums[i];
+		const char *p, *slash;
+
+		if (al->book || al->singles || al->n <= 0) continue;
+		p = g_muse.tracks[al->first].path;            /* Music/<album>/<track> */
+		if (strncmp(p, "Music/", 6) || !(slash = strchr(p + 6, '/')) ||
+		    strchr(slash + 1, '/'))
+			continue;
+		snprintf(g_flat[g_nflat++].dir, sizeof g_flat[0].dir, "%.*s", (int)(slash - p), p);
+	}
+}
+
+/* An artist's name as a folder: what the card cannot store in one becomes -,
+ * and no leading or trailing space or trailing dot. */
+static void folder_name(const char *in, char *out, size_t n)
+{
+	size_t o = 0, len;
+
+	while (*in == ' ') in++;
+	for (; *in && o + 1 < n; in++)
+		out[o++] = strchr("/\\:*?\"<>|", *in) || (unsigned char)*in < 0x20 ? '-' : *in;
+	out[o] = '\0';
+	for (len = o; len && (out[len - 1] == ' ' || out[len - 1] == '.'); len--) out[len - 1] = '\0';
+}
+
+/* Move Music/<album> under its artist. 1 moved, 0 left where it is, -1 not
+ * now (Muse is playing from it). */
+static int file_album(const char *rel, const char *artist)
+{
+	const char *album = strrchr(rel, '/') + 1;
+	char who[256], from[LIB_PATH * 2], dir[LIB_PATH * 2], to[LIB_PATH * 2 + 256];
+	char cfrom[LIB_PATH * 2 + 300], cto[LIB_PATH * 2 + 600], key[LIB_PATH + 300], val[96];
+	static const char *const EXT[] = { "jpg", "png" };
+	size_t rl = strlen(rel);
+	const char *t;
+	int k;
+
+	folder_name(artist, who, sizeof who);
+	if (!who[0] || !strcmp(who, album) || !strcmp(who, ML_SINGLES)) return 0;
+	for (k = 0; (t = musec_track(k)); k++)
+		if (!strncmp(t, rel, rl) && t[rl] == '/') return -1;
+
+	snprintf(from, sizeof from, "%s/%s", P_CARD, rel);
+	snprintf(dir, sizeof dir, "%s/Music/%s", P_CARD, who);
+	snprintf(to, sizeof to, "%s/%s", dir, album);
+	if (access(to, F_OK) == 0) {
+		fprintf(stderr, "muse: Music/%s stays: Music/%s/%s is there already\n",
+		        album, who, album);
+		return 0;
+	}
+	mkdir(dir, 0755);
+	if (rename(from, to) != 0) {
+		fprintf(stderr, "muse: could not move Music/%s under Music/%s\n", album, who);
+		return 0;
+	}
+	/* Its cover, from Music/.media to the artist's. */
+	for (k = 0; k < 2; k++) {
+		snprintf(cfrom, sizeof cfrom, "%s/Music/.media/%s.%s", P_CARD, album, EXT[k]);
+		if (access(cfrom, F_OK) != 0) continue;
+		snprintf(cto, sizeof cto, "%s/.media", dir);
+		mkdir(cto, 0755);
+		snprintf(cto, sizeof cto, "%s/.media/%s.%s", dir, album, EXT[k]);
+		rename(cfrom, cto);
+	}
+	/* And what Album Art remembers of it, so it is not fetched again. */
+	snprintf(key, sizeof key, "museart.%s", rel);
+	if (db_get_str(db_lib(), key, val, sizeof val, "") && val[0]) {
+		db_del(db_lib(), key);
+		snprintf(key, sizeof key, "museart.Music/%s/%s", who, album);
+		db_set_str(db_lib(), key, val);
+	}
+	fprintf(stderr, "muse: filed Music/%s under Music/%s\n", album, who);
+	return 1;
+}
+
+/* Whether any album is still waiting for its answer: the shelf is read again
+ * once they all have one, not once per album moved. */
+static bool flat_albums_waiting(void)
+{
+	int i;
+
+	for (i = 0; i < g_nflat; i++)
+		if (!g_flat[i].done) return true;
+	return false;
+}
+
+/* One step: take what the player has answered, and ask about the next album.
+ * From the main loop and the transfer screen's. */
+static void muse_file_albums(void)
+{
+	char dir[LIB_PATH * 2], name[256];
+	unsigned now = plat_now_ms();
+	int i;
+
+	while (musec_artist_take(dir, sizeof dir, name, sizeof name))
+		for (i = 0; i < g_nflat; i++) {
+			int r;
+
+			if (g_flat[i].done || strcmp(g_flat[i].dir, dir)) continue;
+			r = name[0] ? file_album(dir, name) : 0;
+			if (r < 0) { g_flat[i].asked = 0; break; }   /* playing: ask later */
+			g_flat[i].done = true;
+			if (r > 0) g_muse_moved = true;
+			break;
+		}
+	/* One at a time: the next once this one is answered, or after five
+	 * seconds for an answer lost with the player. */
+	for (i = 0; i < g_nflat; i++) {
+		if (g_flat[i].done) continue;
+		if (g_flat[i].asked && now - g_flat[i].asked < 5000) return;
+		if (musec_artist_ask(g_flat[i].dir)) g_flat[i].asked = now ? now : 1;
+		return;
+	}
+}
+
 /* Muse's card, at the end of the shelf, when there is music to play.
  *
  * After Favorites and after the empty systems are hidden, so it is neither
@@ -12189,6 +12412,7 @@ static void build_muse_shelf(app *a)
 	/* Everything indexed by album goes with the albums: a rescan can put a
 	 * different album at every index. */
 	g_muse_gen++;
+	g_nflat = 0;
 	ml_free(&g_muse);
 	free(g_cov);
 	g_cov = NULL;
@@ -12198,6 +12422,7 @@ static void build_muse_shelf(app *a)
 	g_book_done = NULL;
 	np_forget();
 	snprintf(g_muse_root, sizeof g_muse_root, "%s", P_CARD);
+	muse_tidy_singles();
 	if (!ml_scan_card(g_muse_root, &g_muse) || g_muse.ntracks == 0) {
 		fprintf(stderr, "scan: %-16s no music or books in %s\n", "Muse", g_muse_root);
 		return;
@@ -12206,6 +12431,7 @@ static void build_muse_shelf(app *a)
 	year_load();
 	g_book_done = calloc((size_t)g_muse.nalbums, sizeof *g_book_done);
 	if (!g_book_done) { ml_free(&g_muse); return; }
+	flat_albums_find();
 	for (i = 0; i < g_muse.nalbums; i++) {
 		char key[LIB_PATH + 8], val[16];
 
@@ -13449,6 +13675,16 @@ int main(int argc, char *argv[])
 					shelf_resort(&a, i);
 					ui_redraw_now();
 				}
+		}
+
+		/* Albums straight in Music/ filed under their artists, from what the
+		 * player says their tags are; the shelf read again once anything
+		 * moved. See file_album. */
+		muse_file_albums();
+		if (g_muse_moved && !flat_albums_waiting()) {
+			g_muse_moved = false;
+			rescan_all(&a);
+			ui_redraw_now();
 		}
 
 		/* Auto Off is the same line as the power button, on every screen

@@ -176,6 +176,7 @@ static void add_album(ml_lib *l, int *acap, int *tcap, bool book,
 	al = &l->albums[l->nalbums++];
 	snprintf(al->name, sizeof al->name, "%s", name);
 	al->book = book;
+	al->singles = false;
 	al->first = l->ntracks;
 	al->n = 0;
 	for (i = 0; i < files->n; i++) {
@@ -222,6 +223,8 @@ static bool scan_into(ml_lib *out, caps *c, const char *root, const char *prefix
 
 		/* Music/<name>/<tracks>: its own artist, one album of the same name. */
 		add_album(out, &c->a, &c->t, book, top_rel, top.v[i], &files);
+		if (!book && out->nalbums > before && !strcmp(top.v[i], ML_SINGLES))
+			out->albums[before].singles = true;
 		for (j = 0; j < sub.n; j++) {
 			char adir[LIB_PATH * 2], rel[LIB_PATH];
 			names tracks = { 0 };

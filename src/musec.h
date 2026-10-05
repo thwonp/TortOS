@@ -155,4 +155,11 @@ bool musec_cover_take(char *base, size_t bn, char *file, size_t fn);
 bool musec_year_ask(const char *track);
 bool musec_year_take(char *track, size_t n, int *year);
 
+/* Ask who the tracks in `dir` (relative to the music root) are by, from their
+ * tags: the album artist, or the artist every track agrees on, or "" (see
+ * src/muse/tags.h). False when it could not be asked, as musec_cover_ask. The
+ * answer is collected with musec_artist_take, `dir` as it was asked. */
+bool musec_artist_ask(const char *dir);
+bool musec_artist_take(char *dir, size_t dn, char *name, size_t nn);
+
 #endif

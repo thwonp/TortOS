@@ -50,7 +50,7 @@ case $WHAT in elf)
 esac
 case $WHAT in res)
 	put "$ROOT/res/cards/"* "$GKD:$P/cards/"
-	put "$ROOT/res/fonts/menu.ttf" "$ROOT/res/ssl/cacert.pem" "$GKD:$P/"
+	put "$ROOT/res/fonts/menu.ttf" "$ROOT/res/ssl/cacert.pem" "$ROOT/res/singles.png" "$GKD:$P/"
 	put "$ROOT/res/web/"* "$GKD:$P/res/web/"
 	put "$ROOT/res/fbneo-titles.tsv" "$GKD:$P/res/"
 	put "$ROOT/res/fonts/menu.ttf" "$GKD:$P/res/web/menu.ttf"

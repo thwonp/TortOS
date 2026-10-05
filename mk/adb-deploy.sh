@@ -71,6 +71,7 @@ esac
 case $WHAT in res|all)
 	$A push "$ROOT/res/cards/."             "$P/cards/" > /dev/null
 	$A push "$ROOT/res/fonts/menu.ttf"      "$P/" > /dev/null
+	$A push "$ROOT/res/singles.png"         "$P/" > /dev/null
 	# Over The Hare's page, served off the card so it can be restyled without
 	# a rebuild. The font goes in twice rather than being kept in the repo
 	# twice: the launcher reads $P/menu.ttf and a browser asks for

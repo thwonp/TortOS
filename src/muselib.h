@@ -29,7 +29,13 @@
  * else, so tools/muselib-check.c can hand it a folder and look. */
 
 typedef struct { char name[128]; char path[LIB_PATH]; } ml_track;
-typedef struct { char name[128]; int first, n; bool book; } ml_album;  /* tracks[first..] */
+/* `singles`: Music/Singles, the songs the launcher moved there from the top of
+ * Music/, where they were in no folder and so on no shelf (Eric's call,
+ * 2026-10-05). An ordinary album in every way but one: it is no record, so
+ * Album Art leaves it alone, and its cover is the one the launcher puts at
+ * Music/.media/Singles.png. */
+typedef struct { char name[128]; int first, n; bool book, singles; } ml_album;  /* tracks[first..] */
+#define ML_SINGLES "Singles"
 typedef struct { char name[128]; int first, n; bool book; } ml_artist; /* albums[first..] */
 
 typedef struct {

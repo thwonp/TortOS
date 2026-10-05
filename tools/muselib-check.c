@@ -96,11 +96,26 @@ static void scan(void)
 	touch("Radiohead/.media/The Bends.jpg");               /* a cover, not an album */
 	touch("Podcast/ep1.mp3");
 	touch("loose.mp3");                                   /* under the root: no album */
+	dir("Singles");                                       /* where the launcher moves it */
+	touch("Singles/A Single.mp3");
 
 	CHECK(ml_scan(root, &l), "a folder that is there scans");
-	CHECK(l.nartists == 2, "two artists with music, not the empty one: %d", l.nartists);
-	CHECK(l.nalbums == 3, "three albums, and .media is not one: %d", l.nalbums);
-	CHECK(l.ntracks == 4, "four tracks, no AppleDouble, no text: %d", l.ntracks);
+	CHECK(l.nartists == 3, "two artists with music and Singles, not the empty one: %d",
+	      l.nartists);
+	CHECK(l.nalbums == 4, "three albums and Singles, and .media is not one: %d", l.nalbums);
+	CHECK(l.ntracks == 5, "five tracks, no AppleDouble, no text, nothing loose: %d",
+	      l.ntracks);
+
+	printf("Singles\n");
+	{
+		int s = album_named(&l, ML_SINGLES);
+
+		CHECK(s >= 0 && l.albums[s].singles && !l.albums[s].book,
+		      "Music/Singles is an album marked as Singles");
+		CHECK(album_named(&l, "The Bends") >= 0 &&
+		      !l.albums[album_named(&l, "The Bends")].singles,
+		      "and no other album is");
+	}
 
 	bends  = album_named(&l, "The Bends");
 	bends2 = album_named(&l, "The Bends 2");
