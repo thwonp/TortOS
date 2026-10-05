@@ -26,6 +26,7 @@
 #include <string.h>
 
 #include "keyboard.h"
+#include "platform.h"
 #include "ui.h"
 
 /* Four rows of ten, three layers. Digits are row 0 of every layer so they
@@ -326,7 +327,7 @@ kb_result kb_prompt(SDL_Renderer *r, in_state *in, const char *title,
 		if (backdrop) backdrop(ctx);
 		kb_draw(r, &k, title, accent);
 		plat_draw_osd(r);
-		SDL_RenderPresent(r);
+		plat_present(r);
 		SDL_Delay(8);
 	}
 }

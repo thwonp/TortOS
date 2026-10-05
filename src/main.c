@@ -251,7 +251,7 @@ static void present_black(app *a)
 	SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_NONE);
 	SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
 	SDL_RenderClear(a->r);
-	SDL_RenderPresent(a->r);
+	plat_present(a->r);
 	SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
 }
 
@@ -3343,7 +3343,7 @@ static void render(app *a)
 	if (a->sys.count > 0 && a->tint != a->sys.systems[a->sys_cursor].accent)
 		redraw_now();
 	redraw_at(plat_osd_until());
-	SDL_RenderPresent(a->r);
+	plat_present(a->r);
 }
 
 /* Ease the background tint toward the focused system rather than snapping: the
@@ -3427,12 +3427,12 @@ static void anim_launch(app *a, unsigned ms)
 			SDL_RenderCopy(a->r, card, NULL, &dst);
 			SDL_SetTextureAlphaMod(card, 255);
 		}
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(6);
 	}
 	SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
 	SDL_RenderClear(a->r);
-	SDL_RenderPresent(a->r);
+	plat_present(a->r);
 }
 
 /* The send-off, and the inverse of the boot animation's gesture: there he
@@ -3474,7 +3474,7 @@ static void anim_poweroff(app *a)
 		SDL_SetRenderDrawColor(a->r, 17, 19, 16, 255);
 		SDL_RenderClear(a->r);
 		draw_shell(a->r, x, cy, rad, head, dim, 255);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(6);
 	}
 	/* Land on the closed state exactly, in case the loop exited a frame early,
@@ -3483,7 +3483,7 @@ static void anim_poweroff(app *a)
 	SDL_SetRenderDrawColor(a->r, 17, 19, 16, 255);
 	SDL_RenderClear(a->r);
 	draw_shell(a->r, cx, cy, rad, 0.0f, 1.0f, 255);
-	SDL_RenderPresent(a->r);
+	plat_present(a->r);
 }
 
 static void power_off(app *a)
@@ -4530,7 +4530,7 @@ static void wait_panel(app *a, const char *heading, const char *msg)
 	SDL_RenderFillRect(a->r, NULL);
 	menu_draw(a, heading, &row, 1, -1, 0, MENU_ACCENT);
 	draw_chrome(a->r);
-	SDL_RenderPresent(a->r);
+	plat_present(a->r);
 }
 
 /* MENU CLOSES THE WHOLE MENU, from any depth in it. B is back one level.
@@ -4598,7 +4598,7 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, heading, rows, 2 + n, sel, 0, MENU_ACCENT);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 }
@@ -4628,7 +4628,7 @@ static void note_panel(app *a, const char *heading, const menu_row *rows, int n)
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, heading, rows, n, -1, 0, MENU_ACCENT);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 }
@@ -5047,7 +5047,7 @@ static void ra_signin_screen(app *a)
 		wifi_backdrop(a);
 		menu_draw(a, "RetroAchievements", &row, 1, -1, 0, MENU_ACCENT);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(1600);
 		return;
 	}
@@ -5079,7 +5079,7 @@ static void ra_signin_screen(app *a)
 	wifi_backdrop(a);
 	menu_draw(a, "RetroAchievements", &row, 1, -1, 0, MENU_ACCENT);
 	draw_chrome(a->r);
-	SDL_RenderPresent(a->r);
+	plat_present(a->r);
 	SDL_Delay(1800);
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
@@ -5115,7 +5115,7 @@ static void ss_signin_screen(app *a)
 		wifi_backdrop(a);
 		menu_draw(a, "ScreenScraper", &row, 1, -1, 0, MENU_ACCENT);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(1600);
 		return;
 	}
@@ -5143,7 +5143,7 @@ static void ss_signin_screen(app *a)
 	wifi_backdrop(a);
 	menu_draw(a, "ScreenScraper", &row, 1, -1, 0, MENU_ACCENT);
 	draw_chrome(a->r);
-	SDL_RenderPresent(a->r);
+	plat_present(a->r);
 	SDL_Delay(1800);
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
@@ -5334,7 +5334,7 @@ static void xfer_screen(app *a)
 		draw_shelf(a);
 		menu_draw(a, "Over The Hare", &row, 1, -1, 0, MENU_ACCENT);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(1800);
 		plat_input_flush();
 		memset(&a->in, 0, sizeof a->in);
@@ -5425,7 +5425,7 @@ static void xfer_screen(app *a)
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, head, rows, 3, -1, menu_std_width(a), MENU_ACCENT);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		/* Shorter than the usual 8ms: this loop is also the server's, and a
 		 * transfer moves POLL_BUDGET per pass. */
 		SDL_Delay(4);
@@ -5601,7 +5601,7 @@ static void art_screen(app *a, const char *only, const char *one,
 		draw_shelf(a);
 		menu_draw(a, "Box Art", &row, 1, -1, 0, accent);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(1600);
 		plat_input_flush();
 		memset(&a->in, 0, sizeof a->in);
@@ -5675,7 +5675,7 @@ static void art_screen(app *a, const char *only, const char *one,
 					SDL_RenderFillRect(a->r, NULL);
 					menu_draw(a, head, row, 2, -1, menu_std_width(a), accent);
 					draw_chrome(a->r);
-					SDL_RenderPresent(a->r);
+					plat_present(a->r);
 					SDL_Delay(900);
 					ss_run_cancel();
 					free_all_textures(a);
@@ -5695,7 +5695,7 @@ static void art_screen(app *a, const char *only, const char *one,
 				SDL_RenderFillRect(a->r, NULL);
 				menu_draw(a, head, rows, 2, -1, menu_std_width(a), accent);
 				draw_chrome(a->r);
-				SDL_RenderPresent(a->r);
+				plat_present(a->r);
 				SDL_Delay(8);
 			}
 			if (!a->running || want_quit) return;
@@ -5789,7 +5789,7 @@ static void art_screen(app *a, const char *only, const char *one,
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, head, rows, nrows, -1, menu_std_width(a), accent);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 
@@ -6275,7 +6275,7 @@ static void bt_screen(app *a)
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, "Bluetooth", rows, nrows, sel, menu_std_width(a), MENU_ACCENT);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 
@@ -6536,7 +6536,7 @@ static bool stats_screen(app *a)
 		          ngames ? cursor - top + 1 : -1, menu_std_width(a),
 		          MENU_ACCENT);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 	return false;
@@ -6604,7 +6604,7 @@ static void about_screen(app *a)
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, "About", rows, 4, -1, menu_std_width(a), MENU_ACCENT);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 }
@@ -6658,7 +6658,7 @@ static void controls_screen(app *a)
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, head, rows, n, -1, menu_std_width(a), MENU_ACCENT);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 }
@@ -7687,7 +7687,7 @@ static int slot_strip(app *a, SDL_Texture *bg, int saving)
 
 		slot_draw(a, &sv, sel);
 		draw_battery(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 
@@ -7901,7 +7901,7 @@ static bool cheevo_detail_screen(app *a, SDL_Texture *bg, bool over_shelf,
 		chv_backdrop(a, bg, over_shelf);
 		menu_draw_ex(a, c->title, rows, n, -1, fixed, a->tint, vcols, false, 0);
 		draw_battery(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 
@@ -8532,7 +8532,7 @@ static muse_exit muse_now_screen(app *a)
 			 * time is up - asked before, it names a moment already past. */
 			draw_chrome(a->r);
 			osd = plat_osd_until();
-			SDL_RenderPresent(a->r);
+			plat_present(a->r);
 			drawn = shown;
 			/* At least once a second whatever happens, which is also how
 			 * often the clock changes. The volume line needs one more frame
@@ -8717,7 +8717,7 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		muse_backdrop(a);
 		menu_draw(a, heading, rows, n, sel, menu_std_width(a), MUSE_ACCENT);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 
@@ -8923,7 +8923,7 @@ static void muse_shelf_screen(app *a, bool now)
 		tick_tint(a);
 		draw_shelf(a);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 
@@ -9038,7 +9038,7 @@ static void album_art_screen(app *a)
 		draw_shelf(a);
 		menu_draw(a, "Album Art", &row, 1, -1, 0, MUSE_ACCENT);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(1600);
 		plat_input_flush();
 		memset(&a->in, 0, sizeof a->in);
@@ -9111,7 +9111,7 @@ static void album_art_screen(app *a)
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, head, rows, 3, -1, menu_std_width(a), MUSE_ACCENT);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 	museart_cancel();
@@ -9160,7 +9160,7 @@ static void synopsis_screen(app *a, const char *title, const char *text,
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw_ex(a, title, rows, n, -1, fixed, accent, NULL, false, loop_at);
 		draw_battery(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 
@@ -9253,7 +9253,7 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 		menu_draw_ex(a, heading, rows, n, sel, menu_std_width(a), a->tint,
 		             vcols, true, 0);
 		draw_battery(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 
@@ -9450,7 +9450,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 		chv_backdrop(a, bg, false);
 		menu_draw(a, "Hotkeys", rows, ROWS + 2, sel, 0, MENU_ACCENT);
 		draw_battery(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 
@@ -12029,7 +12029,7 @@ static void take_shot(app *a)
 		/* Read BEFORE presenting: the backbuffer is invalid afterwards. */
 		SDL_RenderReadPixels(a->r, NULL, SDL_PIXELFORMAT_RGBA32,
 		                     out->pixels, out->pitch);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		IMG_SavePNG(out, shot_path);
 		SDL_FreeSurface(out);
 		/* Say what was drawn, not just that something was: a tool whose whole

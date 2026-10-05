@@ -386,8 +386,28 @@ void child_restore(pid_t pid, bool show)
 	raw_pad = false;
 	memset(hat_dir, 0, sizeof hat_dir);
 }
-/* Not on the Brick yet: plorpos-gkd.50.13. */
-void child_quiet(pid_t pid, bool on) { (void)pid; (void)on; }
+/* Native PICO-8 quiet while Muse plays (plorpos-reo.11): no PipeWire here to
+ * mute its stream, so pico8sdl.so, preloaded into it, writes silence over
+ * its audio while this flag exists. On tmpfs: no card writes. */
+#define PICO8_QUIET "/tmp/plorpos-pico8-quiet"   /* tools/pico8sdl.c's too */
+
+void child_quiet(pid_t pid, bool on)
+{
+	static pid_t q_pid;
+	static int q_said = -1;
+
+	if (pid != q_pid) { q_pid = pid; q_said = -1; }
+	if (q_said == (int)on) return;
+	if (on) {
+		int fd = open(PICO8_QUIET, O_WRONLY | O_CREAT, 0644);
+		if (fd < 0) return;
+		close(fd);
+	} else if (unlink(PICO8_QUIET) != 0 && errno != ENOENT) {
+		return;
+	}
+	q_said = on;
+	fprintf(stderr, "run: child %s\n", on ? "quiet" : "heard");
+}
 
 static in_button map_joy_button(int jb)
 {
