@@ -16,7 +16,7 @@
   <a href="#faq">FAQ</a>
 </p>
 
-Disclaimer: AI assistance was used to build this, if it wasn't clear from the fileyree. If you don't like that, that's okay, there's other options out there. Maybe you'll  find one that didn't use any AI.
+Disclaimer: AI assistance was used to build this, if it wasn't clear from the filetree. If you don't like that, that's okay, there's other options out there. Maybe you'll find one that didn't use any AI.
 
 ## What plorpOS adds
 
