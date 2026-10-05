@@ -43,10 +43,10 @@ typedef enum {
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
 } pm_row;
 
-/* Settings > System Settings: the three timers, and the side switch where
- * there is one. */
+/* Settings > System Settings: the three timers, the battery indicator, and
+ * the side switch where there is one. */
 typedef enum {
-	ST_AUTO_OFF, ST_SLEEP, ST_SUSPEND,
+	ST_AUTO_OFF, ST_SLEEP, ST_SUSPEND, ST_BATTPCT,
 #if !defined(PLATFORM_GKD)   /* no switch: Muse Settings' Sleep Button Lock (gkd.34) */
 	ST_MUTESW,
 #endif
@@ -164,6 +164,7 @@ typedef struct {
 	int         suspend_timeout; /* seconds light sleep waits before real
 	                              * suspend, never 0 - see PM_SUSPEND */
 	bool        mute_lock;   /* the mute switch is a button lock instead */
+	bool        batt_pct;    /* the battery's percentage, top right (plorpos-gkd.86.3) */
 	/* Where sound goes: the policy the player set, and where it actually ends
 	 * up under that policy. Both, because the row has to name a place - "Auto"
 	 * on its own is a rule, not somewhere you can hear. */

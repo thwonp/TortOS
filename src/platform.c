@@ -1671,9 +1671,9 @@ void plat_brightness_set(int level)
 bool battery_read(const char *dir, int *pct, bool *charging)
 {
 	const char *fake = getenv("TORTOS_FAKE_BATT");
-	if (fake && *fake) {
+	if (fake && *fake) {   /* "80", or "80c" for charging */
 		if (pct) *pct = atoi(fake);
-		if (charging) *charging = false;
+		if (charging) *charging = strchr(fake, 'c') != NULL;
 		return true;
 	}
 #ifdef __linux__

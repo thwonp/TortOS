@@ -175,6 +175,9 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	out[ST_SLEEP]    = (menu_row){ "Auto Sleep",      b->c, true };
 	sys_menu_auto_off_label(u->suspend_timeout, b->e, sizeof b->e);
 	out[ST_SUSPEND]  = (menu_row){ "Suspend Timeout", b->e, true };
+	/* plorpos-gkd.86.3: the percentage in a disc, top right, on every
+	 * screen but the game's. Off, the disc is only the low-battery dot. */
+	out[ST_BATTPCT]  = (menu_row){ "Battery Percentage", u->batt_pct ? "on" : "off", true };
 	/* TortOS-ib9: what the side switch does. Button Lock is an iPod's hold
 	 * switch, and only while music plays with the screen off - music_dark.
 	 * "muse" in the value says so (TortOS-mhw). */

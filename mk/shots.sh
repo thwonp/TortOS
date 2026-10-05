@@ -15,7 +15,8 @@
 # Usage: TORTOS_SHOT_CARD=/path/to/card mk/shots.sh <outdir>
 #
 # SHOT_WINDOW=1600x1440 renders as the GKD instead of the Brick (the host
-# build's TORTOS_WINDOW); unset, the shots are the Brick's.
+# build's TORTOS_WINDOW); unset, the shots are the Brick's. SHOT_BATT is the
+# battery they show (TORTOS_FAKE_BATT: 80 unset, "80c" charging).
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:?usage: TORTOS_SHOT_CARD=/path/to/card mk/shots.sh <outdir>}
@@ -61,7 +62,7 @@ EOF
 
 # The vendored objects get their own directory: the host checks build the same
 # ones into build-native/tp with the host libc, which this image cannot link.
-docker run --rm -e TORTOS_WINDOW="${SHOT_WINDOW:-}" -v "$ROOT:/work" -v "$CARD:/card:O" -v "$OUT:/out" -w /work \
+docker run --rm -e TORTOS_WINDOW="${SHOT_WINDOW:-}" -e SHOT_BATT="${SHOT_BATT:-80}" -v "$ROOT:/work" -v "$CARD:/card:O" -v "$OUT:/out" -w /work \
 	"$IMAGE" sh -c '
 set -e
 make -f mk/native.mk VERSION=shots TP_OUT=build-native/tp-shots > /out/.build.log 2>&1 ||
@@ -69,7 +70,7 @@ make -f mk/native.mk VERSION=shots TP_OUT=build-native/tp-shots > /out/.build.lo
 export TORTOS_ROOT=/card/TortOS TORTOS_CARD=/card TORTOS_ROMS=/card/Roms \
        TORTOS_USERDATA=/card/.userdata/tg3040 \
        TORTOS_SHARED=/card/.userdata/shared \
-       TORTOS_FONT=/card/TortOS/menu.ttf TORTOS_FAKE_BATT=80
+       TORTOS_FONT=/card/TortOS/menu.ttf TORTOS_FAKE_BATT=$SHOT_BATT
 # No font is not an error to the launcher - it draws the shelf without text -
 # and every panel would be a collapsed line in every shot.
 [ -s "$TORTOS_FONT" ] || { echo "no font at $TORTOS_FONT"; exit 1; }

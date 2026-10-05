@@ -253,6 +253,8 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(val(&rows[ST_SUSPEND]), "90s"), "90s stays in seconds, as NextUI spells it");
 	ck(rows[ST_SUSPEND].live, "Suspend Timeout is reachable offline");
 	ck(!strcmp(val(&rows[ST_MUTESW]), "mute"), "Mute Switch defaults to mute");
+	ck(!strcmp(rows[ST_BATTPCT].label, "Battery Percentage") && !strcmp(val(&rows[ST_BATTPCT]), "off"),
+	   "Battery Percentage defaults to off");
 	n = sys_menu_ui_build(&u, rows, &heading);
 	ck(n == US_ROWS && !strcmp(heading, "UI Settings"), "UI Settings submenu");
 	ck(!strcmp(val(&rows[US_THEME]), "Plain Jane"), "the card set names itself");
@@ -335,6 +337,9 @@ static void tortos_menu_online(void)
 	u.mute_lock = true;
 	sys_menu_system_build(&u, rows, &b, &heading);
 	ck(!strcmp(val(&rows[ST_MUTESW]), "muse button lock"), "Mute Switch reads muse button lock");
+	u.batt_pct = true;
+	sys_menu_system_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[ST_BATTPCT]), "on"), "Battery Percentage reads on");
 
 	/* THE SCREENSCRAPER ROW HAS THREE STATES, one more than the Cheevos row
 	 * beside it: the developer key comes from the environment at build time,

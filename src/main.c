@@ -2634,18 +2634,25 @@ static void draw_shell(SDL_Renderer *r, float cx, float cy, float rad,
 	}
 }
 
+/* The gauge, read at most every 5 s: each read is two sysfs files opened,
+ * read and closed, and it is asked every frame something is drawn. */
+static Uint32 g_batt_next;
+static bool   g_batt_ok, g_batt_charging;
+static int    g_batt_pct;
+
+static void battery_poll(void)
+{
+	Uint32 now = SDL_GetTicks();
+	if (g_batt_next == 0 || now >= g_batt_next) {
+		g_batt_next = now + 5000;
+		g_batt_ok = plat_battery(&g_batt_pct, &g_batt_charging);
+	}
+}
+
 static bool battery_low(void)
 {
-	static Uint32 next_check;
-	static bool low;
-	Uint32 now = SDL_GetTicks();
-	if (next_check == 0 || now >= next_check) {
-		next_check = now + 5000;
-		int pct;
-		bool charging;
-		low = plat_battery(&pct, &charging) && !charging && pct <= BATT_LOW_PCT;
-	}
-	return low;
+	battery_poll();
+	return g_batt_ok && !g_batt_charging && g_batt_pct <= BATT_LOW_PCT;
 }
 
 /* BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: keep-awake on a USB host, NextUI's PWR_preventAutosleep. See NOTICE. */
@@ -2735,18 +2742,6 @@ static bool power_due_ctx(void *ctx)
 	return power_check((app *)ctx) == PWR_POWEROFF;
 }
 
-/* The one piece of chrome: a small accent disc, top right, when the battery is
- * low. Drawn with horizontal spans -- SDL has no circle. */
-static void draw_low_battery_dot(SDL_Renderer *r)
-{
-	int cx = TORTOS_SCREEN_W - 34, cy = 34, rad = 9;
-	SDL_SetRenderDrawColor(r, 224, 72, 72, 255);
-	for (int dy = -rad; dy <= rad; dy++) {
-		int dx = (int)(sqrt((double)(rad * rad - dy * dy)) + 0.5);
-		SDL_RenderDrawLine(r, cx - dx, cy + dy, cx + dx, cy + dy);
-	}
-}
-
 /* ---------- when the next frame is needed -------------------------------- */
 
 /* The earliest moment something already on screen will look different with
@@ -2769,6 +2764,64 @@ static Uint32 g_redraw_at = 0;
 
 static void redraw_at(Uint32 t) { if (t < g_redraw_at) g_redraw_at = t; }
 static void redraw_now(void)    { g_redraw_at = 0; }
+
+/* The battery, top right: the one piece of chrome. Off - the default - it is
+ * what it always was, a small red disc when the battery is low. On (System
+ * Settings > Battery Percentage, plorpos-gkd.86.3), a disc with the
+ * percentage in it, on every screen the launcher draws: red at BATT_LOW_PCT
+ * or under, green while charging, quiet otherwise. Drawn with horizontal
+ * spans - SDL has no circle. */
+static int g_batt_show = -1;      /* the setting; -1 = read it again */
+
+static void battery_indicator_changed(void) { g_batt_show = -1; redraw_now(); }
+
+static void fill_disc(SDL_Renderer *r, int cx, int cy, int rad)
+{
+	for (int dy = -rad; dy <= rad; dy++) {
+		int dx = (int)(sqrt((double)(rad * rad - dy * dy)) + 0.5);
+		SDL_RenderDrawLine(r, cx - dx, cy + dy, cx + dx, cy + dy);
+	}
+}
+
+static void draw_battery(SDL_Renderer *r)
+{
+	if (g_batt_show < 0) g_batt_show = db_get_int(db_dev(), "battpct", 0) == 1;
+	if (!g_batt_show) {
+		if (battery_low()) {
+			SDL_SetRenderDrawColor(r, 224, 72, 72, 255);
+			fill_disc(r, TORTOS_SCREEN_W - 34, 34, 9);
+		}
+		return;
+	}
+	battery_poll();
+	/* The number changes with nobody touching anything, so an idle shelf
+	 * still wakes for the next reading. */
+	redraw_at(g_batt_next);
+	if (!g_batt_ok) return;
+
+	TTF_Font *f = ui_font(UI_F_META);
+	/* Sized for "100", the widest it gets, so the disc never changes size. */
+	int rad = ui_text_width(f, "100") / 2 + 6;
+	int cx = TORTOS_SCREEN_W - 25 - rad, cy = 25 + rad;
+	char num[8];
+
+	SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
+	if (g_batt_charging)                 SDL_SetRenderDrawColor(r, 64, 168, 96, 255);
+	else if (g_batt_pct <= BATT_LOW_PCT) SDL_SetRenderDrawColor(r, 224, 72, 72, 255);
+	else                                 SDL_SetRenderDrawColor(r, 0, 0, 0, 150);
+	fill_disc(r, cx, cy, rad);
+	snprintf(num, sizeof num, "%d", g_batt_pct);
+	/* Centered on the digits' ink, not their line box. */
+	ui_text(r, f, num, cx, cy - ui_font_ascent(f) + ui_font_cap(f) / 2, 0, UI_TEXT);
+}
+
+/* What goes over every launcher screen, last: the battery, then the volume or
+ * brightness bar, which covers it while it shows. */
+static void draw_chrome(SDL_Renderer *r)
+{
+	draw_battery(r);
+	plat_draw_osd(r);
+}
 
 static void draw_background(app *a)
 {
@@ -3261,14 +3314,13 @@ static void draw_shelf(app *a)
 	if (a->sys.count <= 0) draw_no_games(a);
 	else if (a->screen == SCREEN_SYSTEMS) draw_systems(a);
 	else draw_games(a);
-	if (battery_low()) draw_low_battery_dot(a->r);
 }
 
 static void render(app *a)
 {
 	g_redraw_at = REDRAW_NEVER;
 	draw_shelf(a);
-	plat_draw_osd(a->r);
+	draw_chrome(a->r);
 	/* The tint lands exactly on its target now (see tick_tint), so this is a
 	 * test that ends rather than one that is true forever. */
 	if (a->sys.count > 0 && a->tint != a->sys.systems[a->sys_cursor].accent)
@@ -4387,6 +4439,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.auto_poweroff = a->auto_poweroff;
 		u.suspend_timeout = plat_suspend_timeout_secs();
 		u.mute_lock = db_get_int(db_dev(), "muteswitch", 0) == 1;
+		u.batt_pct = db_get_int(db_dev(), "battpct", 0) == 1;
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
 
@@ -4459,7 +4512,7 @@ static void wait_panel(app *a, const char *heading, const char *msg)
 	SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 	SDL_RenderFillRect(a->r, NULL);
 	menu_draw(a, heading, &row, 1, -1, 0, MENU_ACCENT);
-	plat_draw_osd(a->r);
+	draw_chrome(a->r);
 	SDL_RenderPresent(a->r);
 }
 
@@ -4527,7 +4580,7 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, heading, rows, 2 + n, sel, 0, MENU_ACCENT);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -4557,7 +4610,7 @@ static void note_panel(app *a, const char *heading, const menu_row *rows, int n)
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, heading, rows, n, -1, 0, MENU_ACCENT);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -4757,7 +4810,7 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		}
 		menu_draw(a, heading, rows, n, sel, st->fixed_w,
 		          st->follow_tint ? a->tint : st->accent);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -4975,7 +5028,7 @@ static void ra_signin_screen(app *a)
 		row = (menu_row){ "Not on a network. Connect Wi-Fi first.", NULL, false };
 		wifi_backdrop(a);
 		menu_draw(a, "RetroAchievements", &row, 1, -1, 0, MENU_ACCENT);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(1600);
 		return;
@@ -5007,7 +5060,7 @@ static void ra_signin_screen(app *a)
 	row = (menu_row){ err, NULL, ok };
 	wifi_backdrop(a);
 	menu_draw(a, "RetroAchievements", &row, 1, -1, 0, MENU_ACCENT);
-	plat_draw_osd(a->r);
+	draw_chrome(a->r);
 	SDL_RenderPresent(a->r);
 	SDL_Delay(1800);
 	plat_input_flush();
@@ -5043,7 +5096,7 @@ static void ss_signin_screen(app *a)
 		                  : "Not on a network. Connect Wi-Fi first.", NULL, false };
 		wifi_backdrop(a);
 		menu_draw(a, "ScreenScraper", &row, 1, -1, 0, MENU_ACCENT);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(1600);
 		return;
@@ -5071,7 +5124,7 @@ static void ss_signin_screen(app *a)
 	row = (menu_row){ err, NULL, ok };
 	wifi_backdrop(a);
 	menu_draw(a, "ScreenScraper", &row, 1, -1, 0, MENU_ACCENT);
-	plat_draw_osd(a->r);
+	draw_chrome(a->r);
 	SDL_RenderPresent(a->r);
 	SDL_Delay(1800);
 	plat_input_flush();
@@ -5262,7 +5315,7 @@ static void xfer_screen(app *a)
 
 		draw_shelf(a);
 		menu_draw(a, "Over The Hare", &row, 1, -1, 0, MENU_ACCENT);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(1800);
 		plat_input_flush();
@@ -5353,7 +5406,7 @@ static void xfer_screen(app *a)
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, head, rows, 3, -1, menu_std_width(a), MENU_ACCENT);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		/* Shorter than the usual 8ms: this loop is also the server's, and a
 		 * transfer moves POLL_BUDGET per pass. */
@@ -5529,7 +5582,7 @@ static void art_screen(app *a, const char *only, const char *one,
 
 		draw_shelf(a);
 		menu_draw(a, "Box Art", &row, 1, -1, 0, accent);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(1600);
 		plat_input_flush();
@@ -5603,7 +5656,7 @@ static void art_screen(app *a, const char *only, const char *one,
 					SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 					SDL_RenderFillRect(a->r, NULL);
 					menu_draw(a, head, row, 2, -1, menu_std_width(a), accent);
-					plat_draw_osd(a->r);
+					draw_chrome(a->r);
 					SDL_RenderPresent(a->r);
 					SDL_Delay(900);
 					ss_run_cancel();
@@ -5623,7 +5676,7 @@ static void art_screen(app *a, const char *only, const char *one,
 				SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 				SDL_RenderFillRect(a->r, NULL);
 				menu_draw(a, head, rows, 2, -1, menu_std_width(a), accent);
-				plat_draw_osd(a->r);
+				draw_chrome(a->r);
 				SDL_RenderPresent(a->r);
 				SDL_Delay(8);
 			}
@@ -5717,7 +5770,7 @@ static void art_screen(app *a, const char *only, const char *one,
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, head, rows, nrows, -1, menu_std_width(a), accent);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -6152,7 +6205,7 @@ static void bt_screen(app *a)
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, "Bluetooth", rows, nrows, sel, menu_std_width(a), MENU_ACCENT);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -6413,7 +6466,7 @@ static bool stats_screen(app *a)
 		menu_draw(a, "Play Time", rows, shown,
 		          ngames ? cursor - top + 1 : -1, menu_std_width(a),
 		          MENU_ACCENT);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -6481,7 +6534,7 @@ static void about_screen(app *a)
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, "About", rows, 4, -1, menu_std_width(a), MENU_ACCENT);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -6535,7 +6588,7 @@ static void controls_screen(app *a)
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, head, rows, n, -1, menu_std_width(a), MENU_ACCENT);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -6979,6 +7032,12 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		if (at < 0) at = 0;
 		if (at >= SUSPEND_TIMEOUT_COUNT) at = SUSPEND_TIMEOUT_COUNT - 1;
 		db_set_int(db_dev(), "suspendtimeout", SUSPEND_TIMEOUT[at]);
+		return MENU_STAY;
+	}
+	/* Battery Percentage: a toggle, A or left/right, as Mute Switch. */
+	if (sel == ST_BATTPCT && (d || key == IN_ACCEPT)) {
+		db_set_int(db_dev(), "battpct", db_get_int(db_dev(), "battpct", 0) != 1);
+		battery_indicator_changed();
 		return MENU_STAY;
 	}
 	/* Mute Switch: a toggle, so A flips it as well as left/right
@@ -7558,6 +7617,7 @@ static int slot_strip(app *a, SDL_Texture *bg, int saving)
 		SDL_RenderFillRect(a->r, NULL);
 
 		slot_draw(a, &sv, sel);
+		draw_battery(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -7771,6 +7831,7 @@ static bool cheevo_detail_screen(app *a, SDL_Texture *bg, bool over_shelf,
 
 		chv_backdrop(a, bg, over_shelf);
 		menu_draw_ex(a, c->title, rows, n, -1, fixed, a->tint, vcols, false, 0);
+		draw_battery(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -8268,7 +8329,7 @@ static unsigned np_draw(app *a, const mu_now *mn, const char *next, bool lock)
 	        : (state ? "A: play    L1/R1: track    Left/Right: seek    Y: mode"
 	                 : "A: pause    L1/R1: track    Left/Right: seek    Y: mode"),
 	        TORTOS_SCREEN_W / 2, TORTOS_SCREEN_H - 72, 0, UI_TEXT_DIM);
-	if (battery_low()) draw_low_battery_dot(r);
+	draw_battery(r);
 	return wait;
 }
 
@@ -8400,7 +8461,7 @@ static muse_exit muse_now_screen(app *a)
 
 			/* Asked after the draw, which is what retires a line whose
 			 * time is up - asked before, it names a moment already past. */
-			plat_draw_osd(a->r);
+			draw_chrome(a->r);
 			osd = plat_osd_until();
 			SDL_RenderPresent(a->r);
 			drawn = shown;
@@ -8586,7 +8647,7 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 
 		muse_backdrop(a);
 		menu_draw(a, heading, rows, n, sel, menu_std_width(a), MUSE_ACCENT);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -8792,7 +8853,7 @@ static void muse_shelf_screen(app *a, bool now)
 
 		tick_tint(a);
 		draw_shelf(a);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -8907,7 +8968,7 @@ static void album_art_screen(app *a)
 
 		draw_shelf(a);
 		menu_draw(a, "Album Art", &row, 1, -1, 0, MUSE_ACCENT);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(1600);
 		plat_input_flush();
@@ -8980,7 +9041,7 @@ static void album_art_screen(app *a)
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw(a, head, rows, 3, -1, menu_std_width(a), MUSE_ACCENT);
-		plat_draw_osd(a->r);
+		draw_chrome(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -9029,6 +9090,7 @@ static void synopsis_screen(app *a, const char *title, const char *text,
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
 		SDL_RenderFillRect(a->r, NULL);
 		menu_draw_ex(a, title, rows, n, -1, fixed, accent, NULL, false, loop_at);
+		draw_battery(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -9121,6 +9183,7 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 		 * `live` here is about color and not about reach. */
 		menu_draw_ex(a, heading, rows, n, sel, menu_std_width(a), a->tint,
 		             vcols, true, 0);
+		draw_battery(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -9327,6 +9390,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 		chv_backdrop(a, bg, false);
 		menu_draw(a, "Hotkeys", rows, ROWS + 2, sel, 0, MENU_ACCENT);
+		draw_battery(a->r);
 		SDL_RenderPresent(a->r);
 		SDL_Delay(8);
 	}
@@ -11897,6 +11961,7 @@ static void take_shot(app *a)
 			remove(dt);
 		}
 	}
+	draw_battery(a->r);
 	if (out) {
 		/* Read BEFORE presenting: the backbuffer is invalid afterwards. */
 		SDL_RenderReadPixels(a->r, NULL, SDL_PIXELFORMAT_RGBA32,
