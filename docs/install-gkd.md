@@ -9,7 +9,7 @@ before.
 You need the GKD with its stock ROCKNIX, a microSD card and a computer on the
 same Wi-Fi network.
 
-Download **`plorpOS-gkd-v1.0.zip`** from
+Download **`plorpOS-gkd-v1.01.zip`** from
 [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it. It
 has two folders, and this guide as `INSTALL.md`:
 
@@ -68,7 +68,7 @@ scp -r system.d/* root@192.168.0.55:/storage/.config/system.d/
 3. **Add games** to their console's folder in `Roms/`, albums to `Music/` and
    books to `Audiobooks/`. BIOS files go loose in `Bios/`; which ones each
    console needs is in
-   [Supported systems](https://github.com/thwonp/TortOS/blob/plorpos-gkd-v1.0/README.md#supported-systems).
+   [Supported systems](https://github.com/thwonp/TortOS/blob/main/README.md#supported-systems).
 
 ```
 TortOS/      tortos.elf  diatom  muse  musectl  launch.sh  systems.cfg
