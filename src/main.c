@@ -2808,7 +2808,7 @@ static void draw_battery(SDL_Renderer *r)
 	SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
 	if (g_batt_charging)                 SDL_SetRenderDrawColor(r, 64, 168, 96, 255);
 	else if (g_batt_pct <= BATT_LOW_PCT) SDL_SetRenderDrawColor(r, 224, 72, 72, 255);
-	else                                 SDL_SetRenderDrawColor(r, 0, 0, 0, 150);
+	else                                 SDL_SetRenderDrawColor(r, 84, 88, 104, 255);
 	fill_disc(r, cx, cy, rad);
 	snprintf(num, sizeof num, "%d", g_batt_pct);
 	/* Centered on the digits' ink, not their line box. */
@@ -5886,16 +5886,18 @@ static void game_delete(app *a, int owner, const game_entry *g)
 static void game_rename(app *a, int owner, const game_entry *g, const char *name)
 {
 	char tag[sizeof a->sys.systems[0].tag], file[sizeof g->file];
+	Uint32 t0 = SDL_GetTicks();
 	sysview *v;
+	bool ok;
 	int i;
 
 	snprintf(tag, sizeof tag, "%s", a->sys.systems[owner].tag);
 	snprintf(file, sizeof file, "%s", g->file);   /* g goes with the rescan */
-	if (!db_game_rename(db_lib(), a->sys.systems[owner].folder, file, name))
-		fprintf(stderr, "rename: %s/%s: not saved\n", tag, file);
-	else
-		fprintf(stderr, "rename: %s/%s -> %s\n", tag, file, name[0] ? name : "(its own name)");
+	ok = db_game_rename(db_lib(), a->sys.systems[owner].folder, file, name);
 	rescan_all(a);
+	fprintf(stderr, "rename: %s/%s -> %s%s (%u ms with the rescan)\n", tag, file,
+	        name[0] ? name : "(its own name)", ok ? "" : ": NOT SAVED",
+	        (unsigned)(SDL_GetTicks() - t0));
 	v = &a->view[a->sys_cursor];
 	for (i = 0; i < v->list.count; i++) {
 		if (strcmp(v->list.items[i].file, file)) continue;
