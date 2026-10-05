@@ -508,7 +508,12 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				quit = true;
 			}
 		}
-		while (fd_menu >= 0 && read(fd_menu, &ev, sizeof ev) == (ssize_t)sizeof ev)
+		while (fd_menu >= 0 && read(fd_menu, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+			bool bright = false;
+			int d = ev.type == EV_KEY && ev.value == 1 ? levels_key(ev.code, &bright) : 0;
+
+			/* The Brick's level keys share the pad's node (plorpos-reo.10). */
+			if (d) { level_nudge(bright, d); continue; }
 			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 1) {
 				struct timespec now;
 
@@ -521,6 +526,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				               (now.tv_nsec / 1000 - ev.time.tv_usec) / 1000);
 				menu = true;
 			}
+		}
 		if (menu && !quit && !term_at) {
 			run_choice c = RUN_QUIT;
 

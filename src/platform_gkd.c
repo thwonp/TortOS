@@ -241,6 +241,8 @@ int menu_key(int *code)
 }
 
 int levels_fd(void) { return fd_keys; }
+/* Its level keys are on their own node, levels_fd's. */
+int levels_key(int code, bool *bright) { (void)code; (void)bright; return 0; }
 
 /* Asked of the kernel, not home_down: while plat_run has the pad, only it
  * reads it, and only for Menu. */

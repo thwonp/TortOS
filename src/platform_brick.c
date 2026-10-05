@@ -351,9 +351,24 @@ int menu_key(int *code)
 	return fd_joy;
 }
 
-/* Not wired either: plorpos-gkd.50.13. */
+/* The Brick's volume and brightness keys arrive on the pad's node, not
+ * sunxi-keyboard's (measured 2026-10-05, plorpos-reo.10), so plat_run reads
+ * them through levels_key on menu_key's descriptor. */
 int levels_fd(void) { return -1; }
 bool levels_alt(void) { return false; }
+
+int levels_key(int code, bool *bright)
+{
+	bool pro = plat_is_brick_pro();
+
+	*bright = false;
+	if (code == KEY_VOLUMEUP)   return +1;
+	if (code == KEY_VOLUMEDOWN) return -1;
+	*bright = true;
+	if (code == (pro ? CODE_PRO_FN_RIGHT : CODE_FN_RIGHT)) return +1;
+	if (code == (pro ? CODE_PRO_FN_LEFT  : CODE_FN_LEFT))  return -1;
+	return 0;
+}
 
 /* No compositor to take a frozen window off the screen: the child stays on
  * it and native_menu draws over it without a window (plat_video_init_over_

@@ -52,6 +52,9 @@ int  menu_key(int *code);
 int  levels_fd(void);
 /* Whether Home is held now, which makes the volume keys brightness keys. */
 bool levels_alt(void);
+/* A level key on menu_key's node: +1 or -1, *bright saying which level; 0
+ * for any other key. For a device whose level keys share the pad's node. */
+int  levels_key(int code, bool *bright);
 /* Take a frozen child's window off the screen for plat_run's menu. While it
  * is hidden the pad is the launcher's alone, so what is pressed in the menu
  * is not replayed to the child when it thaws. false: this device cannot, and
