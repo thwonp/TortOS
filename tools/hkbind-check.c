@@ -34,6 +34,16 @@ int main(void)
 	hk_serialize(b, out, sizeof out);
 	ck(!strcmp(out, "l2:ff,r2:rewind,x:savestate,y:loadstate"), "byte for byte");
 
+	printf("the Screenshot row (plorpos-gkd.86.2):\n");
+	hk_parse("l2:ff,r2:rewind,x:savestate,y:loadstate,d.l1:screenshot", b);
+	ck(!strcmp(HK_TRIG_NAME[b[4]], "L1") && !hk_trig_mod(b[4]), "screenshot row -> L1, direct");
+	ck(!strcmp(HK_ACTION_LABEL[4], "Screenshot"), "labelled Screenshot");
+	hk_serialize(b, out, sizeof out);
+	ck(!strcmp(out, "l2:ff,r2:rewind,x:savestate,y:loadstate,d.l1:screenshot"),
+	   "a full set of five round-trips byte for byte");
+	hk_parse("l2:ff", b);
+	ck(b[4] == 0, "unbound by default");
+
 	printf("the L1/R1/A/B buttons (plorpos-gkd.22):\n");
 	hk_parse("l1:ff,r1:rewind,a:savestate,b:loadstate", b);
 	ck(!strcmp(HK_TRIG_NAME[b[0]], "L1"), "ff row -> L1");

@@ -856,14 +856,17 @@ bool plat_resident_send(const plat_game *g)
 		 * choice, and diatom reads 0 as the first disc (plorpos-gkd.47). */
 		char disc[24] = "";
 		if (g->disc > 0) snprintf(disc, sizeof disc, "\tdisc=%d", g->disc - 1);
+		/* shots= is the Screenshot hotkey's folder (plorpos-gkd.86.2), at
+		 * the card's root beside Roms and Saves, where a player looks; Diatom
+		 * makes it on the first shot. */
 		if (!dsend("RUN\tcore=%s\trom=%s\ttag=%s"
 		           "\tresume=%s\texit_state=%s\tpreview=%s\tsave=%s"
-		           "\tconsole=%d\tcheevos=%s%s",
+		           "\tconsole=%d\tcheevos=%s%s\tshots=%s/Screenshots",
 		           g->core, g->rom, tag,
 		           g->resume ? g->resume : "",
 		           g->exit_state ? g->exit_state : "",
 		           g->preview ? g->preview : "", g->save ? g->save : "",
-		           g->console, g->cheevos ? g->cheevos : "", disc))
+		           g->console, g->cheevos ? g->cheevos : "", disc, P_CARD))
 			return false;
 
 		/* AFTER RUN, never before: RUN resets the map to identity (Diatom's

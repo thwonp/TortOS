@@ -20,7 +20,8 @@ copied onto the card as `TortOS/THIRD-PARTY-LICENSES.md` by `mk/payload.sh`.
 - **License:** **MIT**, like plorpOS, except its NextUI-derived parts
   (fast-forward, rewind and the hotkeys), which are PolyForm Noncommercial
   1.0.0 - its `NOTICE` lists them. Its vendored `libretro.h` and `rcheevos`
-  stay MIT and `lz4` BSD-2-Clause, under their own notices.
+  stay MIT, `lz4` BSD-2-Clause and `stb_image_write` (the screenshot PNG
+  encoder) public domain or MIT, under their own notices.
 - TortOS's launcher runs it as a resident process and talks to it over a Unix
   socket; it does not link against it. Diatom ships no cores of its own.
 

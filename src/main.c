@@ -9154,7 +9154,7 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
  * in hkbind.c/.h, split out under ADR-0001 so a check can drive them with
  * no SDL. */
 #if defined(PLATFORM_GKD)
-/* Rewind Speed, the row under the four bindings (plorpos-gkd.40): one
+/* Rewind Speed, the row under the bindings (plorpos-gkd.40): one
  * setting for every system, sent to Diatom as SETREWINDSPEED after each RUN
  * (platform.c) and live from here. `every` is Diatom's capture cadence,
  * which IS the speed - one snapshot replayed per displayed frame - and 0 is

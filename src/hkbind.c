@@ -35,10 +35,10 @@ int hk_trig_from(int input, int mod)
 	return mod ? HK_FIRST_DPAD + (input - HK_IN_UP) : 0;
 }
 const char *const HK_ACTION_LABEL[] = {
-	"Fast-Forward", "Rewind", "Quick Save", "Quick Load"
+	"Fast-Forward", "Rewind", "Quick Save", "Quick Load", "Screenshot"
 };
 static const char *const HK_ACTION_WIRE[] = {
-	"ff", "rewind", "savestate", "loadstate"
+	"ff", "rewind", "savestate", "loadstate", "screenshot"
 };
 
 /* hkbind.h's HK_TRIG_COUNT/HK_ROW_COUNT are plain numbers, not derived from
