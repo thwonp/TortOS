@@ -123,6 +123,11 @@ bool plat_video_init(void)
 	return true;
 }
 
+/* sway takes the frozen child off the screen (child_hide), so the menu over
+ * it is an ordinary window. */
+bool plat_video_init_over_child(void) { return plat_video_init(); }
+void plat_present(SDL_Renderer *r) { SDL_RenderPresent(r); }
+
 void plat_video_quit(void)
 {
 	if (ren) { SDL_DestroyRenderer(ren); ren = NULL; }

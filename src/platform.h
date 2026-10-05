@@ -81,6 +81,11 @@ typedef struct {
 bool plat_video_init(void);
 void plat_video_quit(void);
 SDL_Renderer *plat_renderer(void);
+/* Video for a menu drawn while a frozen child still holds the display, and
+ * the present every frame of it goes through. Only the Brick differs: no
+ * compositor, so no window either (plorpos-reo.8). */
+bool plat_video_init_over_child(void);
+void plat_present(SDL_Renderer *r);
 unsigned plat_now_ms(void);
 
 bool plat_input_init(void);

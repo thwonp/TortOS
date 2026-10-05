@@ -13,7 +13,10 @@
 #include <fcntl.h>
 #include <signal.h>
 #ifdef __linux__
+#include <linux/fb.h>
 #include <linux/input.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -123,6 +126,11 @@ static int fd_joy = -1;   /* TRIMUI Player1: raw, for the front F1/F2 keys */
  * still holds. Order: left, right, up, down. */
 static bool hat_dir[4], stick_dir[4];
 
+/* True while native PICO-8's menu is up: the pad is grabbed on fd_joy, so
+ * SDL's joystick sees nothing and the menu reads the pad from fd_joy itself
+ * (child_hide). */
+static bool raw_pad;
+
 /* TORTOS_INPUT_DEBUG=1 logs raw evdev codes and SDL button indices, so one
  * press tells you exactly which device a control arrives on. */
 static int dbg_input;
@@ -179,11 +187,91 @@ bool plat_video_init(void)
 	return true;
 }
 
+/* Native PICO-8's menu (plorpos-reo.8) is drawn while pico8_64 is frozen
+ * holding its mali EGL window, and two EGL clients wedge this device until a
+ * power cycle. So that menu never opens a window: SDL's software renderer
+ * draws into a surface, and plat_present copies each frame into whichever fb0
+ * page is on glass - no GPU, no pan. Once thawed, pico8_64's next frame
+ * paints over it. */
+static SDL_Surface *ov_surf;
+static uint8_t *ov_fb;
+static int ov_fd = -1;
+#ifdef __linux__
+static struct fb_fix_screeninfo ov_fix;
+#endif
+
+bool plat_video_init_over_child(void)
+{
+#ifdef __linux__
+	struct fb_var_screeninfo v;
+
+	ov_fd = open("/dev/fb0", O_RDWR);
+	if (ov_fd < 0 || ioctl(ov_fd, FBIOGET_FSCREENINFO, &ov_fix) != 0 ||
+	    ioctl(ov_fd, FBIOGET_VSCREENINFO, &v) != 0) {
+		fprintf(stderr, "overlay: fb0: %s\n", strerror(errno));
+		plat_video_quit();
+		return false;
+	}
+	/* ARGB8888 in memory is B, G, R, A: what diatom writes here too. */
+	if (v.bits_per_pixel != 32 || v.red.offset != 16 || v.green.offset != 8 ||
+	    v.blue.offset != 0) {
+		fprintf(stderr, "overlay: fb0 is not 32-bit xRGB\n");
+		plat_video_quit();
+		return false;
+	}
+	ov_fb = mmap(NULL, ov_fix.smem_len, PROT_READ | PROT_WRITE, MAP_SHARED, ov_fd, 0);
+	if (ov_fb == MAP_FAILED) ov_fb = NULL;
+	ov_surf = SDL_CreateRGBSurfaceWithFormat(0, (int)v.xres, (int)v.yres, 32,
+	                                         SDL_PIXELFORMAT_ARGB8888);
+	ren = ov_surf ? SDL_CreateSoftwareRenderer(ov_surf) : NULL;
+	if (!ov_fb || !ren) {
+		fprintf(stderr, "overlay: %s\n", ov_fb ? SDL_GetError() : "mmap fb0 failed");
+		plat_video_quit();
+		return false;
+	}
+	SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+	plat_geometry_init(ren);
+	return true;
+#else
+	return plat_video_init();
+#endif
+}
+
+void plat_present(SDL_Renderer *r)
+{
+	SDL_RenderPresent(r);
+#ifdef __linux__
+	if (ov_surf && r == ren) {
+		struct fb_var_screeninfo v;
+		size_t row = (size_t)ov_surf->w * 4;
+		int y;
+
+		/* Read every frame: a flip pico8_64 queued before it froze may
+		 * still land and move the panel to another page. */
+		if (ioctl(ov_fd, FBIOGET_VSCREENINFO, &v) != 0 ||
+		    ((size_t)v.yoffset + (size_t)ov_surf->h) * ov_fix.line_length > ov_fix.smem_len)
+			return;
+		for (y = 0; y < ov_surf->h; y++)
+			memcpy(ov_fb + ((size_t)v.yoffset + (size_t)y) * ov_fix.line_length +
+			       (size_t)v.xoffset * 4,
+			       (uint8_t *)ov_surf->pixels + (size_t)y * (size_t)ov_surf->pitch, row);
+	}
+#endif
+}
+
 void plat_video_quit(void)
 {
+	bool overlay = ov_fd >= 0;   /* opened no window and no video subsystem */
+
 	if (ren) { SDL_DestroyRenderer(ren); ren = NULL; }
+	if (ov_surf) { SDL_FreeSurface(ov_surf); ov_surf = NULL; }
+#ifdef __linux__
+	if (ov_fb) munmap(ov_fb, ov_fix.smem_len);
+#endif
+	ov_fb = NULL;
+	if (ov_fd >= 0) { close(ov_fd); ov_fd = -1; }
 	if (win) { SDL_DestroyWindow(win); win = NULL; }
-	SDL_QuitSubSystem(SDL_INIT_VIDEO);
+	if (!overlay) SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
 /* One display, no compositor: whoever presents last is on glass. */
@@ -206,12 +294,17 @@ bool plat_input_init(void)
 	char marker[512];
 	snprintf(marker, sizeof marker, "%s/.input_debug", P_ROOT);
 	dbg_input = getenv("TORTOS_INPUT_DEBUG") != NULL || access(marker, F_OK) == 0;
-	if (SDL_InitSubSystem(SDL_INIT_JOYSTICK) != 0) {
-		fprintf(stderr, "joystick init: %s\n", SDL_GetError());
-		return false;
+	/* Under native PICO-8's menu the pad is grabbed and read raw (raw_pad):
+	 * SDL's joystick would see nothing, and starting it took 80-100 ms of
+	 * the menu's budget (plorpos-reo.8). */
+	if (!raw_pad) {
+		if (SDL_InitSubSystem(SDL_INIT_JOYSTICK) != 0) {
+			fprintf(stderr, "joystick init: %s\n", SDL_GetError());
+			return false;
+		}
+		SDL_JoystickEventState(SDL_ENABLE);
+		open_joystick();
 	}
-	SDL_JoystickEventState(SDL_ENABLE);
-	open_joystick();
 #ifdef __linux__
 	if (fd_power < 0) fd_power = open("/dev/input/event1", O_RDONLY | O_NONBLOCK);
 	if (fd_keys < 0) fd_keys = open("/dev/input/event0", O_RDONLY | O_NONBLOCK);
@@ -251,9 +344,7 @@ void plat_input_quit(void)
 }
 
 /* Menu on the pad's raw node, which stays open while a child has the screen.
- * With no compositor to take a frozen child off it (child_hide below), Menu
- * in native PICO-8 is Quit - plat_run ends the child and never draws over it
- * (plorpos-gkd.50.13). */
+ * The menu it opens is drawn over the frozen child: see child_hide. */
 int menu_key(int *code)
 {
 	*code = BTN_MODE;
@@ -264,11 +355,37 @@ int menu_key(int *code)
 int levels_fd(void) { return -1; }
 bool levels_alt(void) { return false; }
 
-/* No compositor to take a frozen window off the screen, so plat_run reads
- * Menu as Quit rather than drawing a menu over a child that still holds the
- * display - two presenters wedge this device. plorpos-gkd.50.13. */
-bool child_hide(pid_t pid) { (void)pid; return false; }
-void child_restore(pid_t pid, bool show) { (void)pid; (void)show; }
+/* No compositor to take a frozen window off the screen: the child stays on
+ * it and native_menu draws over it without a window (plat_video_init_over_
+ * child). The pad is grabbed so the frozen child's own read of it does not
+ * hold every press made in the menu and act on them when it thaws; the menu
+ * reads it from fd_joy meanwhile (raw_pad). Without the grab, Menu is Quit,
+ * as before plorpos-reo.8. */
+bool child_hide(pid_t pid)
+{
+	(void)pid;
+#ifdef __linux__
+	if (fd_joy < 0 || ioctl(fd_joy, EVIOCGRAB, 1) != 0) {
+		fprintf(stderr, "run: pad grab failed: %s\n", strerror(errno));
+		return false;
+	}
+	memset(hat_dir, 0, sizeof hat_dir);
+	raw_pad = true;
+	return true;
+#else
+	return false;
+#endif
+}
+
+void child_restore(pid_t pid, bool show)
+{
+	(void)pid; (void)show;
+#ifdef __linux__
+	if (raw_pad) ioctl(fd_joy, EVIOCGRAB, 0);
+#endif
+	raw_pad = false;
+	memset(hat_dir, 0, sizeof hat_dir);
+}
 /* Not on the Brick yet: plorpos-gkd.50.13. */
 void child_quiet(pid_t pid, bool on) { (void)pid; (void)on; }
 
@@ -293,11 +410,40 @@ static in_button map_joy_button(int jb)
 	}
 }
 
+static void set_dirs(in_state *st);
+
+#ifdef __linux__
+/* The pad as SDL would have reported it, for while it is grabbed. SDL numbers
+ * the buttons in ascending evdev-code order (see the JOY_ enum), so a code's
+ * position in this list is its JOY_ index. */
+static bool raw_pad_event(const struct input_event *ev, in_state *st)
+{
+	static const int codes[] = { 304, 305, 307, 308, 310, 311, 314, 315, 316 };
+	size_t i;
+
+	if (ev->type == EV_ABS && (ev->code == ABS_HAT0X || ev->code == ABS_HAT0Y)) {
+		bool *d = &hat_dir[ev->code == ABS_HAT0X ? 0 : 2];
+		d[0] = ev->value < 0;
+		d[1] = ev->value > 0;
+		set_dirs(st);
+		return true;
+	}
+	if (ev->type != EV_KEY || ev->value == 2) return false;
+	for (i = 0; i < sizeof codes / sizeof codes[0]; i++)
+		if (ev->code == codes[i]) {
+			set_btn(st, map_joy_button((int)i), ev->value == 1);
+			return true;
+		}
+	return false;
+}
+#endif
+
 static void poll_raw_fd(int fd, in_state *st)
 {
 #ifdef __linux__
 	struct input_event ev;
 	while (fd >= 0 && read(fd, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+		if (raw_pad && fd == fd_joy && raw_pad_event(&ev, st)) continue;
 		if (ev.type != EV_KEY) continue;
 		if (dbg_input)
 			fprintf(stderr, "[in] raw fd=%d code=%d val=%d\n", fd, ev.code, ev.value);

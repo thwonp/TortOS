@@ -4828,7 +4828,7 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		menu_draw(a, heading, rows, n, sel, st->fixed_w,
 		          st->follow_tint ? a->tint : st->accent);
 		draw_chrome(a->r);
-		SDL_RenderPresent(a->r);
+		plat_present(a->r);
 		SDL_Delay(8);
 	}
 	return MENU_LEFT_GONE;
@@ -10159,9 +10159,10 @@ static void respawn_resident(app *a)
  * diatom fallback and native PICO-8 both. The launcher tears its own down
  * first because the child has to own the screen. */
 /* Native PICO-8's in-game menu (plorpos-gkd.50.16). plat_run calls it with
- * pico8_64 frozen and off the screen, so the display is the launcher's for as
- * long as the menu is up: its video comes up here and goes again before the
- * child is thawed, as run_alone does around the whole run. */
+ * pico8_64 frozen - off the screen on the GKD, still on it under this menu on
+ * the Brick (plat_video_init_over_child, plorpos-reo.8) - so the display is
+ * the launcher's for as long as the menu is up: its video comes up here and
+ * goes again before the child is thawed, as run_alone does around the run. */
 typedef struct {
 	run_choice choice;
 	int        frames;     /* built so far: the second build follows the first present */
@@ -10223,7 +10224,7 @@ static run_choice native_menu(void *ctx)
 	nm_ctx c = { RUN_CONTINUE, 0, a->pico8_splore };
 	menu_style st = { 0 };
 
-	if (!plat_video_init() || !plat_input_init()) return RUN_QUIT;
+	if (!plat_video_init_over_child() || !plat_input_init()) return RUN_QUIT;
 	a->r = plat_renderer();
 	ui_init(a->r, P_FONT);
 	a->menu_w = 0;
@@ -10293,7 +10294,7 @@ static int run_alone(app *a, char *const argv[], run_menu_fn on_menu,
  * Bios/pico8.dat beside it). Native is PICO-8 itself - Splore, the real
  * runtime - at the cost of most of what diatom gives a game: no states, no
  * rewind, and an in-game menu of only Continue, Reset and Quit (native_menu;
- * the GKD only - on the Brick Menu quits, plorpos-gkd.50.13). */
+ * on the Brick since plorpos-reo.8). */
 #define SPLORE "Splore"
 
 static bool is_pico8(const system_cfg *s) { return !strcmp(s->core, "fake08"); }
