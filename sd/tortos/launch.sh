@@ -281,9 +281,10 @@ fi
 # who turned Wi-Fi on expects to find. The launcher resolved that against the
 # shipped default before exporting, so $WIFI is already the answer.
 if [ "$WIFI" = "1" ] || [ -f "$TORTOS_DIR/.devwifi" ]; then
-	wifi_on &
+	wifi_up=wifi_on
 else
 	radio_off &
+	wifi_up=:
 fi
 
 # Bluetooth, off unless asked for, because both radios are battery drain and
@@ -293,10 +294,14 @@ fi
 # bring-up rationale (rfkill power-cycle, xradio attach, hfp-ag) unchanged from
 # here.
 
+# With both on, one job, Wi-Fi associated first and then Bluetooth, as after
+# a wake: Wi-Fi coming up next to Bluetooth on the same xradio chip froze the
+# Brick Pro (plorpos-pky.11; numbers in plat_sleep, src/platform_brick.c).
 if [ "$BLUETOOTH" = "1" ]; then
-	bt_on &
+	{ $wifi_up; bt_on; } &
 else
 	bt_off &
+	$wifi_up &
 fi
 
 # CPU: interactive scaling

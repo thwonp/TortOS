@@ -1483,9 +1483,16 @@ bool plat_sleep(void)
 
 	/* after(): backgrounded, same as NextUI's `after &`, so a slow bt_on()
 	 * (rfkill rail-cycle, hciattach retries) never blocks the first frame
-	 * after wake. */
-	if (wifi_was_up) radio_sh_call("wifi_on", true);
-	if (bt_was_up) radio_sh_call("bt_on", true);
+	 * after wake. One job, Wi-Fi up and associated first, then Bluetooth:
+	 * the two are halves of one xradio chip, and Wi-Fi coming up next to
+	 * Bluetooth froze the Brick Pro until the watchdog rebooted it, no
+	 * suspend needed (plorpos-pky.11). Measured, radios cycled in game with
+	 * a headset: both at once 1 freeze in 5, Bluetooth first 1 in 9, Wi-Fi
+	 * first 0 in 23. The price: a headset is back ~18 s after wake instead
+	 * of ~13 s, and ~40 s when Wi-Fi cannot associate (wifi_on's 25 s). */
+	if (bt_was_up && wifi_was_up) radio_sh_call("wifi_on; bt_on", true);
+	else if (bt_was_up) radio_sh_call("bt_on", true);
+	else if (wifi_was_up) radio_sh_call("wifi_on", true);
 
 	apply_brightness(cur_bright);
 	/* The script's exit status: PWR_deepSleep's ret, which PWR_waitForWake
