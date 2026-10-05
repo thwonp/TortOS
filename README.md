@@ -47,15 +47,20 @@ TortOS does, it still does. On top of that:
 **In a game**
 
 - **Rewind:** about thirty seconds of it on the GKD, on every console, at the speed you pick, from 1x to 10x.
-- **Configurable hotkeys** for Fast-forward, rewind, quick save and quick load. Hotkeys can be set with or without a modifier button (4 options on the GKD) and persist per console.
-- **Shaders on the GKD:** thirteen of them, scanlines to LCD grids, under
-  Display. Each console remembers its own.
+- **Configurable hotkeys** for Fast-forward, rewind, quick save, quick load and
+  screenshots. Hotkeys can be set with or without a modifier button (4 options on the GKD) and persist per console.
+- **Shaders on the GKD:** fifteen of them, scanlines to LCD grids and Pixel
+  Transparency, under Display. Each console remembers its own.
+- **Screenshots:** a hotkey saves a PNG of the screen, shader included, to
+  `Screenshots/` on the card.
 - **Stretch, Aspect or Integer** display modes on every console.
 - **Game Boy palettes:** sixteen to pick from per game, or Auto, which colors a game the way a Game Boy Color would.
 
 **On the shelf**
 
 - **Your gamelist.xml metadata** can be imported on the device to avoid needing to re-scrape.
+- **Rename,** on a game's info screen: your name for it, on every shelf.
+- **Battery percentage** in the corner, under System Settings.
 - **Delete Game,** on a game's info screen. The game goes; its saves, art and
   play time stay.
 - **A Saves folder per console,** so two games with the same name on two
