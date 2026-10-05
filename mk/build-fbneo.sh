@@ -8,10 +8,16 @@
 # tops out at GLIBCXX_3.4.28, so libstdc++ links dynamically, like every other
 # C++ core on the card.
 #
-# One patch, mk/patches/fbneo-rotate.patch, taken from NextUI's tg5050 build:
+# Two patches. mk/patches/fbneo-rotate.patch, taken from NextUI's tg5050 build:
 # vertical games (1943, Galaga) are rotated upright inside the core, and the
 # core never asks the frontend to rotate. diatom declines SET_ROTATION, and
 # without this a vertical game plays on its side.
+#
+# And mk/patches/fbneo-unloaded-port.patch: after a game, a romset that fails
+# to load (missing files) leaves no driver but a stale input count, and the
+# frontend's set_controller_port_device then walked a freed input array -
+# SIGSEGV in the resident diatom (plorpos-gkd.83.11). Refresh only with a
+# driver loaded.
 #
 # Long: thousands of drivers, about 20 minutes on four cores.
 #
@@ -20,7 +26,7 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${1:-/tmp/tortos-fbneo}
 PIN=a4012b161e48b33b94940f07987323574c237448   # libretro/FBNeo master, 2026-09-28
-SHA=d8402bab7804aefcd840c004006b8b2678eb58af6ed1eda8ff21072be032d16c
+SHA=082059ba970ff2c2d0bc263ae807d1539d06fed25ff7e4e0b6efba5c3eb4f4c9
 
 command -v docker >/dev/null || { echo "need docker" >&2; exit 1; }
 
@@ -31,6 +37,7 @@ cd "$SRC"
 git fetch -q origin "$PIN" 2>/dev/null || git fetch -q origin
 git checkout -q -f "$PIN"
 git apply "$ROOT/mk/patches/fbneo-rotate.patch"
+git apply "$ROOT/mk/patches/fbneo-unloaded-port.patch"
 EPOCH=$(git log -1 --format=%ct)
 
 # Flags through the environment: the Makefile appends to CFLAGS and CXXFLAGS.

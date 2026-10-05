@@ -1,0 +1,17 @@
+diff --git a/src/burner/libretro/retro_input.cpp b/src/burner/libretro/retro_input.cpp
+index ffc57cf..3f8a0a6 100644
+--- a/src/burner/libretro/retro_input.cpp
++++ b/src/burner/libretro/retro_input.cpp
+@@ -3610,7 +3610,11 @@ void retro_set_controller_port_device(unsigned port, unsigned device)
+ 	{
+ 		nDeviceType[port] = device;
+ 		bControllersNeedRefresh = true;
+-		if (bControllersSetOnce)
++		// Only with a driver loaded: after a failed load (missing romset)
++		// GameInp is freed but nGameInpCount still counts the last game's
++		// inputs, and a refresh walks a NULL array. The flag stays set, so
++		// the next game's load refreshes them.
++		if (bControllersSetOnce && nBurnDrvActive != ~0U)
+ 			RefreshControllers();
+ 	}
+ }
