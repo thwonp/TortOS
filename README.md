@@ -50,7 +50,7 @@ TortOS does, it still does. On top of that:
 - **Configurable hotkeys** for Fast-forward, rewind, quick save, quick load and
   screenshots. Hotkeys can be set with or without a modifier button (4 options on the GKD) and persist per console.
 - **Shaders:** fifteen of them, scanlines to LCD grids and Pixel
-  Transparency, under Display, on both devices. Each console remembers its own.
+  Transparency, on the in-game menu's Shader row, on both devices. Each console remembers its own.
 - **Screenshots:** a hotkey saves a PNG of the screen, shader included, to
   `Screenshots/` on the card.
 - **Stretch, Aspect or Integer** display modes on every console.
@@ -79,7 +79,7 @@ TortOS does, it still does. On top of that:
 - **Muse Settings → Screen Off.** How long music plays untouched before the
   screen goes off: `5s / 10s / 15s / 30s / 1m / Never`, default `10s`, like
   an iPod's backlight timer. 
-- **Settings → Mute Switch** (Brick) **/ Muse Settings → Sleep Button Lock** (GKD) - iPod style
+- **System Settings → Mute Switch** (Brick) **/ Muse Settings → Sleep Button Lock** (GKD) - iPod style
   hold switch: while it is on and music plays with the screen dark, all
   buttons and the volume keys are ignored. POWER and headset buttons still
   work, and Now Playing shows a padlock. 
@@ -100,7 +100,7 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
   <tr>
     <td align="center" colspan="2"><img src="res/readme/info.png" width="240" alt="A game's details"><br><sub>A game's details, one button away</sub></td>
     <td align="center" colspan="2"><img src="res/readme/cheevos.png" width="240" alt="An achievements list"><br><sub>RetroAchievements on the device</sub></td>
-    <td align="center" colspan="2"><img src="res/readme/menu.png" width="240" alt="The TortOS menu"><br><sub>The Brick's settings in one menu</sub></td>
+    <td align="center" colspan="2"><img src="res/readme/menu.png" width="240" alt="The plorpOS menu"><br><sub>Settings in one menu</sub></td>
   </tr>
   <tr>
     <td align="center" colspan="3"><img src="res/readme/muse.png" width="240" alt="Muse's shelf of albums, with xx in focus"><br><sub>Your albums, in Muse</sub></td>
@@ -110,26 +110,26 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 
 </div>
 
-## Why TortOS
+## Why plorpOS
 
 **Games start the moment you press A.** The emulator is already running before you choose anything, so nothing loads between you and the game, even when you switch consoles.
 
-**You pick up exactly where you left off.** Quit from the menu or just press the power button. The game is saved on the way out, and next time it continues from that moment.
+**You pick up exactly where you left off.** Quit from the menu, tap POWER to sleep, or hold it to turn off. The game is saved on the way out, and next time it continues from that moment.
 
-**Everything happens on the handheld.** Join Wi-Fi, fetch box art, sign in to RetroAchievements, pair headphones and send games over from your phone, all on the Brick. You need a computer once, to set up the card.
+**Everything happens on the handheld.** Join Wi-Fi, fetch box art, sign in to RetroAchievements, pair headphones and send games over from your phone, all on the handheld. You need a computer once, to set up the card.
 
-**Your Brick stays yours.** TortOS runs from the SD card. Take the card out and the Brick boots its own system again.
+**Your handheld stays yours.** plorpOS runs from the SD card. Take the card out and the Brick boots its own system again, and the GKD its own ROCKNIX.
 
 ## Features
 
 - **Two ways to browse:** a row of covers, or a column.
 - **Two looks:** Plain Jane cards, or Fancy Pants photos of each console.
 - **RetroAchievements:** sign in on the device, under **MENU > Wi-Fi Services > Cheevos**. A game's achievements download once and then work offline, and anything you unlock offline is sent later.
-- **Box art the Brick finds itself,** from libretro's collection with no account, or from ScreenScraper with a free one, which brings each game's year, genre and synopsis too. Or add your own.
+- **Box art the device finds itself,** from libretro's collection with no account, or from ScreenScraper with a free one, which brings each game's year, genre and synopsis too. Or add your own.
 - **Over The Hare:** move games, music, audiobooks, saves and covers on and off the card from any browser on your Wi-Fi, behind a PIN.
 - **Autosave and resume,** plus six save slots for when you want a checkpoint.
 - **Turbo buttons:** X and Y press A and B for you, on the nine consoles whose controllers had two face buttons. On Game Boy Advance, L2 and R2 do the same for L and R.
-- **Bluetooth headphones,** paired on the device, with the Brick's volume buttons reaching them and their own buttons playing and skipping in Muse. Plug in wired ones and they take over.
+- **Bluetooth headphones,** paired on the device, with its volume buttons reaching them and their own buttons playing and skipping in Muse. Plug in wired ones and they take over.
 - **Muse, a music and audiobook player:** your albums and books on a shelf of their own covers, and every book picks up where you left it. SELECT opens Muse from anywhere, even the in-game menu, and it keeps playing when you close it. While it plays, the game is silent.
 - **Play Time:** how long you've played each game or console, today, this week, this month, this year or ever.
 - **Favorites and sorting:** Y favorites a game, and each console sorts by name, play time, last played or recently added.
@@ -172,7 +172,7 @@ On the GKD 350H Ultra, see [Installing on the GKD](docs/install-gkd.md) instead.
 1. **Format the card as exFAT,** with a Master Boot Record partition scheme. On a Mac, open Disk Utility, choose *View > Show All Devices*, and erase the card itself rather than its volume.
 2. **Download `plorpOS-brick-v1.3.zip`** from [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
 3. **Copy everything inside it to the root of the card:** `TortOS/`, `.tmp_update/`, `trimui/`, `Roms/`, `Music/`, `Audiobooks/`, `Bios/` and `Saves/`.
-4. **Put the card in the Brick and turn it on.** The first boot installs TortOS, and every boot after that starts it.
+4. **Put the card in the Brick and turn it on.** The first boot installs plorpOS, and every boot after that starts it.
 5. **Add games** to the folders in `Roms/`, from the computer now or over Wi-Fi later.
 
 > [!IMPORTANT]
@@ -191,9 +191,9 @@ The PIN is new every time you open Over The Hare.
 
 <br clear="right">
 
-### Removing TortOS
+### Removing plorpOS from the Brick
 
-Take the card out. The Brick boots its own system again.
+Take the card out. The Brick boots its own system again. (On the GKD, see [Removing plorpOS](docs/install-gkd.md#removing-plorpos).)
 
 Before you reformat the card or give the Brick away:
 
@@ -201,9 +201,9 @@ Before you reformat the card or give the Brick away:
 - **Forget your Wi-Fi networks** with X on the Wi-Fi screen. Their passwords are stored on the Brick, not on the card.
 
 <details>
-<summary>What TortOS leaves on the Brick itself</summary>
+<summary>What plorpOS leaves on the Brick itself</summary>
 
-A boot hook that looks for the card, and hands back to the stock system when TortOS isn't on it:
+A boot hook that looks for the card, and hands back to the stock system when plorpOS isn't on it:
 
 ```
 /usr/trimui/bin/runtrimui.sh            the hook
@@ -230,30 +230,30 @@ None of them is a driver, and none replaces anything the system needs to run.
 | **X** | The game's details |
 | **Y** | Favorite |
 | **L1/R1** | Jump a screenful |
-| **MENU** | Settings for the Brick, or for the shelf you're in |
+| **MENU** | Settings for the device, or for the shelf you're in |
 | **SELECT** | Muse, the music and audiobook player. Press it again to close |
-| **POWER** | Turn off |
+| **POWER** | Tap to sleep, hold to turn off |
 
-**In a game,** MENU opens Continue, Save, Load, Display, Cheevos, Reset and Quit, and SELECT in that menu opens Muse. While music plays the game is silent, and pausing the music brings its sound back. X and Y are turbo A and B, except on Genesis and SNES, where they're the controller's own buttons, and on Game Boy Advance L2 and R2 are turbo L and R. POWER saves the game and turns the Brick off.
+**In a game,** MENU opens the in-game menu (its rows are listed below), and SELECT in that menu opens Muse. While music plays the game is silent, and pausing the music brings its sound back. X and Y are turbo A and B on the nine consoles with two face buttons (NES, Master System, TurboGrafx-16, Game Boy, Game Boy Color, Game Gear, Neo Geo Pocket and Pocket Color, Game Boy Advance), and on Game Boy Advance L2 and R2 are turbo L and R. A tap of POWER saves the game and sleeps; holding it saves the game and turns the device off.
 
 **In Muse,** A opens an album, plays a track or pauses it, L1 and R1 change track, left and right skip ten seconds (hold them to go faster: a minute a step after a second, five after three), and B goes back. A on a book carries on where you left it, and in a book with chapters L1 and R1 move by chapter. On Now Playing, Y changes the play mode for music: in order, repeat all, repeat one or shuffle. On a book, which always plays in order, Y changes the speed instead: 1x up to 2x, and 0.75x, kept for each book.
 
-The volume buttons and F1/F2 (brightness) work everywhere. On the Brick Pro (not supported in this release) the brightness keys are FN1/FN2, the left stick works as the d-pad in menus and games, and the right stick and both stick clicks do nothing. That is deliberate for now: every bundled core is digital-only, so there is nothing yet for analog input to drive.
+The volume buttons work everywhere. Brightness is F1/F2 on the Brick, and Home with the volume buttons on the GKD. On the Brick Pro (not supported in this release) the brightness keys are FN1/FN2, the left stick works as the d-pad in menus and games, and the right stick and both stick clicks do nothing. That is deliberate for now: every bundled core is digital-only, so there is nothing yet for analog input to drive.
 
-**The Brick lists all of this itself,** under **MENU > Controls**: five pages, stepped through with left and right, so you never need this page to look a button up.
+**plorpOS lists all of this itself,** under **MENU > Controls**: five pages, stepped through with left and right, so you never need this page to look a button up.
 
 <details>
 <summary>What's in each menu</summary>
 
 **The plorpOS menu,** MENU on the consoles row: Play Time; Wi-Fi Services (Wi-Fi, **Cheevos** - the RetroAchievements sign-in - SSH, Samba and Syncthing on the GKD, Over The Hare, then the networks); Bluetooth; Audio Output; System Settings (Auto Off, Auto Sleep, Suspend Timeout - see the FAQ below - Battery Percentage, and Mute Switch on the Brick); UI Settings (UI Theme, UI Direction); Scraping (Box Art, ScreenScraper, Import gamelist.xml metadata); Controls; About.
 
-**A console's menu,** MENU inside it: Sort By, Display Mode, Box Art for that console alone, and Rescan Folder for games copied since the Brick was turned on.
+**A console's menu,** MENU inside it: Core (PICO-8 only: fake-08 or native PICO-8), Sort By, Display Mode, Box Art for that console alone, and Rescan Folder for games copied since the device was turned on.
 
 **Favorites' menu:** Sort By, with a console's four orders.
 
-**Muse's menu,** MENU on its shelf: Show (music or audiobooks, when the card has both), Sort By (artist or album title, or author or title for books), Album Art, and Rescan Folder for anything copied since the Brick was turned on.
+**Muse's menu,** MENU on its shelf: Show (music or audiobooks, when the card has both), Sort By (artist or album title, or author or title for books), Album Art, and Rescan Folder for anything copied since the device was turned on.
 
-**The in-game menu:** Continue, Save, Load, Display, Cheevos, Reset, Quit.
+**The in-game menu:** Continue, Save, Load, Display, Shader, Palette (Game Boy), Disc (games with more than one disc), Cheevos, Hotkeys, Reset, Quit. In native PICO-8: Continue, Reset, Splore, Quit.
 
 </details>
 
@@ -264,7 +264,7 @@ Every control, menu row and setting, in detail: [the guide](docs/guide.md).
 <details>
 <summary><b>My games don't show up.</b></summary>
 
-Check the folder name against the table above, spelled exactly, and that the file type is listed for that console. A console with nothing in its folder is hidden. Games sent over Over The Hare appear when you leave its screen. Games copied any other way while the Brick is on appear after **Rescan Folder** in that console's menu, or after a restart. The log names every file a console's folder left out, and the file types it takes.
+Check the folder name against the table above, spelled exactly, and that the file type is listed for that console. A console with nothing in its folder is hidden. Games sent over Over The Hare appear when you leave its screen. Games copied any other way while the device is on appear after **Rescan Folder** in that console's menu, or after a restart. The log names every file a console's folder left out, and the file types it takes.
 
 </details>
 
@@ -282,7 +282,7 @@ Don't like a cover? Press X on the game and choose **Replace Box Art**. It looks
 <details>
 <summary><b>How do achievements work?</b></summary>
 
-Sign in to your RetroAchievements account under **MENU > Wi-Fi Services > Cheevos**. The first time you start a game, the Brick needs Wi-Fi to look it up and download its achievements. After that the game works offline, and anything you unlock offline is kept and sent to your account later.
+Sign in to your RetroAchievements account under **MENU > Wi-Fi Services > Cheevos**. The first time you start a game, the device needs Wi-Fi to look it up and download its achievements. After that the game works offline, and anything you unlock offline is kept and sent to your account later.
 
 </details>
 
@@ -304,7 +304,7 @@ Auto Sleep and Auto Off only count time on the shelf and in the menus, the in-ga
 
 Yes. Put them in pairing mode, open **MENU > Bluetooth**, press **Y** to search and **A** to pair. They reconnect by themselves from then on. Wired headphones always win when they're plugged in.
 
-The Brick's volume buttons set the headphones' volume, and the headphones' own volume buttons move the Brick's. On a few headphones, the Brick's buttons set only the starting volume; after that, change it on the headphones themselves. Play, pause and skip on the headphones control Muse.
+The device's volume buttons set the headphones' volume, and the headphones' own volume buttons move the device's. On a few headphones, the device's buttons set only the starting volume; after that, change it on the headphones themselves. Play, pause and skip on the headphones control Muse.
 
 </details>
 
@@ -325,20 +325,20 @@ Put each book in its own folder in `Audiobooks/`, with an author's folder above 
 <details>
 <summary><b>Where are my saves?</b></summary>
 
-Battery saves are `.srm` files in `Saves/<console>/`, named after the game; the console folder is named like its `Roms/` folder. If you upgraded a Brick from plorpOS v1.1 or TortOS, move the old saves loose in `Saves/` into those folders - see [Upgrading a TortOS card](docs/install-brick.md#upgrading-a-tortos-card). Save states, the autosave included, are in `.userdata/shared/.tortos/`, one folder per console. Neo Geo Pocket Color games write no `.srm`, so their progress lives in the autosave.
+Battery saves are `.srm` files in `Saves/<console>/`, named after the game; the console folder is named like its `Roms/` folder. A game's battery save is written at most once a minute while you play, and always when you open the in-game menu, sleep or quit. If you upgraded a Brick from plorpOS v1.1 or TortOS, move the old saves loose in `Saves/` into those folders - see [Upgrading a TortOS card](docs/install-brick.md#upgrading-a-tortos-card). Save states, the autosave included, are in `.userdata/shared/.tortos/`, one folder per console. Neo Geo Pocket Color games write no `.srm`, so their progress lives in the autosave.
 
 </details>
 
 <details>
 <summary><b>Something went wrong. How do I send the logs?</b></summary>
 
-Open **MENU > Wi-Fi Services > Over The Hare**, open its address in a browser, and click **Download logs** at the bottom of the first page. You get one `.tar.gz` file holding the last ten boots' logs and a short summary of the Brick, ready to send to whoever is helping you. Wi-Fi network, headset and account names are masked in it, and the logs on the card are left as they are. The logs themselves are in `.userdata/tg3040/logs/` on the card.
+Open **MENU > Wi-Fi Services > Over The Hare**, open its address in a browser, and click **Download logs** at the bottom of the first page. You get one `.tar.gz` file holding the last ten boots' logs and a short summary of the device, ready to send to whoever is helping you. Wi-Fi network, headset and account names are masked in it, and the logs on the card are left as they are. The logs themselves are in `.userdata/tg3040/logs/` (Brick) or `.userdata/gkd/logs/` (GKD) on the card.
 
 </details>
 
 ## For developers
 
-TortOS is C and SDL2. Games run in [diatom](https://github.com/ericreinsmidt/diatom), a small libretro frontend built for this device that starts once at boot and stays running.
+plorpOS is C and SDL2, built on Eric Reinsmidt's TortOS. Games run in [diatom](https://github.com/thwonp/diatom), plorpOS's fork of his small libretro frontend, which starts once at boot and stays running.
 
 - [How it works](docs/how-it-works.md): the resident emulator, the boot, and card art off the render thread
 - [Configuration](docs/configuration.md): the two settings databases, `systems.cfg`, core options and turbo
