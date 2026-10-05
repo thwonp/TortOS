@@ -354,22 +354,19 @@ static void shader_save(app *a, int sys)
 	db_set_str(db_dev(), key, a->shaders.e[a->view[sys].shader].name);
 }
 
-/* Tell the running game which shader to draw (diatom's ADR-0041). Diatom
- * keeps a chain across RUN, as it keeps the mode, so a launch always says one;
- * and it refuses a chain it cannot build by keeping the one it has, so None
- * goes first - a file that has gone missing then leaves the plain picture, not
- * the last game's shader. None costs diatom nothing to apply. */
-static void shader_send(app *a, int sys)
+/* Which shader a launch tells the game to draw (diatom's ADR-0041), as
+ * SETDISPLAY fields: "" for None, NULL when there is no list to choose from.
+ * Diatom keeps a chain across RUN, as it keeps the mode, so a launch always
+ * says one; plat_resident_send sends it before RUN, with None first. */
+static const char *shader_fields(app *a, int sys, char *f, size_t cap)
 {
-	char f[1024], dir[CFG_STR * 2];
+	char dir[CFG_STR * 2];
 	int i = a->view[sys].shader;
 
-	if (a->shaders.count <= 1) return;
-	plat_resident_line("SETDISPLAY\tshader=none");
-	if (i == 0) return;
+	if (a->shaders.count <= 1) return NULL;
 	snprintf(dir, sizeof dir, "%s/shaders", P_ROOT);
-	if (sl_fields(&a->shaders, i, dir, f, sizeof f))
-		plat_resident_line("SETDISPLAY\t%s", f);
+	if (i == 0 || !sl_fields(&a->shaders, i, dir, f, cap)) return "";
+	return f;
 }
 
 /* palette.GB.<file>, in the library database: a choice per game rather than
@@ -10693,12 +10690,14 @@ static void launch(app *a)
 		 * the in-game menu, which is drawn HERE now, over the frame the
 		 * emulator hands us on the way into its pause. */
 		aout_before_launch();
+		char shf[1024];
 		plat_game g = {
 			.tag = s->tag, .core = core, .rom = rom,
 			.resume = st, .exit_state = st, .preview = pv, .save = save,
 			.console = console, .cheevos = active[0] ? active : NULL,
 			.opts = { palp[0] ? palp : NULL, palc[0] ? palc : NULL },
 			.disc = disc + 1,
+			.shader = shader_fields(a, o, shf, sizeof shf),
 		};
 		if (plat_resident_send(&g)) {
 			int r;
@@ -10722,7 +10721,6 @@ static void launch(app *a)
 			 * it lands before the first frame. */
 			plat_resident_line("SETDISPLAY\tmode=%s",
 			                   DMODES[a->view[o].dmode].name);
-			shader_send(a, o);
 
 			/* No idle anything during play: NextUI disables autosleep for
 			 * the whole of a running game (minarch.c's PWR_disableAutosleep)

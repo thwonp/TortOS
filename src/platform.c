@@ -856,6 +856,18 @@ bool plat_resident_send(const plat_game *g)
 		 * and sent every time, a resident that restarted cannot start loud. */
 		if (dsend("SETQUIET\ton=%d", d_quiet)) d_quiet_said = d_quiet;
 
+		/* The shader before RUN too (plorpos-reo.4.2). RUN's warmup draws
+		 * three frames before Diatom reads another message, so a chain sent
+		 * after it showed the game plain first - and on the Brick, where a
+		 * chain means a GL window, plain, then None's window down, then the
+		 * chain's up: a black flash on every launch. Sent here, the first
+		 * frame is drawn with it. None first: a chain Diatom refuses then
+		 * leaves the plain picture, not the last game's (ADR-0041). */
+		if (g->shader) {
+			dsend("SETDISPLAY\tshader=none");
+			if (*g->shader) dsend("SETDISPLAY\t%s", g->shader);
+		}
+
 		/* console and cheevos on RUN rather than after it, so a set is
 		 * watched from the first frame - an achievement can fire in the
 		 * opening seconds and Diatom cannot evaluate what it has not been

@@ -167,6 +167,7 @@ typedef struct {
 	const char *cheevos;
 	const char *opts[2];
 	int         disc;   /* an .m3u's disc to start on, 1-based; 0 = the core's choice (plorpos-gkd.47) */
+	const char *shader; /* SETDISPLAY fields for the chain, "" for None, NULL with no shader list */
 } plat_game;
 bool plat_resident_send(const plat_game *g);
 int  plat_resident_wait(void);
