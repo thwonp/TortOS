@@ -9285,20 +9285,16 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
  * than for a protocol. The parser/serializer (hk_parse/hk_serialize) live
  * in hkbind.c/.h, split out under ADR-0001 so a check can drive them with
  * no SDL. */
-#if defined(PLATFORM_GKD)
 /* Rewind Speed, the row under the bindings (plorpos-gkd.40): one
  * setting for every system, sent to Diatom as SETREWINDSPEED after each RUN
  * (platform.c) and live from here. `every` is Diatom's capture cadence,
  * which IS the speed - one snapshot replayed per displayed frame - and 0 is
  * off. The ring's memory is fixed, so a slower speed holds less history;
- * the player chose that trade. 5 matches the GKD build's default. */
+ * the player chose that trade. 5 matches both builds' default. */
 static const int  RW_EVERY[] = { 1, 2, 3, 5, 10, 0 };
 static const char *const RW_NAME[] = { "1x", "2x", "3x", "5x", "10x", "Disabled" };
 #define RW_COUNT ((int)(sizeof RW_EVERY / sizeof RW_EVERY[0]))
 #define HK_SCREEN_ROWS (HK_ROW_COUNT + 1)
-#else
-#define HK_SCREEN_ROWS HK_ROW_COUNT
-#endif
 
 /* Press-to-bind's inputs, the stick ahead of the d-pad: a stick push also
  * sets the plain direction in the same frame, and the first match wins. */
@@ -9340,12 +9336,10 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 	char spec[128];
 
 	hk_parse(plat_hotkey_map(tag), trig_for_row);
-#if defined(PLATFORM_GKD)
 	const int RW_ROW = FIRST_ACT + HK_ROW_COUNT;
 	int rw = 0, every = db_get_int(db_dev(), "rewindspeed", 5);
 
 	while (rw < RW_COUNT - 1 && RW_EVERY[rw] != every) rw++;
-#endif
 	{
 		const char *cur = plat_hotkey_modifier();
 		while (mod < nmods - 1 && strcmp(mod_wire[mod], cur)) mod++;
@@ -9394,7 +9388,6 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 					plat_hotkey_modifier_set(mod_wire[mod]);
 					changed = true;
 				}
-#if defined(PLATFORM_GKD)
 			} else if (sel == RW_ROW) {
 				int d = 0;
 
@@ -9405,7 +9398,6 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 					db_set_int(db_dev(), "rewindspeed", RW_EVERY[rw]);
 					plat_resident_line("SETREWINDSPEED\tevery=%d", RW_EVERY[rw]);
 				}
-#endif
 			} else if (a->in.pressed[IN_ACCEPT]) {
 				capturing = true;
 				menu_tap = false;
@@ -9450,9 +9442,7 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 				         hk_trig_mod(t) ? " + " : "", HK_TRIG_NAME[t]);
 			rows[FIRST_ACT + i] = (menu_row){ HK_ACTION_LABEL[i], vals[i], true };
 		}
-#if defined(PLATFORM_GKD)
 		rows[RW_ROW] = (menu_row){ "Rewind Speed", RW_NAME[rw], true };
-#endif
 		rows[ROWS] = MENU_RULE;
 		rows[ROWS + 1] = MENU_NOTE(capturing ? "Press a button    Menu: cancel"
 		                                     : "A: set    X: clear");

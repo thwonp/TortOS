@@ -906,12 +906,10 @@ bool plat_resident_send(const plat_game *g)
 			dsend("SETHOTKEYS\thotkeys=%s\tmodifier=%s", hk ? hk : "",
 			      plat_hotkey_modifier());
 		}
-#if defined(PLATFORM_GKD)
 		/* The player's rewind speed (plorpos-gkd.40): Diatom resets it to
 		 * its build default on every RUN, so it is re-sent every run, as
 		 * SETHOTKEYS is. Set on the Hotkeys screen. */
 		dsend("SETREWINDSPEED\tevery=%d", db_get_int(db_dev(), "rewindspeed", 5));
-#endif
 
 		/* The launcher owns levels while it draws (Diatom's ADR-0020), and
 		 * it is done drawing the moment the game is up - so the last thing
