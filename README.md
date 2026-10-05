@@ -124,7 +124,7 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 
 - **Two ways to browse:** a row of covers, or a column.
 - **Two looks:** Plain Jane cards, or Fancy Pants photos of each console.
-- **RetroAchievements:** sign in on the device. A game's achievements download once and then work offline, and anything you unlock offline is sent later.
+- **RetroAchievements:** sign in on the device, under **MENU > Wi-Fi Services > Cheevos**. A game's achievements download once and then work offline, and anything you unlock offline is sent later.
 - **Box art the Brick finds itself,** from libretro's collection with no account, or from ScreenScraper with a free one, which brings each game's year, genre and synopsis too. Or add your own.
 - **Over The Hare:** move games, music, audiobooks, saves and covers on and off the card from any browser on your Wi-Fi, behind a PIN.
 - **Autosave and resume,** plus six save slots for when you want a checkpoint.
@@ -170,7 +170,7 @@ You need a TrimUI Brick or Brick Hammer, a microSD card and, just this once, a c
 On the GKD 350H Ultra, see [Installing on the GKD](docs/install-gkd.md) instead.
 
 1. **Format the card as exFAT,** with a Master Boot Record partition scheme. On a Mac, open Disk Utility, choose *View > Show All Devices*, and erase the card itself rather than its volume.
-2. **Download `plorpOS-brick-v1.2.zip`** from [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
+2. **Download `plorpOS-brick-v1.3.zip`** from [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
 3. **Copy everything inside it to the root of the card:** `TortOS/`, `.tmp_update/`, `trimui/`, `Roms/`, `Music/`, `Audiobooks/`, `Bios/` and `Saves/`.
 4. **Put the card in the Brick and turn it on.** The first boot installs TortOS, and every boot after that starts it.
 5. **Add games** to the folders in `Roms/`, from the computer now or over Wi-Fi later.
@@ -245,7 +245,7 @@ The volume buttons and F1/F2 (brightness) work everywhere. On the Brick Pro (not
 <details>
 <summary>What's in each menu</summary>
 
-**The TortOS menu,** MENU on the consoles row: Play Time, Wi-Fi, Bluetooth, Audio Output, Over The Hare, Auto Off, Auto Sleep, Suspend Timeout, Mute Switch, UI Theme, UI Direction, Scraping (Box Art, ScreenScraper, Import gamelist.xml metadata), Cheevos, Controls, About TortOS.
+**The plorpOS menu,** MENU on the consoles row: Play Time; Wi-Fi Services (Wi-Fi, **Cheevos** - the RetroAchievements sign-in - SSH, Samba and Syncthing on the GKD, Over The Hare, then the networks); Bluetooth; Audio Output; System Settings (Auto Off, Auto Sleep, Suspend Timeout, Battery Percentage, and Mute Switch on the Brick); UI Settings (UI Theme, UI Direction); Scraping (Box Art, ScreenScraper, Import gamelist.xml metadata); Controls; About.
 
 **A console's menu,** MENU inside it: Sort By, Display Mode, Box Art for that console alone, and Rescan Folder for games copied since the Brick was turned on.
 
