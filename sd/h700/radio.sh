@@ -24,6 +24,11 @@
 [ -f "$TORTOS_DIR/bt-alsa.sh" ] && . "$TORTOS_DIR/bt-alsa.sh"
 
 BT_RECONNECT_PIDFILE=/tmp/tortos_bt_reconnect.pid
+# The headset last published, dialed first: with two in reach, a wake or a
+# boot brings back the one in use rather than the first in address order
+# (the Brick's way; the user's choice, 2026-10-06). On the card, so a reboot
+# keeps it; written only when it changes.
+BT_LAST=$USERDATA_PATH/bt_last
 
 # Stop one process by name and wait up to 2 s for it to be gone.
 bt_stop_proc() {
@@ -90,9 +95,13 @@ bt_streams() {
 		grep -oE 'dev_[0-9A-F_]+/sep[0-9]+/fd[0-9]+' | sort -u
 }
 
-# This address's stream id (sepN/fdM) out of bt_streams' list, or nothing.
+# This address's stream id out of bt_streams' list, or nothing: sepN/fdM
+# after bluetoothd's pid, because a bluetoothd started again (bt_off, then
+# bt_on at a wake) counts from fd0 again, and the same id twice is a
+# reconnect the launcher never sees (2026-10-06).
 bt_stream_of() {
-	echo "$2" | sed -n "s|^dev_$(echo "$1" | tr ':' '_')/||p" | head -1
+	s=$(echo "$2" | sed -n "s|^dev_$(echo "$1" | tr ':' '_')/||p" | head -1)
+	[ -n "$s" ] && echo "$(pidof bluetoothd)/$s"
 }
 
 bt_on() {
@@ -140,6 +149,7 @@ bt_reconnect() {
 	latest=
 	prev_links=
 	soon=0
+	last=$(cat "$BT_LAST" 2> /dev/null)
 	while :; do
 		bt_player
 		connected=
@@ -148,7 +158,8 @@ bt_reconnect() {
 			[ -d "$d" ] || continue
 			grep -q '^Trusted=true' "$d/info" 2> /dev/null || continue
 			grep -q '^\[LinkKey\]' "$d/info" 2> /dev/null || continue
-			bonds="$bonds $(basename "$d")"
+			mac=$(basename "$d")
+			if [ "$mac" = "$last" ]; then bonds="$mac $bonds"; else bonds="$bonds $mac"; fi
 		done
 		streams=$(bt_streams)
 		links=
@@ -181,6 +192,10 @@ bt_reconnect() {
 			link=$(bt_stream_of "$connected" "$(bt_streams)")
 			printf '%s\n%s\n' "$(bt_pcm_name "$connected")" "$link" \
 				> /tmp/tortos_btsink.tmp && mv /tmp/tortos_btsink.tmp /tmp/tortos_btsink
+			if [ "$connected" != "$last" ]; then
+				last=$connected
+				echo "$last" > "$BT_LAST"
+			fi
 		else
 			soon=0
 			rm -f /tmp/tortos_btsink
