@@ -144,7 +144,10 @@ typedef struct { char *p; size_t used, cap; bool over; } jbuf;
  * "Expected double-quoted property name at position 71", which is a true and
  * completely unhelpful description of a missing bracket sixty characters
  * earlier. Nothing in C requires a human to count a string literal. */
-#define JLIT(j, s) jput((j), (s), sizeof (s) - 1)
+/* The "" in front makes anything but a literal a compile error: given an
+ * expression, sizeof measures a pointer, which is how an artist's covers went
+ * out as seven bytes of garbage on 2026-10-05. */
+#define JLIT(j, s) jput((j), "" s, sizeof (s) - 1)
 
 static void jput(jbuf *j, const char *s, size_t n)
 {

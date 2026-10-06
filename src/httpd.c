@@ -504,6 +504,14 @@ static bool consume(conn *c, httpd_handler fn, void *ctx)
 			size_t use;
 
 			if (left <= 0) {
+				/* The body's file closed, and so written out, BEFORE the
+				 * handler is told it is complete: a handler that reads it back
+				 * found it short by whatever was still buffered - all of a
+				 * small one, the last few kilobytes of a large one. Found
+				 * 2026-10-05: a console's whole cover list arrived empty. An
+				 * upload never showed it, because its handler only renames
+				 * the file, and the bytes landed under the new name after. */
+				if (c->r.sink_f) { fclose(c->r.sink_f); c->r.sink_f = NULL; }
 				fn(&c->r, true, ctx);
 				begin_response(c);
 				return true;
