@@ -97,9 +97,34 @@ bool plat_video_init(void)
 		return false;
 	}
 	SDL_ShowCursor(SDL_DISABLE);
-	/* The mali driver makes every window the whole panel; the size asked
-	 * for here is ignored. */
-	win = SDL_CreateWindow("plorpOS", 0, 0, 720, 480, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+	/* TWO PAGES FOR US, THE TOP ONE FOR DIATOM. Diatom grows fb0 to three
+	 * pages and parks a paused game on the top one, trusting a GL launcher
+	 * to double-buffer on the two below (its present_stop). But Mali's fbdev
+	 * winsys takes every page the virtual height offers, fixed when the window
+	 * is made - and diatom starts first, so the launcher triple-buffered over
+	 * the park page and the in-game menu flickered against the game
+	 * (2026-10-06). So the window is made on two pages and the height put
+	 * back; a window keeps the buffers it was made with. */
+	{
+		int fd = open("/dev/fb0", O_RDWR | O_CLOEXEC);
+		struct fb_var_screeninfo v, two;
+
+		if (fd >= 0 && ioctl(fd, FBIOGET_VSCREENINFO, &v) == 0 && v.yres_virtual > 2 * v.yres) {
+			two = v;
+			two.yres_virtual = 2 * v.yres;
+			two.yoffset = 0;
+			if (ioctl(fd, FBIOPUT_VSCREENINFO, &two) == 0) {
+				/* The mali driver makes every window the whole panel. */
+				win = SDL_CreateWindow("plorpOS", 0, 0, 720, 480,
+				                       SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+				v.yoffset = 0;
+				ioctl(fd, FBIOPUT_VSCREENINFO, &v);
+			}
+		}
+		if (fd >= 0) close(fd);
+	}
+	if (!win)
+		win = SDL_CreateWindow("plorpOS", 0, 0, 720, 480, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
 	if (!win) {
 		fprintf(stderr, "window: %s\n", SDL_GetError());
 		return false;
@@ -315,13 +340,21 @@ static void pad_read(in_state *st)
 		set_btn(st, (in_button)(IN_LEFT + i), hat_dir[i]);
 }
 
+/* POWER, and the lid closing as a tap of it: down now, up on the next poll. */
 static void power_read(in_state *st)
 {
+	static bool lid_pulse;
 	struct input_event ev;
 
-	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
-		if (ev.type == EV_KEY && ev.code == KEY_POWER && ev.value != 2)
-			set_btn(st, IN_POWER, ev.value == 1);
+	if (lid_pulse) { set_btn(st, IN_POWER, false); lid_pulse = false; }
+	while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+		if (ev.type != EV_KEY || ev.value == 2) continue;
+		if (ev.code == KEY_POWER) set_btn(st, IN_POWER, ev.value == 1);
+		else if (ev.code == LID_CLOSE_KEY && ev.value == 1) {
+			set_btn(st, IN_POWER, true);
+			lid_pulse = true;
+		}
+	}
 }
 
 void plat_input_poll(in_state *st)
@@ -354,7 +387,7 @@ void plat_leds_off(void) { }
  * Both get set by ear with the jack work (plorpos-7ny.6). */
 #define LINEOUT_CTL   "lineout volume"
 #define VOL_RAW_TOP   31
-#define VOL_RAW_FLOOR 1
+#define VOL_RAW_FLOOR 3
 #define VOL_MAX       PLAT_VOL_MAX
 
 /* The Allwinner disp2 engine, as on the Brick: no /sys/class/backlight. */
@@ -367,7 +400,10 @@ static const unsigned char bright_ladder[] = {
 #define BRIGHT_MAX ((int)(sizeof bright_ladder / sizeof bright_ladder[0]) - 1)
 _Static_assert(BRIGHT_MAX == PLAT_BRIGHT_MAX, "bright_ladder vs PLAT_BRIGHT_MAX");
 
-#define JACK_STATE "/sys/class/extcon/extcon0/state"   /* "HEADPHONE=0|1" */
+/* The jack: the PMIC's speaker state, 0 while a plug is in. extcon0's
+ * HEADPHONE never moves on the SP (both watched while the user replugged,
+ * 2026-10-06). */
+#define JACK_STATE "/sys/class/power_supply/axp2202-battery/spk_state"
 
 int mixer_fd = -1, disp_fd = -1;
 int cur_vol = -1, cur_bright = -1;
@@ -431,7 +467,7 @@ static int jack_present(void)
 	n = pread(jack_fd, s, sizeof s - 1, 0);
 	if (n <= 0) return 0;
 	s[n] = '\0';
-	return strstr(s, "HEADPHONE=1") != NULL;
+	return s[0] == '0';
 }
 
 void apply_volume(int v)
@@ -505,16 +541,70 @@ void plat_settings_init(void)
 				if (abs(bright_ladder[i] - raw) < abs(bright_ladder[b] - raw)) b = i;
 		}
 	}
-	cur_vol    = v >= 0 ? clampi(v, 0, VOL_MAX) : VOL_MAX / 2;
+	/* No saved volume is "unknown" (-1), as on the Brick: the codec keeps
+	 * what it has and nothing is sent to diatom. Defaulting it to the middle
+	 * put every game back at 50% when its menu closed (2026-10-06). */
+	cur_vol    = v >= 0 ? clampi(v, 0, VOL_MAX) : -1;
 	cur_bright = b >= 0 ? clampi(b, 0, BRIGHT_MAX) : BRIGHT_MAX / 2;
-	apply_volume(cur_vol);
+	if (cur_vol >= 0) apply_volume(cur_vol);
 	apply_brightness(cur_bright);
 }
 
-/* ---- sleep: plorpos-7ny.6 ---- */
+/* ---- sleep -----------------------------------------------------------
+ *
+ * Suspend-to-RAM as BaseOS documents it for a frontend (its docs/05): write
+ * "mem" to /sys/power/state, which blocks until the device wakes. On the SP,
+ * Super Standby (os_sleep = 16, which BaseOS also sets at boot) stops the USB
+ * host side and leaves POWER as the wake key - opening the lid alone does not
+ * wake it. ALSA's mixer is BaseOS's to save and restore.
+ *
+ * Reached only from platform.c's light sleep, after the Suspend Timeout,
+ * which treats false as "no suspend here" and powers off - so false is kept
+ * for a kernel that truly cannot, not for a write that was merely refused. */
+#define POWER_STATE "/sys/power/state"
+#define OS_SLEEP    "/sys/class/power_supply/axp2202-battery/os_sleep"
 
-bool plat_sleep_supported(void) { return false; }
-bool plat_sleep(void) { return false; }
+bool plat_sleep_supported(void)
+{
+	char st[64] = "";
+	int fd = open(POWER_STATE, O_RDONLY | O_CLOEXEC);
+	ssize_t n = fd >= 0 ? read(fd, st, sizeof st - 1) : -1;
+
+	if (fd >= 0) close(fd);
+	if (n > 0) st[n] = '\0';
+	return strstr(st, "mem") != NULL && access(POWER_STATE, W_OK) == 0;
+}
+
+bool plat_sleep(void)
+{
+	int tries;
+
+	if (!plat_sleep_supported()) return false;
+	{
+		int fd = open(OS_SLEEP, O_WRONLY | O_CLOEXEC);   /* SP only */
+		if (fd >= 0) {
+			if (write(fd, "16", 2) < 0) { /* BaseOS set it at boot anyway */ }
+			close(fd);
+		}
+	}
+	sync();
+	/* A pending wake source makes the kernel refuse with EBUSY rather than
+	 * sleep; a few tries a second apart get past a stray one. POWER pressed
+	 * meanwhile is the player waking it, which is what a resume gives. */
+	for (tries = 0; tries < 5; tries++) {
+		int fd = open(POWER_STATE, O_WRONLY | O_CLOEXEC);
+		ssize_t n = fd >= 0 ? write(fd, "mem", 3) : -1;
+
+		if (fd >= 0) close(fd);
+		if (n == 3) {
+			fprintf(stderr, "sleep: resumed\n");
+			return true;
+		}
+		fprintf(stderr, "sleep: suspend refused: %s\n", strerror(errno));
+		if (power_key_within(1000, 1)) return true;
+	}
+	return false;
+}
 
 /* ---- battery ---- */
 

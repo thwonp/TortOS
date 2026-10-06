@@ -483,9 +483,21 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 			if (ev.type == EV_KEY && d && ev.value == 1)
 				level_nudge(levels_alt(), d);
 		}
-		while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+#if defined(PLATFORM_H700)
+		bool lid_tap = false;
+#endif
+		while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 			if (ev.type == EV_KEY && ev.code == KEY_POWER)
 				pwr_down = ev.value != 0;
+#if defined(PLATFORM_H700)
+			if (ev.type == EV_KEY && ev.code == LID_CLOSE_KEY && ev.value == 1)
+				lid_tap = true;
+#endif
+		}
+#if defined(PLATFORM_H700)
+		/* A closed lid is a POWER tap: down, and up on the call below. */
+		if (lid_tap && !term_at && !pwr_down) plat_power_tap_or_hold(true);
+#endif
 		if (!term_at) {
 			pwr_action pa = plat_power_tap_or_hold(pwr_down);
 
@@ -1403,6 +1415,14 @@ int plat_resident_wait(void)
 	screen_yield(true);
 	r = diatom_wait();
 	screen_yield(false);
+#if defined(PLATFORM_H700)
+	/* A pause hands the input back too, and with it the level: take the
+	 * game's now, not at EXIT. Otherwise the jack poll below re-applies this
+	 * side's older level the moment the menu opens, and the game resumes at
+	 * it - every in-game menu "reset" the volume (2026-10-06). The Brick has
+	 * the same order; plorpos-7ny bead to check it there. */
+	if (r == RES_PAUSED) d_apply_levels();
+#endif
 
 	/* Input ownership just came back to this process, so anything remembered
 	 * about the jack was formed while something else was driving.
@@ -1466,6 +1486,10 @@ bool power_key_within(int ms, int value)
 	while (read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
 		if (ev.type == EV_KEY && ev.code == KEY_POWER && ev.value == value)
 			hit = true;
+#if defined(PLATFORM_H700)
+		else if (ev.type == EV_KEY && ev.code == LID_OPEN_KEY && ev.value == value)
+			hit = true;
+#endif
 	return hit;
 }
 #endif

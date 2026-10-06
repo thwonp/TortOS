@@ -44,6 +44,14 @@ void screen_yield(bool to_game);
 bool battery_read(const char *dir, int *pct, bool *charging);
 /* Up to ms for a POWER press (1) or release (0) on fd_power; platform.c. */
 bool power_key_within(int ms, int value);
+#if defined(PLATFORM_H700)
+/* The RG SP's lid, on the PMIC's input node beside POWER: closing presses
+ * KEY_INSERT, opening KEY_DELETE, each held about a second (measured
+ * 2026-10-06). Closing is a POWER tap; opening wakes a light sleep - a deep
+ * one only POWER can end, BaseOS's Super Standby leaves the lid out. */
+#define LID_CLOSE_KEY 110
+#define LID_OPEN_KEY  111
+#endif
 /* The node Menu arrives on and its key code, for plat_run's on_menu;
  * device file. -1 when the device does not offer it there. */
 int  menu_key(int *code);
