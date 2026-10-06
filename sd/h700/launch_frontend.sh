@@ -24,18 +24,26 @@ mkdir -p "$LOGS" "$SD/Bios" "$SD/Saves" "$SD/Roms" "$SD/.userdata/shared"
 : > "$LOG"
 echo "plorpOS on $BASEOS_MODEL, BaseOS $BASEOS_VERSION, uptime $(cut -d' ' -f1 /proc/uptime)" >> "$LOG"
 
-# DEVELOPMENT ONLY, until the launcher joins Wi-Fi itself (plorpos-7ny.5): the
-# spike's bring-up from System/wpa_supplicant.conf, in the background so the
-# launcher does not wait for the radio, which can take until ~7 s uptime.
-WPA_CONF=$SD/System/wpa_supplicant.conf
-if [ -f "$WPA_CONF" ]; then
+# Wi-Fi as the player left it (boot.env, which the launcher writes on every
+# change): join the saved networks in the background, so the shelf never waits
+# for a radio that can take until ~7 s uptime. The lease is asked for only once
+# the link is up - asked earlier, udhcpc burns its tries on a dead link. The
+# launcher does the same from then on (src/wifi.c).
+WIFI=0
+[ -f "$TORTOS_USERDATA/boot.env" ] && . "$TORTOS_USERDATA/boot.env"
+WPA_CONF=$TORTOS_USERDATA/wpa_supplicant.conf
+if [ "$WIFI" = 1 ] && [ -f "$WPA_CONF" ]; then
 	(
 		i=0
 		while [ ! -e /sys/class/net/wlan0 ] && [ $i -lt 25 ]; do sleep 1; i=$((i + 1)); done
-		ip link set wlan0 up
-		wpa_supplicant -B -D nl80211,wext -i wlan0 -C /run/wpa_supplicant -c "$WPA_CONF" &&
-			udhcpc -b -t 10 -T 2 -i wlan0 > /dev/null 2>&1
-	) >> "$LOG" 2>&1 &
+		wpa_supplicant -B -D nl80211,wext -i wlan0 -C /run/wpa_supplicant -c "$WPA_CONF" || exit
+		i=0
+		until wpa_cli -p /run/wpa_supplicant -i wlan0 status 2> /dev/null | grep -q '^wpa_state=COMPLETED'; do
+			[ $i -ge 20 ] && exit
+			sleep 1; i=$((i + 1))
+		done
+		udhcpc -i wlan0 -S -t 5 -T 7 -b -q
+	) > /dev/null 2>&1 &
 fi
 
 export TORTOS_DIATOM_SOCKET=/tmp/diatom.sock
