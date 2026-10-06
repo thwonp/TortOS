@@ -188,8 +188,47 @@ bool plat_video_init_over_child(void)
 	return true;
 }
 
+/* Mali transaction elimination: the GPU skips writing a 16x16 tile whose
+ * content matches what THIS process last wrote to that buffer. Diatom draws
+ * into the same fb0 pages while a game runs, so a launcher frame after a
+ * handback kept the game in every tile it drew unchanged - the in-game menu's
+ * plain panel after a launch from Muse, or a whole menu in the buffer Continue
+ * left it in (plorpos-7ny.31, 2026-10-06). One near-black pixel per tile on
+ * the first frames after a handback makes every tile differ; the next frame
+ * into each buffer writes them all. Three frames: the window was measured
+ * cycling all three pages. Diatom's gl_te_mark is the same cure, its side. */
+static int te_mark;   /* frames still to mark */
+
+static void te_mark_draw(SDL_Renderer *r)
+{
+	static SDL_Point pt[(720 / 16) * (480 / 16)];
+	SDL_BlendMode bm;
+	Uint8 cr, cg, cb, ca;
+	float sx, sy;
+	int w = 0, h = 0, n = 0, x, y;
+
+	if (SDL_GetRendererOutputSize(r, &w, &h) != 0) return;
+	for (y = 0; y < h && y < 480; y += 16)
+		for (x = 0; x < w && x < 720; x += 16)
+			pt[n++] = (SDL_Point){ x, y };
+	SDL_GetRenderDrawBlendMode(r, &bm);
+	SDL_GetRenderDrawColor(r, &cr, &cg, &cb, &ca);
+	SDL_RenderGetScale(r, &sx, &sy);
+	SDL_RenderSetScale(r, 1.0f, 1.0f);
+	SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
+	SDL_SetRenderDrawColor(r, 0, 0, 1, 255);
+	SDL_RenderDrawPoints(r, pt, n);
+	SDL_SetRenderDrawColor(r, cr, cg, cb, ca);
+	SDL_SetRenderDrawBlendMode(r, bm);
+	SDL_RenderSetScale(r, sx, sy);
+}
+
 void plat_present(SDL_Renderer *r)
 {
+	if (te_mark > 0 && r == ren && !ov_surf) {
+		te_mark--;
+		te_mark_draw(r);
+	}
 	SDL_RenderPresent(r);
 	if (ov_surf && r == ren) {
 		struct fb_var_screeninfo v;
@@ -219,8 +258,9 @@ void plat_video_quit(void)
 	if (!overlay) SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
-/* One display, no compositor: whoever presents last is on glass. */
-void screen_yield(bool to_game) { (void)to_game; }
+/* One display, no compositor: whoever presents last is on glass. Handed
+ * back, the next frames are marked (te_mark). */
+void screen_yield(bool to_game) { if (!to_game) te_mark = 3; }
 
 /* ---- input: raw evdev, no SDL joystick --------------------------------- */
 
