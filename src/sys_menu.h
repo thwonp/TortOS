@@ -38,7 +38,11 @@
  * on the Wi-Fi Services screen with the other things that need the network. */
 typedef enum {
 	PM_STATS,
-	PM_WIFI, PM_BT, PM_AUDIO,
+	PM_WIFI,
+#if !defined(PLATFORM_H700)   /* Bluetooth is the H700's v2 (plorpos-7ny) */
+	PM_BT,
+#endif
+	PM_AUDIO,
 	PM_SYSTEM, PM_UI, PM_SCRAPING,
 	PM_CONTROLS, PM_ABOUT, PM_ROWS
 } pm_row;

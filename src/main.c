@@ -7371,7 +7371,9 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 	case PM_SYSTEM:       system_settings_screen(a); break;
 	case PM_UI:           ui_settings_screen(a); break;
 	case PM_SCRAPING:     scraping_screen(a); break;
+#if !defined(PLATFORM_H700)
 	case PM_BT:           bt_screen(a); break;
+#endif
 	case PM_STATS:        if (stats_screen(a)) return MENU_DONE; break;
 	case PM_CONTROLS:     controls_screen(a); break;
 	case PM_ABOUT:        about_screen(a); break;
@@ -7745,7 +7747,11 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 	 * game was playing at (plorpos-gkd.64). */
 	u.dmode  = DMODES[owner_view(a)->dmode].label;
 	u.shader  = a->shaders.e[owner_view(a)->shader].name;
+#if defined(PLATFORM_H700)
+	u.shaders = false;   /* diatom's h700 port declines them (plorpos-7ny.11) */
+#else
 	u.shaders = a->shaders.count > 1;
+#endif
 	{
 		sysview *sv = &a->view[a->sys_cursor];
 		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
