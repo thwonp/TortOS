@@ -222,24 +222,32 @@ bool wifi_up(void)
 	return false;
 }
 
-void wifi_down(void)
-{
 #if defined(PLATFORM_H700)
-	/* The daemon goes, and the lease with it: an address left on a dead
-	 * link would read as connected to everything that checks one. And the
-	 * lease is forgotten as asked for: wifi_status re-arms only on a state it
-	 * can read, and with no daemon it reads none - so the next association
-	 * after an off/on never asked for an address (measured 2026-10-06). */
-	char out[64];
-
-	g_dhcp_asked = false;
+/* An address left on a dead link would read as connected to everything that
+ * checks one - wifi_status included, the moment any network associates. */
+static void lease_drop(void)
+{
 	char *kill_dhcp[] = { (char *)"/bin/killall", (char *)"udhcpc", NULL };
 	char *flush[] = { (char *)"/sbin/ip", (char *)"addr", (char *)"flush",
 	                  (char *)"dev", (char *)WLAN, NULL };
 
-	wpa(out, sizeof out, "terminate", NULL, NULL, NULL);
 	run(kill_dhcp, NULL, 0);
 	run(flush, NULL, 0);
+}
+#endif
+
+void wifi_down(void)
+{
+#if defined(PLATFORM_H700)
+	/* The daemon goes, and the lease with it (lease_drop). And the lease is
+	 * forgotten as asked for: wifi_status re-arms only on a state it can
+	 * read, and with no daemon it reads none - so the next association after
+	 * an off/on never asked for an address (measured 2026-10-06). */
+	char out[64];
+
+	g_dhcp_asked = false;
+	wpa(out, sizeof out, "terminate", NULL, NULL, NULL);
+	lease_drop();
 #else
 	char *argv[] = { (char *)"/etc/init.d/wpa_supplicant",
 	                 (char *)"stop", NULL };
@@ -619,6 +627,11 @@ bool wifi_forget(const char *ssid)
 	char out[4096];
 	char *line, *save;
 	bool hit = false;
+#if defined(PLATFORM_H700)
+	char cur[64];
+
+	wifi_status(cur, sizeof cur, NULL, 0);
+#endif
 
 	if (wpa(out, sizeof out, "list_networks", NULL, NULL, NULL) != 0) return false;
 	for (line = strtok_r(out, "\n", &save); line;
@@ -636,6 +649,12 @@ bool wifi_forget(const char *ssid)
 	if (hit) {
 		char tmp[128];
 		wpa(tmp, sizeof tmp, "save_config", NULL, NULL, NULL);
+#if defined(PLATFORM_H700)
+		/* The network in use: its lease stayed on wlan0, and another saved
+		 * network rejoining read as connected on the old address, never
+		 * asking for its own (plorpos-7ny.5, 2026-10-06). */
+		if (!strcmp(cur, ssid)) lease_drop();
+#endif
 	}
 	return hit;
 }
