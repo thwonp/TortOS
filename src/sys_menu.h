@@ -47,7 +47,7 @@ typedef enum {
  * the side switch where there is one. */
 typedef enum {
 	ST_AUTO_OFF, ST_SLEEP, ST_SUSPEND, ST_BATTPCT,
-#if !defined(PLATFORM_GKD)   /* no switch: Muse Settings' Sleep Button Lock (gkd.34) */
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)   /* no switch: Muse Settings' Sleep Button Lock (gkd.34) */
 	ST_MUTESW,
 #endif
 	ST_ROWS

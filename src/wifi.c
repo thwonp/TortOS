@@ -26,7 +26,9 @@
 
 #include "wifi.h"
 
-#if defined(__linux__)
+/* The H700 takes the host stubs until its wpa_supplicant backend
+ * (plorpos-7ny.5); BaseOS keeps the TrimUI's paths nowhere. */
+#if defined(__linux__) && !defined(PLATFORM_H700)
 
 #include <fcntl.h>
 #include <sys/wait.h>

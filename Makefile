@@ -30,6 +30,8 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
 
 ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl
+else ifeq ($(PLATFORM),h700)
+all: build/h700/tortos.elf
 else
 all: build/tortos.elf
 endif
@@ -67,7 +69,7 @@ VERSION ?= 1.4
 # One stamp per build directory (plorpos-gkd.85.4): with one shared stamp, a
 # Brick build at the new VERSION left the GKD's elf at the old one, and the
 # GKD build never passed -B at all - a 1.01 GKD zip would have said 1.0.
-VBUILD := $(if $(filter gkd,$(PLATFORM)),build/gkd,build)
+VBUILD := $(if $(filter gkd h700,$(PLATFORM)),build/$(PLATFORM),build)
 ifneq ($(VERSION),$(shell cat $(VBUILD)/version 2>/dev/null))
 $(shell mkdir -p $(VBUILD) && rm -f $(VBUILD)/tortos.elf && echo '$(VERSION)' > $(VBUILD)/version)
 VERSION_CHANGED := -B
@@ -91,8 +93,9 @@ build/ss_creds.h: FORCE
 
 # Each device's sources: everything but the other device's file, so that editing
 # platform_gkd.c does not make the Brick build look stale (and the reverse).
-SRC_BRICK := $(filter-out src/platform_gkd.c,$(wildcard src/*.c))
-SRC_GKD   := $(filter-out src/platform_brick.c,$(wildcard src/*.c))
+SRC_BRICK := $(filter-out src/platform_gkd.c src/platform_h700.c,$(wildcard src/*.c))
+SRC_GKD   := $(filter-out src/platform_brick.c src/platform_h700.c,$(wildcard src/*.c))
+SRC_H700  := $(filter-out src/platform_brick.c src/platform_gkd.c,$(wildcard src/*.c))
 # And the vendored code both link (mk/third_party.mk), so a change there rebuilds.
 THIRD_PARTY := mk/third_party.mk $(shell find third_party -name '*.[ch]')
 
@@ -187,6 +190,28 @@ build/gkd/tortos.elf build/gkd/muse build/gkd/musectl &: \
 	done
 	@[ tools/musectl.c -nt build/gkd/musectl ] && { \
 		echo "STALE: build/gkd/musectl is older than tools/musectl.c" >&2; exit 1; } || true
+
+# The H700 on BaseOS (plorpos-7ny): the launcher alone, against the SDL2 that
+# mk/fetch-h700-sysroot.sh builds - no device needed. No Muse yet: BaseOS has
+# no FFmpeg (plorpos-7ny.10).
+build/h700/ss_creds.h: FORCE
+	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/h700 creds
+
+build/h700/tortos.elf: $(SRC_H700) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) build/h700/ss_creds.h
+	@docker image inspect $(IMAGE) > /dev/null 2>&1 || { \
+		echo "toolchain image missing; run: make toolchain" >&2; exit 1; }
+	@[ -d sysroot-h700/usr/include/SDL2 ] || { \
+		echo "no H700 sysroot; run: mk/fetch-h700-sysroot.sh" >&2; exit 1; }
+	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work -w /work $(IMAGE) \
+		make $(VERSION_CHANGED) -f mk/cross.mk PLATFORM=h700 BUILD=build/h700 SYSROOT=/work/sysroot-h700 \
+		VERSION=$(VERSION) creds build/h700/tortos.elf
+	@for src in $(SRC_H700) $(wildcard src/*.h) mk/cross.mk build/h700/ss_creds.h; do \
+		if [ "$$src" -nt build/h700/tortos.elf ]; then \
+			echo "STALE: build/h700/tortos.elf is older than $$src" >&2; \
+			echo "  the container did not rebuild. rm build/h700/tortos.elf and try again." >&2; \
+			exit 1; \
+		fi; \
+	done
 
 # The check binaries are rebuilt every time, deliberately.
 #

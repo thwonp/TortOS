@@ -181,7 +181,7 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	/* TortOS-ib9: what the side switch does. Button Lock is an iPod's hold
 	 * switch, and only while music plays with the screen off - music_dark.
 	 * "muse" in the value says so (TortOS-mhw). */
-#if !defined(PLATFORM_GKD)
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)   /* no switch on the H700s */
 	out[ST_MUTESW]   = (menu_row){ "Mute Switch",
 	                               u->mute_lock ? "muse button lock" : "mute", true };
 #endif

@@ -4,7 +4,7 @@
 BUILD := build
 # One device file per build: src/platform_brick.c or src/platform_gkd.c, never
 # both - they define the same functions. The Makefile passes PLATFORM and, for
-# the GKD, BUILD=build/gkd.
+# the GKD, BUILD=build/gkd (and the H700, build/h700).
 PLATFORM ?= brick
 SRC := $(filter-out src/platform_%.c,$(wildcard src/*.c)) src/platform_$(PLATFORM).c
 CC ?= aarch64-linux-gnu-gcc
@@ -16,6 +16,11 @@ ifeq ($(PLATFORM),gkd)
 # The one use outside the device files: bt.c, wifi.c and btvol.c keep their
 # host stubs on the GKD until it has radio code of its own (gkd.9, gkd.10).
 CFLAGS += -DPLATFORM_GKD
+endif
+ifeq ($(PLATFORM),h700)
+# Anbernic H700 on BaseOS (plorpos-7ny), NOT "on ROCKNIX": bt.c, btvol.c and
+# wifi.c keep their host stubs until it has radio code of its own (.5, v2).
+CFLAGS += -DPLATFORM_H700
 endif
 # --allow-shlib-undefined: the device's SDL2_ttf pulls FT_* out of freetype,
 # and SDL2/SDL2_image reach for more of the firmware besides. Those resolve on

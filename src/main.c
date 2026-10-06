@@ -7133,7 +7133,7 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 	}
 	/* Mute Switch: a toggle, so A flips it as well as left/right
 	 * (TortOS-ib9). */
-#if !defined(PLATFORM_GKD)
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
 	if (sel == ST_MUTESW && (d || key == IN_ACCEPT)) {
 		bool lock = db_get_int(db_dev(), "muteswitch", 0) != 1;
 

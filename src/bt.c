@@ -221,8 +221,9 @@ int bt_sweep_cache(const char *root)
 }
 
 /* The TrimUI radio. The GKD has Bluetooth too (hci0 exists there), but not
- * these scripts, so it takes the host stubs until gkd.9 gives it its own. */
-#if defined(__linux__)
+ * these scripts, so it takes the host stubs until gkd.9 gives it its own.
+ * The H700 takes them too: its Bluetooth is v2 (plorpos-7ny). */
+#if defined(__linux__) && !defined(PLATFORM_H700)
 
 #include <dirent.h>
 #include <fcntl.h>
