@@ -32,8 +32,9 @@ Volume and brightness are TortOS's own code against the device's ALSA control
 and display-engine interfaces, and the toolchain is a stock Debian
 cross-compiler pinned by digest (`mk/toolchain.Dockerfile`).
 
-The SDL2 libraries TortOS links against are the device's own, in
-`/usr/trimui/lib`, and are not redistributed on the card.
+On the TrimUI devices the SDL2 libraries TortOS links against are the device's
+own, in `/usr/trimui/lib`, and are not redistributed on the card. The H700 card
+carries its own; see Runtime libraries.
 
 ---
 
@@ -76,6 +77,29 @@ launcher needs those plus `libSDL2`, `libSDL2_image` and `libSDL2_ttf` - every
 one of which ships in the device's own firmware. The eight compression and
 codec libraries TortOS once carried were a previous emulator's dependencies and
 left with it.
+
+### Anbernic H700 on BaseOS (`TortOS/lib/` on the H700 card only)
+
+BaseOS has no aarch64 SDL2 and no FFmpeg, so the H700 card carries both,
+built from upstream source by `mk/fetch-h700-sysroot.sh` (tarball URLs and
+SHA-256 pins are in the script, as is every configure option):
+
+| Library | Version | License |
+|---|---|---|
+| SDL2 (`libSDL2-2.0.so.0`) | 2.30.8 + `mk/patches/sdl2-h700.patch` | zlib (the patch too) |
+| SDL2_image (`libSDL2_image-2.0.so.0`) | 2.6.3, stb_image backend | zlib; stb_image public domain / MIT |
+| SDL2_ttf (`libSDL2_ttf-2.0.so.0`) | 2.20.2, vendored FreeType | zlib; FreeType under the FreeType License (FTL) |
+| FFmpeg (`libavformat.so.60`, `libavcodec.so.60`, `libavfilter.so.9`, `libswresample.so.4`, `libavutil.so.58`) | 6.1, unmodified | LGPL 2.1 or later |
+
+FFmpeg is built LGPL-only - no `--enable-gpl`, no `--enable-nonfree`, and the
+build fails unless configure reports "License: LGPL version 2.1 or later" -
+with only the demuxers, decoders, parsers and filters Muse uses. It is linked
+dynamically, so any of the five libraries can be replaced with another build
+of the same sonames. The corresponding source is the unmodified release
+tarball, https://ffmpeg.org/releases/ffmpeg-6.1.tar.gz (SHA-256
+`938dd778baa04d353163ca5cb06c909c918850055f549205b29b1224e45a5316`), and the
+script above rebuilds the shipped libraries from it. The LGPL's text ships on
+the card beside them as `TortOS/lib/COPYING.LGPLv2.1`.
 
 ---
 

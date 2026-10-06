@@ -5,11 +5,12 @@
 #   mk/h700-deploy.sh elf       the launcher; the launch loop restarts it
 #   mk/h700-deploy.sh diatom    the resident emulator (../diatom, PORT=h700,
 #                               or DIATOM_ELF); restarted with the launcher
-#   mk/h700-deploy.sh all       launcher, SDL2 libraries, launch script,
-#                               Splore's wget shim and diatom; the frontend session restarts to run it
+#   mk/h700-deploy.sh muse      Muse and musectl, with the FFmpeg libraries
+#   mk/h700-deploy.sh all       launcher, SDL2 and FFmpeg libraries, launch
+#                               script, Splore's wget shim, Muse and diatom; the frontend session restarts to run it
 #
 # The first `all` on a card that ran plorpOS under ROCKNIX moves that build's
-# tortos.elf and diatom to TortOS/.rocknix/ - they cannot run on BaseOS, and
+# tortos.elf, diatom, muse and musectl to TortOS/.rocknix/ - they cannot run on BaseOS, and
 # moving rather than deleting keeps the way back.
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -22,13 +23,16 @@ DIATOM=${DIATOM_ELF:-$ROOT/../diatom/build/h700/diatom}
 
 adb get-state > /dev/null 2>&1 || { echo "no device over adb" >&2; exit 1; }
 [ -f "$ELF" ] || { echo "no $ELF; run: make PLATFORM=h700" >&2; exit 1; }
+case $MODE in muse|all)
+	[ -f "$ROOT/build/h700/muse" ] || { echo "no build/h700/muse; run: make PLATFORM=h700" >&2; exit 1; } ;;
+esac
 case $MODE in diatom|all)
 	[ -f "$DIATOM" ] || { echo "no diatom at $DIATOM (set DIATOM_ELF)" >&2; exit 1; } ;;
 esac
 
 if [ "$MODE" = all ]; then
 	adb shell "cd $CARD/TortOS && [ -d .rocknix ] || { mkdir .rocknix &&
-		for f in tortos.elf diatom; do [ -f \$f ] && mv \$f .rocknix/; done; true; }"
+		for f in tortos.elf diatom muse musectl; do [ -f \$f ] && mv \$f .rocknix/; done; true; }"
 	adb shell "mkdir -p $CARD/TortOS/lib $CARD/System"
 	for l in libSDL2-2.0.so.0 libSDL2_image-2.0.so.0 libSDL2_ttf-2.0.so.0; do
 		adb push "$(readlink -f "$LIB/$l")" "$CARD/TortOS/lib/$l" > /dev/null
@@ -38,6 +42,19 @@ if [ "$MODE" = all ]; then
 	adb push "$ROOT/sd/tortos/pico8/wget" "$CARD/TortOS/pico8/wget" > /dev/null
 	adb shell "chmod +x $CARD/TortOS/pico8/wget"
 fi
+case $MODE in muse|all)
+	adb shell "mkdir -p $CARD/TortOS/lib"
+	for l in libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do
+		adb push "$(readlink -f "$LIB/$l")" "$CARD/TortOS/lib/$l" > /dev/null
+	done
+	adb push "$LIB/COPYING.LGPLv2.1" "$CARD/TortOS/lib/" > /dev/null
+	for f in muse musectl; do
+		adb push "$ROOT/build/h700/$f" "$CARD/TortOS/$f.new" > /dev/null
+		adb shell "chmod +x $CARD/TortOS/$f.new && mv -f $CARD/TortOS/$f.new $CARD/TortOS/$f"
+	done
+	echo "deployed muse $(md5sum "$ROOT/build/h700/muse" | cut -c1-8)" ;;
+esac
+[ "$MODE" = muse ] && { adb shell 'killall muse 2>/dev/null; true'; echo "muse restarted on the launcher's next ask"; exit 0; }
 case $MODE in diatom|all)
 	adb push "$DIATOM" "$CARD/TortOS/diatom.new" > /dev/null
 	adb shell "chmod +x $CARD/TortOS/diatom.new && mv -f $CARD/TortOS/diatom.new $CARD/TortOS/diatom"

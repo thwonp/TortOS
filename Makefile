@@ -31,7 +31,7 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
 ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl
 else ifeq ($(PLATFORM),h700)
-all: build/h700/tortos.elf
+all: build/h700/tortos.elf build/h700/muse build/h700/musectl
 else
 all: build/tortos.elf
 endif
@@ -192,8 +192,8 @@ build/gkd/tortos.elf build/gkd/muse build/gkd/musectl &: \
 		echo "STALE: build/gkd/musectl is older than tools/musectl.c" >&2; exit 1; } || true
 
 # The H700 on BaseOS (plorpos-7ny): the launcher alone, against the SDL2 that
-# mk/fetch-h700-sysroot.sh builds - no device needed. No Muse yet: BaseOS has
-# no FFmpeg (plorpos-7ny.10).
+# mk/fetch-h700-sysroot.sh builds - no device needed. Muse links the FFmpeg
+# that script builds too, BaseOS having none (plorpos-7ny.10).
 build/h700/ss_creds.h: FORCE
 	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/h700 creds
 
@@ -212,6 +212,14 @@ build/h700/tortos.elf: $(SRC_H700) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY
 			exit 1; \
 		fi; \
 	done
+
+build/h700/muse build/h700/musectl &: $(wildcard src/muse/*.c) $(wildcard src/muse/*.h) \
+                                      tools/musectl.c mk/cross.mk
+	@[ -f sysroot-h700/usr/include/libavcodec/avcodec.h ] || { \
+		echo "no FFmpeg in the H700 sysroot; run: mk/fetch-h700-sysroot.sh" >&2; exit 1; }
+	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
+		make -f mk/cross.mk PLATFORM=h700 BUILD=build/h700 SYSROOT=/work/sysroot-h700 \
+		build/h700/muse build/h700/musectl
 
 # The check binaries are rebuilt every time, deliberately.
 #
