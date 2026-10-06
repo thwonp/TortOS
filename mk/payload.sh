@@ -81,6 +81,8 @@ elif [ "$PLATFORM" = h700 ]; then
 	cp "$B/musectl" "$P/"
 	mkdir -p "$OUT/System" "$P/lib" "$P/pico8"
 	cp "$ROOT/sd/h700/launch_frontend.sh" "$OUT/System/"
+	cp "$ROOT/sd/h700/radio.sh" "$P/"     # Bluetooth: sourced by launch_frontend.sh AND by plat_sleep()
+	cp "$ROOT/sd/tortos/bt-alsa.sh" "$P/" # one ALSA PCM per bonded headset, as on the Brick
 	cp "$ROOT/sd/tortos/pico8/wget" "$P/pico8/"  # Splore's downloads over HTTPS (the shim says why)
 	# By soname, as the binaries ask for them; FFmpeg's LGPL text beside it
 	# (THIRD-PARTY-LICENSES.md).

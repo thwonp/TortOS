@@ -38,6 +38,8 @@ if [ "$MODE" = all ]; then
 		adb push "$(readlink -f "$LIB/$l")" "$CARD/TortOS/lib/$l" > /dev/null
 	done
 	adb push "$ROOT/sd/h700/launch_frontend.sh" "$CARD/System/launch_frontend.sh" > /dev/null
+	adb push "$ROOT/sd/h700/radio.sh" "$CARD/TortOS/radio.sh" > /dev/null
+	adb push "$ROOT/sd/tortos/bt-alsa.sh" "$CARD/TortOS/bt-alsa.sh" > /dev/null
 	adb shell "mkdir -p $CARD/TortOS/pico8"
 	adb push "$ROOT/sd/tortos/pico8/wget" "$CARD/TortOS/pico8/wget" > /dev/null
 	adb shell "chmod +x $CARD/TortOS/pico8/wget"

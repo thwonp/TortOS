@@ -19,6 +19,19 @@ export HOME=$TORTOS_USERDATA
 export LD_LIBRARY_PATH=$DIR/lib
 LOGS=$TORTOS_USERDATA/logs
 LOG=$LOGS/tortos.log
+# For radio.sh and bt-alsa.sh, here and in plat_sleep()'s shell, which sees
+# only the launcher's environment. Bonds live where BaseOS's bluetoothd keeps
+# them (/var/lib/bluetooth -> /data/bluetooth); bt-alsa.sh's guess would miss.
+export TORTOS_DIR=$DIR USERDATA_PATH=$TORTOS_USERDATA LOGS_PATH=$LOGS
+export TORTOS_BT_BONDS=/var/lib/bluetooth
+# .asoundrc as a top-level config file, so a headset paired after Diatom or
+# Muse opened ALSA is found at their next open (the Brick's launch.sh says
+# how that was measured). alsa.conf still loads BaseOS's own asound.conf.
+export ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf:$HOME/.asoundrc
+# Into the log, without the bluealsa ALSA plugin's debug lines: BaseOS ships
+# a debug build, ~20 `[pid] D: ...` lines on every open and close of a
+# headset. awk with fflush so the rest still lands line by line.
+logf() { awk '!/^\[[0-9]+\] D: /{ print; fflush() }' >> "$LOG"; }
 mkdir -p "$LOGS" "$SD/Bios" "$SD/Saves" "$SD/Roms" "$SD/.userdata/shared"
 [ -f "$LOG" ] && mv -f "$LOG" "$LOG.1"
 : > "$LOG"
@@ -46,6 +59,11 @@ if [ "$WIFI" = 1 ] && [ -f "$WPA_CONF" ]; then
 	) > /dev/null 2>&1 &
 fi
 
+# Bluetooth as the player left it, off unless asked for (battery), in the
+# background: the attach and bluetoothd take seconds. radio.sh says the rest.
+[ -f "$DIR/radio.sh" ] && . "$DIR/radio.sh"
+[ "$BLUETOOTH" = 1 ] && bt_on > /dev/null 2>&1 &
+
 export TORTOS_DIATOM_SOCKET=/tmp/diatom.sock
 start_resident() {
 	pidof diatom > /dev/null && return
@@ -57,16 +75,19 @@ start_resident() {
 	# 1615 (plorpos-7ny.8). Idle only yields while someone else reads; in a
 	# game the launcher reads nothing.
 	ionice -c 3 "$DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" --cores "$DIR/cores" \
-		--save "$SD/Saves" --system "$SD/Bios" >> "$LOG" 2>&1 &
+		--save "$SD/Saves" --system "$SD/Bios" 2>&1 | logf &
 }
 
 rm -f /tmp/tortos_poweroff
 cd "$DIR" || { echo "no $DIR" >> "$LOG"; while :; do sleep 3600; done; }
 FAILS=0
+# One PCM per bonded headset, BEFORE the first start_resident: alsa-lib reads
+# its config at the first open.
+bt_write_asoundrc
 while :; do
 	start_resident
 	START=$(cut -d. -f1 /proc/uptime)
-	./tortos.elf >> "$LOG" 2>&1
+	./tortos.elf 2>&1 | logf
 	if [ -f /tmp/tortos_poweroff ]; then
 		sync
 		exec poweroff        # BaseOS's: the PMIC's own power-off
