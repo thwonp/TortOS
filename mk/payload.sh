@@ -10,6 +10,11 @@
 # copy_to_sd/ (TortOS/ and the card's empty Roms/, Music/, Audiobooks/, Bios/,
 # Saves/) for the card and system.d/ for the GKD's storage - and that guide as
 # INSTALL.md. No boot hook: ROCKNIX owns the GKD's boot.
+#
+# H700 (PLATFORM=h700): out/h700/, the TF2 card's root as docs/install-h700.md
+# describes it - System/launch_frontend.sh (BaseOS's frontend hook), TortOS/
+# with the SDL2 and FFmpeg libraries BaseOS lacks in TortOS/lib/, and the empty
+# folders - plus that guide as INSTALL.md. BaseOS itself is the user's, on TF1.
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 PLATFORM=${PLATFORM:-brick}
@@ -19,6 +24,11 @@ if [ "$PLATFORM" = gkd ]; then
 	OUT=$ROOT/out/gkd
 	CARD=$OUT/copy_to_sd
 	ZIP=$ROOT/out/plorpOS-gkd-v$VERSION.zip
+elif [ "$PLATFORM" = h700 ]; then
+	B=$ROOT/build/h700
+	OUT=$ROOT/out/h700
+	CARD=$OUT
+	ZIP=$ROOT/out/plorpOS-h700-v$VERSION.zip
 else
 	B=$ROOT/build
 	OUT=$ROOT/out/sd
@@ -67,6 +77,21 @@ if [ "$PLATFORM" = gkd ]; then
 	mkdir -p "$CARD/Roms/Pico-8"
 	touch "$CARD/Roms/Pico-8/.disable_splore"
 	cp "$ROOT/docs/install-gkd.md" "$OUT/INSTALL.md"
+elif [ "$PLATFORM" = h700 ]; then
+	cp "$B/musectl" "$P/"
+	mkdir -p "$OUT/System" "$P/lib" "$P/pico8"
+	cp "$ROOT/sd/h700/launch_frontend.sh" "$OUT/System/"
+	cp "$ROOT/sd/tortos/pico8/wget" "$P/pico8/"  # Splore's downloads over HTTPS (the shim says why)
+	# By soname, as the binaries ask for them; FFmpeg's LGPL text beside it
+	# (THIRD-PARTY-LICENSES.md).
+	L=$ROOT/sysroot-h700/usr/lib
+	for l in libSDL2-2.0.so.0 libSDL2_image-2.0.so.0 libSDL2_ttf-2.0.so.0 \
+	         libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 libavutil.so.58; do
+		cp "$(readlink -f "$L/$l")" "$P/lib/$l" ||
+			{ echo "payload: no $l; run mk/fetch-h700-sysroot.sh" >&2; exit 1; }
+	done
+	cp "$L/COPYING.LGPLv2.1" "$P/lib/"
+	cp "$ROOT/docs/install-h700.md" "$OUT/INSTALL.md"
 else
 	mkdir -p "$OUT/.tmp_update" "$OUT/trimui/app"
 	cp "$B/setbright" "$P/"               # brightness before the boot animation
@@ -157,9 +182,13 @@ done
 # Nothing errors when a BIOS lands in it. mgba falls back to its built-in one and
 # the only symptom is the boot animation you were trying to enable not appearing.
 
-chmod +x "$P/launch.sh" "$P/tortos.elf" "$P/diatom" "$P/muse"
-if [ "$PLATFORM" = gkd ]; then
-	chmod +x "$P/musectl"
+chmod +x "$P/tortos.elf" "$P/diatom" "$P/muse"
+case $PLATFORM in
+gkd)  chmod +x "$P/launch.sh" "$P/musectl" ;;
+h700) chmod +x "$P/musectl" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" ;;
+*)    chmod +x "$P/launch.sh" ;;
+esac
+if [ "$PLATFORM" = gkd ] || [ "$PLATFORM" = h700 ]; then
 	du -sh "$OUT"
 	echo "payload ready: $OUT"
 	rm -f "$ZIP"

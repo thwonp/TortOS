@@ -43,6 +43,10 @@ plorpOS in a few seconds. Join Wi-Fi from **Menu > Wi-Fi Services**.
 - **Saved Wi-Fi networks** live on the plorpOS card, in
   `.userdata/rgsp/wpa_supplicant.conf`, with their passwords.
 - **Brightness:** hold Menu and press Volume +/-.
+- **Native PICO-8 and Splore** need `pico8_64` and `pico8.dat` from PICO-8's
+  Raspberry Pi download, in `Bios/`. Without them the fake-08 core plays carts.
+- **Muse** plays mp3, aac, m4a/m4b, flac, ogg, opus and wav from `Music/` and
+  `Audiobooks/`.
 - **BaseOS updates** (`.bosupd` files) go on the root of the plorpOS card;
   BaseOS installs them on the next start. plorpOS leaves unknown files there
   alone. A BaseOS version other than the tested one may work, but is untested.
