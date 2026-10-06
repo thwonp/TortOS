@@ -1097,19 +1097,26 @@ bool plat_resident_rect(SDL_Rect *out)
 
 /* ---- geometry --------------------------------------------------------- */
 
-int plat_screen_h = 768;
+int plat_screen_w = 1024, plat_screen_h = 768;
 static float g_scale = 1.0f;
 
 float plat_scale(void) { return g_scale; }
 
 /* At scale 1 the renderer is left exactly as SDL made it, so the Brick draws
- * the same bytes it did before there was a scale. */
+ * the same bytes it did before there was a scale.
+ *
+ * The scale fits 1024x768 - the Brick's screen, which every layout was tuned
+ * on - inside the panel, and the longer side gets the rest. A panel wider than
+ * 4:3 must not scale by its width: the RG SP's 720x480 would then be 683
+ * units tall, and the shelf's 768-unit stage (CF_STAGE_H) would hang off the
+ * top and bottom. */
 void plat_geometry_init(SDL_Renderer *r)
 {
 	int w = 0, h = 0;
 
 	if (SDL_GetRendererOutputSize(r, &w, &h) != 0 || w <= 0 || h <= 0) return;
-	g_scale = (float)w / TORTOS_SCREEN_W;
+	g_scale = (float)w / 1024 < (float)h / 768 ? (float)w / 1024 : (float)h / 768;
+	plat_screen_w = (int)(w / g_scale);
 	plat_screen_h = (int)(h / g_scale);
 	if (g_scale != 1.0f) SDL_RenderSetScale(r, g_scale, g_scale);
 }

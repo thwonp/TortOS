@@ -10,13 +10,14 @@
  * backlight, the codec, the battery, and the pipe to the resident emulator.
  * The rest of TortOS talks to this file and to SDL, and to nothing else. */
 
-/* Layout is in units of a 1024-wide screen on every device; the panel is
- * plat_scale() pixels to the unit. The height in units is whatever the
- * panel's shape leaves - 768 on the Brick, 921 on the GKD's 1600x1440 - so it
- * is a variable, set once by plat_video_init, that reads like a constant. */
-#define TORTOS_SCREEN_W 1024
+/* Layout is in units of a screen at least 1024 wide and 768 tall on every
+ * device; the panel is plat_scale() pixels to the unit. Whichever side the
+ * panel's shape leaves longer grows - 768 tall on the Brick, 921 on the GKD's
+ * 1600x1440, 1152 wide on the RG SP's 720x480 - so both are variables, set
+ * once by plat_video_init, that read like constants. */
+#define TORTOS_SCREEN_W plat_screen_w
 #define TORTOS_SCREEN_H plat_screen_h
-extern int plat_screen_h;
+extern int plat_screen_w, plat_screen_h;
 float plat_scale(void);
 /* For plat_video_init, once the renderer knows its output size: derives the
  * scale and height from it and sets the renderer's scale to match. */
