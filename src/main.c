@@ -7747,11 +7747,7 @@ static int gm_build(app *a, menu_row *out, gm_bufs *b)
 	 * game was playing at (plorpos-gkd.64). */
 	u.dmode  = DMODES[owner_view(a)->dmode].label;
 	u.shader  = a->shaders.e[owner_view(a)->shader].name;
-#if defined(PLATFORM_H700)
-	u.shaders = false;   /* diatom's h700 port declines them (plorpos-7ny.11) */
-#else
 	u.shaders = a->shaders.count > 1;
-#endif
 	{
 		sysview *sv = &a->view[a->sys_cursor];
 		int o = shelf_owner(a, a->sys_cursor, sv->cursor);
