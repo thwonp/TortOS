@@ -128,11 +128,9 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	 * rows that need it - Cheevos and Over The Hare (plorpos-z0d.1). The
 	 * value is still the radio's, since that is what decides the rest. */
 	out[PM_WIFI]         = (menu_row){ "Wi-Fi Services", b->b, true };
-#if !defined(PLATFORM_H700)
 	out[PM_BT]           = (menu_row){ "Bluetooth",
 	                                   u->bt_name ? u->bt_name : "not connected",
 	                                   true  };
-#endif
 	/* Where the system's sound goes - not Diatom's, which is why the label says
 	 * neither "game" nor "emulator": the audiobook and music player will read
 	 * the same setting. Diatom's ADR-0029, and src/audioout.c for the rule.

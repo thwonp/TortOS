@@ -7371,9 +7371,7 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 	case PM_SYSTEM:       system_settings_screen(a); break;
 	case PM_UI:           ui_settings_screen(a); break;
 	case PM_SCRAPING:     scraping_screen(a); break;
-#if !defined(PLATFORM_H700)
 	case PM_BT:           bt_screen(a); break;
-#endif
 	case PM_STATS:        if (stats_screen(a)) return MENU_DONE; break;
 	case PM_CONTROLS:     controls_screen(a); break;
 	case PM_ABOUT:        about_screen(a); break;

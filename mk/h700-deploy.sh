@@ -5,7 +5,7 @@
 #   mk/h700-deploy.sh elf       the launcher; the launch loop restarts it
 #   mk/h700-deploy.sh diatom    the resident emulator (../diatom, PORT=h700,
 #                               or DIATOM_ELF); restarted with the launcher
-#   mk/h700-deploy.sh muse      Muse and musectl, with the FFmpeg libraries
+#   mk/h700-deploy.sh muse      Muse, musectl and btplayer, with the FFmpeg libraries
 #   mk/h700-deploy.sh all       launcher, SDL2 and FFmpeg libraries, launch
 #                               script, Splore's wget shim, Muse and diatom; the frontend session restarts to run it
 #
@@ -24,7 +24,9 @@ DIATOM=${DIATOM_ELF:-$ROOT/../diatom/build/h700/diatom}
 adb get-state > /dev/null 2>&1 || { echo "no device over adb" >&2; exit 1; }
 [ -f "$ELF" ] || { echo "no $ELF; run: make PLATFORM=h700" >&2; exit 1; }
 case $MODE in muse|all)
-	[ -f "$ROOT/build/h700/muse" ] || { echo "no build/h700/muse; run: make PLATFORM=h700" >&2; exit 1; } ;;
+	for f in muse btplayer; do
+		[ -f "$ROOT/build/h700/$f" ] || { echo "no build/h700/$f; run: make PLATFORM=h700" >&2; exit 1; }
+	done ;;
 esac
 case $MODE in diatom|all)
 	[ -f "$DIATOM" ] || { echo "no diatom at $DIATOM (set DIATOM_ELF)" >&2; exit 1; } ;;
@@ -50,7 +52,7 @@ case $MODE in muse|all)
 		adb push "$(readlink -f "$LIB/$l")" "$CARD/TortOS/lib/$l" > /dev/null
 	done
 	adb push "$LIB/COPYING.LGPLv2.1" "$CARD/TortOS/lib/" > /dev/null
-	for f in muse musectl; do
+	for f in muse musectl btplayer; do
 		adb push "$ROOT/build/h700/$f" "$CARD/TortOS/$f.new" > /dev/null
 		adb shell "chmod +x $CARD/TortOS/$f.new && mv -f $CARD/TortOS/$f.new $CARD/TortOS/$f"
 	done

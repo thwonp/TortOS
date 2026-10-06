@@ -79,6 +79,7 @@ if [ "$PLATFORM" = gkd ]; then
 	cp "$ROOT/docs/install-gkd.md" "$OUT/INSTALL.md"
 elif [ "$PLATFORM" = h700 ]; then
 	cp "$B/musectl" "$P/"
+	cp "$B/btplayer" "$P/"                # a headset's volume reports and buttons (tools/btplayer.c)
 	mkdir -p "$OUT/System" "$P/lib" "$P/pico8"
 	cp "$ROOT/sd/h700/launch_frontend.sh" "$OUT/System/"
 	cp "$ROOT/sd/h700/radio.sh" "$P/"     # Bluetooth: sourced by launch_frontend.sh AND by plat_sleep()
@@ -187,7 +188,7 @@ done
 chmod +x "$P/tortos.elf" "$P/diatom" "$P/muse"
 case $PLATFORM in
 gkd)  chmod +x "$P/launch.sh" "$P/musectl" ;;
-h700) chmod +x "$P/musectl" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" ;;
+h700) chmod +x "$P/musectl" "$P/btplayer" "$OUT/System/launch_frontend.sh" "$P/pico8/wget" ;;
 *)    chmod +x "$P/launch.sh" ;;
 esac
 if [ "$PLATFORM" = gkd ] || [ "$PLATFORM" = h700 ]; then

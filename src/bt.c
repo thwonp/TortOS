@@ -220,10 +220,9 @@ int bt_sweep_cache(const char *root)
 	return gone;
 }
 
-/* The TrimUI radio. The GKD has Bluetooth too (hci0 exists there), but not
- * these scripts, so it takes the host stubs until gkd.9 gives it its own.
- * The H700 takes them too: its Bluetooth is v2 (plorpos-7ny). */
-#if defined(__linux__) && !defined(PLATFORM_H700)
+/* The TrimUI radio, and the H700's under BaseOS (plorpos-7ny.26), which has
+ * the same BlueZ tools but no hcitool. */
+#if defined(__linux__)
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -366,11 +365,34 @@ static bool bluetoothd_running(void)
  * replaced and why each was wrong. */
 int bt_mark_connected_now(bt_device *list, int n)
 {
+#if defined(PLATFORM_H700)
+	/* No hcitool on BaseOS. BlueZ 5.66's own list, which holds a device only
+	 * once its link is up - not the half-open one hcitool also showed.
+	 * Matched on `Device <mac>` at a line's start, so neither an event line
+	 * (`[CHG] Device ...`) nor a device with no name is misread. */
+	char out[2048];
+	int i, marked = 0;
+
+	if (btctl(out, sizeof out, BT_ASK_S, "devices", "Connected") != 0) return 0;
+	for (i = 0; i < n; i++) {
+		const char *p;
+
+		list[i].connected = false;
+		for (p = out; p && *p; p = strchr(p, '\n'), p = p ? p + 1 : NULL)
+			if (!strncmp(p, "Device ", 7) && !strncasecmp(p + 7, list[i].mac, 17)) {
+				list[i].connected = true;
+				marked++;
+				break;
+			}
+	}
+	return marked;
+#else
 	char con[2048];
 	char *argv[] = { (char *)"/usr/bin/hcitool", (char *)"con", NULL };
 
 	if (run(argv, con, sizeof con, BT_ASK_S) != 0) return 0;
 	return bt_mark_connected(con, list, n);
+#endif
 }
 
 bt_state bt_status(void)
