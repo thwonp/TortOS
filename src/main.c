@@ -10104,7 +10104,9 @@ static void game_menu(app *a)
 		c.resume = true;
 	g_menu_closing = false;
 
+#if !defined(PLATFORM_H700)
 	if (c.bg) SDL_DestroyTexture(c.bg);
+#endif
 
 	/* Asked to quit with the menu open. Leaving here without saying anything
 	 * strands the game: it is paused, waiting on this socket, and the wait
@@ -10131,14 +10133,48 @@ static void game_menu(app *a)
 		 * Twice because this process alternates two pages and one present only
 		 * clears the one it lands on. Before RESUME and never after:
 		 * afterwards Diatom is drawing, and this would be a second presenter. */
+#if defined(PLATFORM_H700)
+		/* On the H700 the paused frame, undimmed, not black, and landed
+		 * before RESUME (2026-10-06):
+		 *  - the page flips are the Mali driver's and land after the swap
+		 *    returns: with Diatom back in 33 ms, a late one put the menu (or
+		 *    black) on glass for a frame about every other Continue. So the
+		 *    GPU finishes and its last flip lands first (two refreshes, as
+		 *    Diatom's gl_quiesce);
+		 *  - both buffers must still get a frame unlike the menu: Mali's
+		 *    transaction elimination skips tiles it would write unchanged,
+		 *    so the next pause's identical menu left Diatom's game showing;
+		 *  - the paused frame is what Diatom shows next, so closing the menu
+		 *    reads as the game appearing, with no black between. Diatom
+		 *    wipes the pages it reuses, as the black frames did. */
+		{
+			void (*finish)(void) = (void (*)(void))SDL_GL_GetProcAddress("glFinish");
+			int i;
+
+			for (i = 0; i < 2; i++) {
+				SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_NONE);
+				SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
+				SDL_RenderClear(a->r);
+				draw_paused_frame(a, c.bg);
+				plat_present(a->r);
+				SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+			}
+			if (finish) finish();
+			usleep(34000);
+		}
+#else
 		present_black(a);
 		present_black(a);
+#endif
 		/* SELECT in this menu opens Muse, so the music may have started or
 		 * stopped while the game was paused. Said before the game moves, not
 		 * a tick after it. */
 		plat_resident_quiet(musec_playing());
 		plat_resident_line("RESUME");
 	}
+#if defined(PLATFORM_H700)
+	if (c.bg) SDL_DestroyTexture(c.bg);   /* drawn above, before RESUME */
+#endif
 	/* Nothing presents from here: the next frame on screen is the game's. */
 }
 
