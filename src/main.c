@@ -3639,6 +3639,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	int scroll_span = 0;
 	int scroll_split = 0;  /* first pinned row: the rule, or n if there is none */
 	int scroll_foot = 0;   /* the pinned rows' total height */
+	bool pinned = false;   /* a cursor list with its footer pinned under it */
 	/* A SMALL, FAST GIVE WHEN THE WINDOW SCROLLS - not a full slide.
 	 *
 	 * REPEAT_RATE_MS is 90, so any animation long enough to watch is
@@ -3734,14 +3735,31 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 			 * it. A different row count is a different menu and starts at the
 			 * top rather than inheriting someone else's scroll. */
 			static int win_n = -1, win_first;
+			int body_n = n, j;
+
+			/* A FOOTER STAYS PUT. A rule followed by nothing but notes - the
+			 * Wi-Fi screen's address and key legend - is about the list, not
+			 * in it, and as the last rows of a list taller than the screen it
+			 * was never on it: no cursor can walk down to a row it cannot
+			 * select (plorpos-3pk.8, the RG SP's 768-unit screen). So it is
+			 * pinned under the window the way a cursorless card pins its own,
+			 * and only the rows above it scroll. */
+			for (j = n - 1; j >= 0 && rows[j].label && !rows[j].live; j--) ;
+			if (j > sel && j < n - 1 && !rows[j].label && !ROW_IS_HR(rows[j])) {
+				pinned = true;
+				body_n = scroll_split = j;
+				for (; j < n; j++) scroll_foot += ROW_H(rows[j]);
+				avail -= scroll_foot;
+			}
 
 			vis = avail / row_h;
 			if (vis < 1) vis = 1;
-			if (vis > n) vis = n;
+			if (vis > body_n) vis = body_n;
+			if (pinned) scroll_h = vis * row_h;
 
 			if (win_n != n) win_first = 0;
 			win_n = n;
-			win_first = menu_window_first(rows, n, sel, vis, win_first);
+			win_first = menu_window_first(rows, body_n, sel, vis, win_first);
 			first = win_first;
 		} else {
 			/* NO CURSOR MEANS NOTHING CAN SCROLL IT, so it scrolls itself.
@@ -3813,7 +3831,8 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 		 * A body row is not a footer. A synopsis short enough to fit without
 		 * scrolling ends in prose, which is the panel's content and wants the
 		 * same pad under it that a list does. */
-		if (!scroll_h && last >= 0 && last < n && rows[last].label &&
+		if (pinned) last = n - 1;            /* the footer is on screen */
+		if ((!scroll_h || pinned) && last >= 0 && last < n && rows[last].label &&
 		    ROW_IS_NOTE(rows[last]) && !ROW_IS_BODY(rows[last]))
 			panel.h -= pad * 5 / 12;
 	}
@@ -4074,14 +4093,20 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	if (vis < n) {
 		SDL_Rect rc = { panel.x + UI_PANEL_BORDER, content_y,
 		                panel.w - UI_PANEL_BORDER * 2,
-		                panel.y + panel.h - pad - content_y };
+		                pinned ? scroll_h : panel.y + panel.h - pad - content_y };
 		SDL_RenderSetClipRect(a->r, &rc);
 	}
-	for (k = 0, i = (first > 0 ? first - 1 : first);
-	     i < n && i <= first + vis; k++, i++) {
+	for (k = 0, i = (first > 0 ? first - 1 : first); i < n; k++, i++) {
 		int y, ty, j;
 		float sel_w;
 		SDL_Color lc, vc;
+
+		/* Past the window's spare row: done, or on to the pinned footer. */
+		if (i > first + vis && !(pinned && i >= scroll_split)) {
+			if (!pinned) break;
+			i = scroll_split - 1;
+			continue;
+		}
 
 		if (scroll_h && i >= scroll_split) {
 			/* Pinned. Measured from the bottom of the viewport rather than
@@ -4342,7 +4367,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	 * slot carousel's rail uses. Hung just off the rows rather than centered in
 	 * the padding: with a heading above, the padding is already spoken for by
 	 * the separator, and the indicator belongs to the list in any case. */
-	if (vis < n && !scroll_h) {
+	if (vis < n && (!scroll_h || pinned)) {
 		/* A triangle pointing the way the list continues, rather than three
 		 * dots that said "there is more" without saying which way. Drawn as
 		 * rows because there is no filled-triangle primitive and this needs
@@ -4358,7 +4383,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 			if (first > 0)
 				SDL_RenderFillRect(a->r, &(SDL_Rect){ cx - up_w / 2,
 				                   content_y - off - th + k, up_w, 1 });
-			if (first + vis < n)
+			if (first + vis < (pinned ? scroll_split : n))
 				SDL_RenderFillRect(a->r, &(SDL_Rect){ cx - down_w / 2,
 				                   content_y + vis * row_h + off + k, down_w, 1 });
 		}
