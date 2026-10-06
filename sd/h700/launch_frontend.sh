@@ -75,7 +75,7 @@ start_resident() {
 	# 1615 (plorpos-7ny.8). Idle only yields while someone else reads; in a
 	# game the launcher reads nothing.
 	ionice -c 3 "$DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" --cores "$DIR/cores" \
-		--save "$SD/Saves" --system "$SD/Bios" 2>&1 | logf &
+		--save "$SD/Saves" --system "$SD/Bios" 2>&1 &   # into the loop's logf, below
 }
 
 rm -f /tmp/tortos_poweroff
@@ -84,10 +84,14 @@ FAILS=0
 # One PCM per bonded headset, BEFORE the first start_resident: alsa-lib reads
 # its config at the first open.
 bt_write_asoundrc
+# One filter for the whole loop, not one per launcher run: Muse, which the
+# launcher starts and which outlives it, inherits that output. A filter per
+# run waited for Muse to let go of it, so after the launcher exited the loop
+# never got as far as poweroff (2026-10-06).
 while :; do
 	start_resident
 	START=$(cut -d. -f1 /proc/uptime)
-	./tortos.elf 2>&1 | logf
+	./tortos.elf
 	if [ -f /tmp/tortos_poweroff ]; then
 		sync
 		exec poweroff        # BaseOS's: the PMIC's own power-off
@@ -95,12 +99,13 @@ while :; do
 	END=$(cut -d. -f1 /proc/uptime)
 	if [ $((END - START)) -lt 5 ]; then
 		FAILS=$((FAILS + 1))
-		[ $FAILS -ge 5 ] && break
+		if [ $FAILS -ge 5 ]; then
+			echo "launcher failed $FAILS times in a row; idling (see above)"
+			killall diatom 2> /dev/null
+			while :; do sleep 3600; done
+		fi
 	else
 		FAILS=0
 	fi
 	sleep 1
-done
-echo "launcher failed $FAILS times in a row; idling (see above)" >> "$LOG"
-killall diatom 2> /dev/null
-while :; do sleep 3600; done
+done 2>&1 | logf
