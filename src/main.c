@@ -9657,6 +9657,10 @@ static dark_end music_dark(app *a, unsigned *waited)
 		unsigned now;
 
 		musec_poll();
+		/* Routed in the dark too, as Muse's own screens route: a headset
+		 * that drops and comes back with the screen off took the song to
+		 * the speaker and left it there until a wake (2026-10-06). */
+		if (musec_heard()) aout_apply(false);
 		now = plat_now_ms();
 		if (musec_playing())               stopped = 0;
 		else if (!stopped)                 stopped = now ? now : 1;
