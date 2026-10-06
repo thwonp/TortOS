@@ -1,12 +1,13 @@
 #!/bin/sh
-# wget for native PICO-8 (pico8_64) on the Brick and the Brick Pro.
+# wget for native PICO-8 (pico8_64) on the Brick, the Brick Pro and the H700s.
 #
 # The aarch64 pico8_64 has no libcurl of its own: Splore's BBS list and every
 # cart download go through `wget "URL" -q -O "FILE"` (and the same with
 # --post-file=F), whatever config.txt's use_wget says. The firmware's wget is
 # BusyBox 1.27.2 without TLS, which turns down every https:// URL with "not an
-# http or ftp url", so carts never download. The firmware's curl has OpenSSL;
-# it only needs the CA bundle the card already ships (see res/ssl/README.md).
+# http or ftp url", so carts never download (BaseOS's BusyBox wget likewise).
+# The firmware's curl has OpenSSL; it only needs the CA bundle the card already
+# ships (see res/ssl/README.md).
 #
 # Only pico8_64 sees this: the launcher puts this folder first on its PATH
 # alone (plat_pico8_path). Options PICO-8 never passes are ignored.

@@ -53,7 +53,9 @@ const char *const plat_child_env[] = {
 const char plat_child_libpath[] = ":/mnt/SDCARD/TortOS/lib";
 /* Native PICO-8 is the Brick's; the fake08 core plays carts here. */
 const char *const plat_pico8_preload = NULL;
-const char *const plat_pico8_path = NULL;
+/* Splore downloads with wget, and BaseOS's BusyBox wget has no TLS: the
+ * shim in this folder hands them to its curl (sd/tortos/pico8/wget). */
+const char *const plat_pico8_path = "/mnt/SDCARD/TortOS/pico8";
 
 bool plat_is_brick_pro(void) { return false; }
 bool plat_two_sticks(void) { return false; }

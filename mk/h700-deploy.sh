@@ -5,8 +5,8 @@
 #   mk/h700-deploy.sh elf       the launcher; the launch loop restarts it
 #   mk/h700-deploy.sh diatom    the resident emulator (../diatom, PORT=h700,
 #                               or DIATOM_ELF); restarted with the launcher
-#   mk/h700-deploy.sh all       launcher, SDL2 libraries, launch script and
-#                               diatom; the frontend session restarts to run it
+#   mk/h700-deploy.sh all       launcher, SDL2 libraries, launch script,
+#                               Splore's wget shim and diatom; the frontend session restarts to run it
 #
 # The first `all` on a card that ran plorpOS under ROCKNIX moves that build's
 # tortos.elf and diatom to TortOS/.rocknix/ - they cannot run on BaseOS, and
@@ -34,6 +34,9 @@ if [ "$MODE" = all ]; then
 		adb push "$(readlink -f "$LIB/$l")" "$CARD/TortOS/lib/$l" > /dev/null
 	done
 	adb push "$ROOT/sd/h700/launch_frontend.sh" "$CARD/System/launch_frontend.sh" > /dev/null
+	adb shell "mkdir -p $CARD/TortOS/pico8"
+	adb push "$ROOT/sd/tortos/pico8/wget" "$CARD/TortOS/pico8/wget" > /dev/null
+	adb shell "chmod +x $CARD/TortOS/pico8/wget"
 fi
 case $MODE in diatom|all)
 	adb push "$DIATOM" "$CARD/TortOS/diatom.new" > /dev/null
