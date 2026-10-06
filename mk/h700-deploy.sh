@@ -3,8 +3,10 @@
 # USB-C cable attached at power-on: BaseOS's port picks host role otherwise).
 #
 #   mk/h700-deploy.sh elf       the launcher; the launch loop restarts it
-#   mk/h700-deploy.sh all       launcher, SDL2 libraries and launch script;
-#                               the frontend session restarts to run it
+#   mk/h700-deploy.sh diatom    the resident emulator (../diatom, PORT=h700,
+#                               or DIATOM_ELF); restarted with the launcher
+#   mk/h700-deploy.sh all       launcher, SDL2 libraries, launch script and
+#                               diatom; the frontend session restarts to run it
 #
 # The first `all` on a card that ran plorpOS under ROCKNIX moves that build's
 # tortos.elf and diatom to TortOS/.rocknix/ - they cannot run on BaseOS, and
@@ -16,8 +18,13 @@ CARD=/mnt/SDCARD
 ELF=$ROOT/build/h700/tortos.elf
 LIB=$ROOT/sysroot-h700/usr/lib
 
+DIATOM=${DIATOM_ELF:-$ROOT/../diatom/build/h700/diatom}
+
 adb get-state > /dev/null 2>&1 || { echo "no device over adb" >&2; exit 1; }
 [ -f "$ELF" ] || { echo "no $ELF; run: make PLATFORM=h700" >&2; exit 1; }
+case $MODE in diatom|all)
+	[ -f "$DIATOM" ] || { echo "no diatom at $DIATOM (set DIATOM_ELF)" >&2; exit 1; } ;;
+esac
 
 if [ "$MODE" = all ]; then
 	adb shell "cd $CARD/TortOS && [ -d .rocknix ] || { mkdir .rocknix &&
@@ -28,6 +35,12 @@ if [ "$MODE" = all ]; then
 	done
 	adb push "$ROOT/sd/h700/launch_frontend.sh" "$CARD/System/launch_frontend.sh" > /dev/null
 fi
+case $MODE in diatom|all)
+	adb push "$DIATOM" "$CARD/TortOS/diatom.new" > /dev/null
+	adb shell "chmod +x $CARD/TortOS/diatom.new && mv -f $CARD/TortOS/diatom.new $CARD/TortOS/diatom"
+	echo "deployed diatom $(md5sum "$DIATOM" | cut -c1-8)" ;;
+esac
+[ "$MODE" = diatom ] && { adb shell 'killall diatom tortos.elf 2>/dev/null; true'; echo "launcher and diatom restarted"; exit 0; }
 # Pushed aside and renamed, so a running launcher is never overwritten in place.
 adb push "$ELF" "$CARD/TortOS/tortos.elf.new" > /dev/null
 adb shell "chmod +x $CARD/TortOS/tortos.elf.new && mv -f $CARD/TortOS/tortos.elf.new $CARD/TortOS/tortos.elf && sync"
