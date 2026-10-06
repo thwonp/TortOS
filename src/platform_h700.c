@@ -25,6 +25,7 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include "platform_dev.h"
 
@@ -577,11 +578,57 @@ bool plat_sleep_supported(void)
 	return strstr(st, "mem") != NULL && access(POWER_STATE, W_OK) == 0;
 }
 
+/* One of TortOS/radio.sh's functions (sd/h700/radio.sh), as the Brick's
+ * radio_sh_call does it: the script's path as $0, never pasted into the
+ * command, and `fn` always a literal from below. Waited for, or detached for
+ * the bring-up after a wake, so its seconds never hold the wake up. */
+static void radio_call(const char *fn, bool background)
+{
+	char script[512], cmd[64];
+	char *argv[5];
+	pid_t pid;
+
+	snprintf(script, sizeof script, "%s/radio.sh", P_ROOT);
+	snprintf(cmd, sizeof cmd, ". \"$0\" && %s", fn);
+	argv[0] = (char *)"/bin/sh";
+	argv[1] = (char *)"-c";
+	argv[2] = cmd;
+	argv[3] = script;
+	argv[4] = NULL;
+	if (background) { plat_spawn_detached(argv, NULL, NULL); return; }
+	if ((pid = fork()) < 0) return;
+	if (pid == 0) {
+		int null = open("/dev/null", O_RDONLY);
+		if (null >= 0) { dup2(null, 0); close(null); }
+		execv(argv[0], argv);
+		_exit(127);
+	}
+	waitpid(pid, NULL, 0);
+}
+
+static bool suspend_mem(void);
+
+/* Bluetooth down for the sleep and back after it, as on the Brick: the links
+ * closed while bluetoothd still owns them, before the kernel suspends under
+ * them (radio.sh's bt_off says why the order matters). hci0 exists exactly
+ * while the radio is attached, so it is the "was up" answer without a fork.
+ * Wi-Fi is not touched here, as before. */
 bool plat_sleep(void)
+{
+	bool bt_was_up, slept;
+
+	if (!plat_sleep_supported()) return false;
+	bt_was_up = access("/sys/class/bluetooth/hci0", F_OK) == 0;
+	if (bt_was_up) radio_call("bt_off", false);
+	slept = suspend_mem();
+	if (bt_was_up) radio_call("bt_on", true);
+	return slept;
+}
+
+static bool suspend_mem(void)
 {
 	int tries;
 
-	if (!plat_sleep_supported()) return false;
 	{
 		int fd = open(OS_SLEEP, O_WRONLY | O_CLOEXEC);   /* SP only */
 		if (fd >= 0) {
