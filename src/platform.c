@@ -468,6 +468,16 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	while (fd_lv >= 0 && read(fd_lv, &ev, sizeof ev) == (ssize_t)sizeof ev)
 		;
 	unsigned term_at = 0;   /* when TERM went, 0: not ending it */
+#if defined(PLATFORM_H700)
+	/* Menu is the brightness modifier too (Menu+Vol): a tap goes on its
+	 * release, as pad_read and diatom have it, and only if no level key
+	 * went with it. Opened on the press, the menu met the release as a tap
+	 * of its own and closed again at once (plorpos-7ny.14). */
+	bool menu_held = false, menu_spent = false;
+	const int menu_value = 0;
+#else
+	const int menu_value = 1;
+#endif
 	for (;;) {
 		pid_t r = waitpid(pid, &status, WNOHANG);
 		if (r == pid) break;
@@ -525,8 +535,27 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 			int d = ev.type == EV_KEY && ev.value == 1 ? levels_key(ev.code, &bright) : 0;
 
 			/* The Brick's level keys share the pad's node (plorpos-reo.10). */
-			if (d) { level_nudge(bright, d); continue; }
+			if (d) {
+				level_nudge(bright, d);
+#if defined(PLATFORM_H700)
+				if (bright) menu_spent = true;
+#endif
+				continue;
+			}
+#if defined(PLATFORM_H700)
 			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 1) {
+				menu_held = true;
+				menu_spent = false;
+				continue;
+			}
+			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 0) {
+				bool tap = menu_held && !menu_spent;
+
+				menu_held = false;
+				if (!tap) continue;
+			}
+#endif
+			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == menu_value) {
 				struct timespec now;
 
 				/* The press's own time, on the clock the kernel stamped it
