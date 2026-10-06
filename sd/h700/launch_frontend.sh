@@ -51,7 +51,12 @@ start_resident() {
 	pidof diatom > /dev/null && return
 	[ -x "$DIR/diatom" ] || return
 	rm -f "$TORTOS_DIATOM_SOCKET"
-	"$DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" --cores "$DIR/cores" \
+	# Idle I/O class (the card is on CFQ): its premap of every core reads
+	# ~1.8 s of fbneo alone off the card at boot, beside the launcher's own
+	# start, and put the shelf up 2184 ms after the launcher began instead of
+	# 1615 (plorpos-7ny.8). Idle only yields while someone else reads; in a
+	# game the launcher reads nothing.
+	ionice -c 3 "$DIR/diatom" --socket "$TORTOS_DIATOM_SOCKET" --cores "$DIR/cores" \
 		--save "$SD/Saves" --system "$SD/Bios" >> "$LOG" 2>&1 &
 }
 
