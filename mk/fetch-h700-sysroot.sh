@@ -29,7 +29,8 @@
 # mk/fetch-sysroot.sh, LGPL only (no --enable-gpl, no nonfree), with
 # --disable-everything and then exactly what Muse plays: the formats
 # src/muselib.c lists (mp3, m4a/m4b, aac, flac, ogg/oga, opus, wav), the file
-# protocol, and src/muse/dec.c's filter chain (atempo for SPEED). Cover art is
+# protocol, and src/muse/dec.c's filter chain (atempo for SPEED, volume for
+# its 2 dB headroom - without it every track failed, plorpos-xpt.5). Cover art is
 # the attached picture's bytes, so no image decoder. Shared, to ship as
 # TortOS/lib/ beside SDL with the LGPL's text (usr/lib/COPYING.LGPLv2.1),
 # which keeps its relinking terms simple; see THIRD-PARTY-LICENSES.md.
@@ -144,7 +145,7 @@ cd /src/ffmpeg-$FF_VER
 	--enable-demuxer=mp3,aac,mov,ogg,flac,wav \
 	--enable-decoder=mp3,mp3float,aac,alac,flac,vorbis,opus,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8 \
 	--enable-parser=mpegaudio,aac,flac,opus,vorbis \
-	--enable-filter=abuffer,abuffersink,aresample,aformat,atempo > /tmp/ffmpeg.log 2>&1 &&
+	--enable-filter=abuffer,abuffersink,aresample,aformat,atempo,volume > /tmp/ffmpeg.log 2>&1 &&
 	make -j\$(nproc) >> /tmp/ffmpeg.log 2>&1 &&
 	make install DESTDIR=/out >> /tmp/ffmpeg.log 2>&1 ||
 		{ tail -30 /tmp/ffmpeg.log; echo "!! ffmpeg failed" >&2; exit 1; }
