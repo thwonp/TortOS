@@ -123,6 +123,8 @@ typedef struct {
 	 * the title is the order, and the jump goes by it as a games shelf's
 	 * does. */
 	bool jump_by_name;
+	/* In year order the jump goes a year at a time instead (plorpos-xav). */
+	bool jump_by_year;
 } sysview;
 
 /* Diatom's display modes, in the order TortOS offers them: the sensible
@@ -640,6 +642,7 @@ static int  *g_year;
 static int   g_year_asked = -1;
 static unsigned g_year_asked_ms, g_year_t0;
 static int   g_year_read;
+static bool  g_year_landed;   /* the last one read: a shelf in year order re-sorts */
 static void  year_fill(void);
 
 /* ---- Muse: books ------------------------------------------------------------ */
@@ -7376,6 +7379,38 @@ static int sysmenu_build(void *ctx, menu_row *rows, int max,
 	return n > max ? max : n;
 }
 
+/* Shelf `sys` put in its order again, the cursor on the same game - or on
+ * Muse's shelf the same album, whose folder is its `file`. */
+static void shelf_resort(app *a, int sys)
+{
+	sysview *v = &a->view[sys];
+	char keep[LIB_PATH];
+	int i, keep_owner = -1;
+
+	keep[0] = '\0';
+	if (v->cursor >= 0 && v->cursor < v->list.count) {
+		snprintf(keep, sizeof keep, "%s", v->list.items[v->cursor].file);
+		/* On Favorites a file name is not enough: the same one can be on
+		 * the shelf twice, from two systems. */
+		if (v->owner) keep_owner = v->owner[v->cursor];
+	}
+	sort_shelf(a, sys);
+
+	/* The textures are indexed by position, so they moved with nothing.
+	 * Dropping them lets the next frame fetch each card's art for where it
+	 * now sits. */
+	free_view_textures(v);
+
+	v->cursor = 0;
+	for (i = 0; i < v->list.count; i++)
+		if (!strcmp(v->list.items[i].file, keep) &&
+		    (!v->owner || v->owner[i] == keep_owner)) {
+			v->cursor = i;
+			break;
+		}
+	cf_reset(&v->cf, v->cursor);
+}
+
 /* Left and right cycle the value on a row that has one; A opens whatever the
  * row leads to. Everything else the runner has already dealt with. */
 static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
@@ -7449,40 +7484,15 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		 * would appear to have jumped on its own. Which game you were
 		 * looking at is the thing that survives a reorder; where it happened
 		 * to sit in the old order is not. On Muse's shelf the same goes for
-		 * the album, whose folder is its `file`. */
+		 * the album, whose folder is its `file`. See shelf_resort. */
 		if (d && sel == SM_SORT) {
 			sysview *v = &a->view[a->sys_cursor];
-			char keep[LIB_PATH];
-			int i, keep_owner = -1;
-
-			keep[0] = '\0';
-			if (v->cursor >= 0 && v->cursor < v->list.count) {
-				snprintf(keep, sizeof keep, "%s",
-				         v->list.items[v->cursor].file);
-				/* On Favorites a file name is not enough: the same one can
-				 * be on the shelf twice, from two systems. */
-				if (v->owner) keep_owner = v->owner[v->cursor];
-			}
 
 			v->sort = is_muse(&a->sys.systems[a->sys_cursor])
 			        ? (v->sort + d + ML_ORDERS) % ML_ORDERS
 			        : sort_step(v->sort, d);
-			sort_shelf(a, a->sys_cursor);
+			shelf_resort(a, a->sys_cursor);
 			sort_save(a);
-
-			/* The textures are indexed by position, so they moved with
-			 * nothing. Dropping them lets the next frame fetch each card's
-			 * art for where it now sits. */
-			free_view_textures(v);
-
-			v->cursor = 0;
-			for (i = 0; i < v->list.count; i++)
-				if (!strcmp(v->list.items[i].file, keep) &&
-				    (!v->owner || v->owner[i] == keep_owner)) {
-					v->cursor = i;
-					break;
-				}
-			cf_reset(&v->cf, v->cursor);
 			return MENU_STAY;
 		}
 		if (key != IN_ACCEPT) return MENU_STAY;
@@ -8304,6 +8314,7 @@ static void year_fill(void)
 		if (g_year_read) {
 			fprintf(stderr, "muse: %d years read in %u ms\n", g_year_read, now - g_year_t0);
 			g_year_read = 0;
+			g_year_landed = true;
 		}
 		g_year_asked = -1;
 		return;
@@ -11469,15 +11480,24 @@ static const char *shelf_key(const sysview *v, int i)
 	return v->jump_by_name ? v->list.items[i].name : v->list.items[i].title;
 }
 
+/* The group card i is in for the jump: its initial, or in Muse's year order
+ * its year, every album with none in one group at the end. */
+static int shelf_group(const sysview *v, int i)
+{
+	if (v->jump_by_year)
+		return g_year && v->album && g_year[v->album[i]] > 0 ? g_year[v->album[i]] : 0;
+	return shelf_initial(shelf_key(v, i));
+}
+
 static int shelf_group_start(sysview *v, int idx)
 {
 	int n = v->list.count, i = idx;
-	char c = shelf_initial(shelf_key(v, idx));
+	int c = shelf_group(v, idx);
 
 	for (;;) {
 		int p = (i - 1 + n) % n;
 		if (p == idx) return idx;             /* one initial, the whole shelf */
-		if (shelf_initial(shelf_key(v, p)) != c) break;
+		if (shelf_group(v, p) != c) break;
 		i = p;
 	}
 	return i;
@@ -11491,13 +11511,13 @@ static int shelf_group_start(sysview *v, int idx)
 static int shelf_letter_jump(sysview *v, int dir)
 {
 	int n = v->list.count, i, cur = v->cursor;
-	char c0 = shelf_initial(shelf_key(v, cur));
+	int c0 = shelf_group(v, cur);
 
 	if (n <= 1) return cur;
 	if (dir > 0) {
 		for (i = 1; i < n; i++) {
 			int k = (cur + i) % n;
-			if (shelf_initial(shelf_key(v, k)) != c0) return k;
+			if (shelf_group(v, k) != c0) return k;
 		}
 		return cur;                           /* every name starts alike */
 	}
@@ -11507,7 +11527,7 @@ static int shelf_letter_jump(sysview *v, int dir)
 	 * then the shelf is one group and there is nowhere to go - the same answer
 	 * down gives, rather than shuffling back by one. */
 	i = (cur - 1 + n) % n;
-	if (shelf_initial(shelf_key(v, i)) == c0) return cur;
+	if (shelf_group(v, i) == c0) return cur;
 	return shelf_group_start(v, i);
 }
 
@@ -11887,7 +11907,7 @@ static void muse_order_view(sysview *v)
 	/* The arrays hold every album; the shelf is the kind it shows. */
 	if (!v->album) return;
 	v->list.count = ml_shelf_order(&g_muse, (ml_order)v->sort, muse_books_shown(),
-	                               v->album);
+	                               g_year, v->album);
 	for (k = 0; k < v->list.count; k++) {
 		game_entry *e = &v->list.items[k];
 		int al = v->album[k];
@@ -11897,6 +11917,7 @@ static void muse_order_view(sysview *v)
 		muse_album_dir(al, e->file, sizeof e->file);
 	}
 	v->jump_by_name = v->sort == ML_BY_ARTIST;
+	v->jump_by_year = v->sort == ML_BY_YEAR;
 }
 
 /* Muse's card, at the end of the shelf, when there is music to play.
@@ -13133,6 +13154,16 @@ int main(int argc, char *argv[])
 		muse_poll();
 		if (cover_answers()) ui_redraw_now();
 		year_fill();
+		/* Once, when the years being read are all in: not card by card,
+		 * which would move the shelf under the cursor the whole time. */
+		if (g_year_landed) {
+			g_year_landed = false;
+			for (int i = 0; i < a.sys.count; i++)
+				if (is_muse(&a.sys.systems[i]) && a.view[i].sort == ML_BY_YEAR) {
+					shelf_resort(&a, i);
+					ui_redraw_now();
+				}
+		}
 
 		/* Auto Off is the same line as the power button, on every screen
 		 * that draws. Diatom watches it during a game, because it owns the
