@@ -432,6 +432,49 @@ static void level_nudge(bool bright, int d)
 	if (bright) plat_brightness_nudge(d);
 	else        plat_volume_nudge(d);
 }
+
+/* A level key held in native PICO-8 repeats at the shelf's pace,
+ * REPEAT_DELAY_MS then REPEAT_RATE_MS (plorpos-xpt.1.1), as it does in a
+ * Diatom game now. One hold at a time, keeping the kind its press had; the
+ * kernel is asked before each step whether the key is still down, and the hold
+ * is dropped when the menu opens or the device sleeps - a key held into the
+ * menu stepping on after Continue was why holds were taken out here before
+ * (plorpos-gkd.50.26). */
+typedef struct { int fd, code, d; bool bright; unsigned next; } lv_hold;
+
+static void lv_hold_start(lv_hold *h, int fd, int code, bool bright, int d)
+{
+	*h = (lv_hold){ fd, code, d, bright, plat_now_ms() + REPEAT_DELAY_MS };
+	if (!h->next) h->next = 1;
+}
+
+/* Due: step again if the key is still held. True when it stepped. */
+static bool lv_hold_tick(lv_hold *h)
+{
+	unsigned char keys[KEY_MAX / 8 + 1];
+
+	if (!h->next || (int)(plat_now_ms() - h->next) < 0) return false;
+	memset(keys, 0, sizeof keys);
+	if (ioctl(h->fd, EVIOCGKEY(sizeof keys), keys) < 0 ||
+	    !(keys[h->code / 8] & (1u << (h->code % 8)))) {
+		h->next = 0;
+		return false;
+	}
+	h->next = plat_now_ms() + REPEAT_RATE_MS;
+	if (!h->next) h->next = 1;
+	level_nudge(h->bright, h->d);
+	return true;
+}
+
+/* How long poll may sleep: the usual 100 ms, or until the hold is due. */
+static int lv_hold_wait(const lv_hold *h)
+{
+	int left;
+
+	if (!h->next) return 100;
+	left = (int)(h->next - plat_now_ms());
+	return left < 0 ? 0 : left > 100 ? 100 : left;
+}
 #endif
 
 #if !defined(PLATFORM_GKD)
@@ -528,6 +571,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	while (fd_lv >= 0 && read(fd_lv, &ev, sizeof ev) == (ssize_t)sizeof ev)
 		;
 	unsigned term_at = 0;   /* when TERM went, 0: not ending it */
+	lv_hold hold = { 0 };
 #if defined(PLATFORM_H700)
 	/* Menu is the brightness modifier too (Menu+Vol): a tap goes on its
 	 * release, as pad_read and diatom have it, and only if no level key
@@ -542,16 +586,23 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		pid_t r = waitpid(pid, &status, WNOHANG);
 		if (r == pid) break;
 		if (r < 0) { free(env); return -1; }
-		poll(pfd, 3, 100);
+		poll(pfd, 3, lv_hold_wait(&hold));
 		bool quit = false, menu = false;
 		if (on_tick && !term_at) child_quiet(pid, on_tick(ctx));
-		/* The volume keys: volume, or brightness with Home held, one step
-		 * per press - no stepping on hold, as in Diatom (plorpos-gkd.50.19,
-		 * .50.26). */
+		/* The volume keys: volume, or brightness with Home held, a step per
+		 * press and, held, the shelf's repeat (lv_hold). */
 		while (fd_lv >= 0 && read(fd_lv, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 			int d = ev.code == KEY_VOLUMEUP ? 1 : ev.code == KEY_VOLUMEDOWN ? -1 : 0;
-			if (ev.type == EV_KEY && d && ev.value == 1)
-				level_nudge(levels_alt(), d);
+
+			if (ev.type != EV_KEY || !d) continue;
+			if (ev.value == 1) {
+				bool bright = levels_alt();
+
+				level_nudge(bright, d);
+				lv_hold_start(&hold, fd_lv, ev.code, bright, d);
+			} else if (ev.value == 0 && hold.fd == fd_lv && hold.code == ev.code) {
+				hold.next = 0;
+			}
 		}
 #if defined(PLATFORM_H700)
 		bool lid_tap = false;
@@ -575,6 +626,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				unsigned t0 = plat_now_ms();
 				bool awake;
 
+				hold.next = 0;
 				kill(pid, SIGSTOP);
 				awake = plat_light_sleep(0);
 				kill(pid, SIGCONT);
@@ -592,11 +644,16 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		}
 		while (fd_menu >= 0 && read(fd_menu, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 			bool bright = false;
-			int d = ev.type == EV_KEY && ev.value == 1 ? levels_key(ev.code, &bright) : 0;
+			int d = ev.type == EV_KEY && ev.value != 2 ? levels_key(ev.code, &bright) : 0;
 
 			/* The Brick's level keys share the pad's node (plorpos-reo.10). */
+			if (d && ev.value == 0) {
+				if (hold.fd == fd_menu && hold.code == ev.code) hold.next = 0;
+				continue;
+			}
 			if (d) {
 				level_nudge(bright, d);
+				lv_hold_start(&hold, fd_menu, ev.code, bright, d);
 #if defined(PLATFORM_H700)
 				if (bright) menu_spent = true;
 #endif
@@ -628,8 +685,11 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				menu = true;
 			}
 		}
+		if (!term_at && !menu) lv_hold_tick(&hold);
 		if (menu && !quit && !term_at) {
 			run_choice c = RUN_QUIT;
+
+			hold.next = 0;       /* no hold carries through the menu */
 
 #if !defined(PLATFORM_GKD)
 			child_audio_release();
