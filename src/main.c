@@ -4086,6 +4086,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 		}
 		if (wcur < 0.5f && wcur > -0.5f) wcur = 0.0f;
 		win_off = wcur;
+		if (wcur != 0.0f || wmid >= 0.5f || wmid <= -0.5f) ui_redraw_now();
 	}
 
 	if (sel >= 0 && sel < n && rows[sel].label) {
@@ -4149,6 +4150,16 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 			pl_mh += (tgt_h - pl_mh) * k;
 			pl_y  += (pl_my - pl_y) * k;
 			pl_h  += (pl_mh - pl_h) * k;
+		}
+		/* Landed outright within half a pixel, as the window give is: a
+		 * chase like this never arrives by itself, and a menu that only
+		 * draws while something is moving would draw forever. */
+		if (fabsf(pl_y - (float)ty_sel) < 0.5f && fabsf(pl_my - (float)ty_sel) < 0.5f &&
+		    fabsf(pl_h - tgt_h) < 0.5f && fabsf(pl_mh - tgt_h) < 0.5f) {
+			pl_y = pl_my = (float)ty_sel;
+			pl_h = pl_mh = tgt_h;
+		} else {
+			ui_redraw_now();
 		}
 
 		/* A soft white plate, not the system's color. The accent already
@@ -4689,6 +4700,8 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 	rows[1 + n] = (menu_row){ "Cancel", NULL, true };
 	sel = 1 + n;
 
+	screen_pace pace = {0};
+
 	for (;;) {
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; return -1; }
@@ -4703,6 +4716,7 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 		if (in_repeat(&a->in, IN_DOWN)) sel = sel < 1 + n ? sel + 1 : 1;
 		if (a->in.pressed[IN_ACCEPT]) return sel <= n ? sel - 1 : -1;
 
+		if (!screen_draw_due(a, &pace)) { SDL_Delay(IDLE_POLL_MS); continue; }
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -4711,7 +4725,6 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 		menu_draw(a, heading, rows, 2 + n, sel, 0, MENU_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 }
 
@@ -4724,6 +4737,8 @@ static bool confirm_panel(app *a, const char *heading, const char *msg,
 /* Rows to read and nothing to choose, until A or B: a job's result. */
 static void note_panel(app *a, const char *heading, const menu_row *rows, int n)
 {
+	screen_pace pace = {0};
+
 	for (;;) {
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; return; }
@@ -4733,6 +4748,7 @@ static void note_panel(app *a, const char *heading, const menu_row *rows, int n)
 		}
 		if (menu_leaving(a) || a->in.pressed[IN_ACCEPT]) return;
 
+		if (!screen_draw_due(a, &pace)) { SDL_Delay(IDLE_POLL_MS); continue; }
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -4741,7 +4757,6 @@ static void note_panel(app *a, const char *heading, const menu_row *rows, int n)
 		menu_draw(a, heading, rows, n, -1, 0, MENU_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 }
 
@@ -4832,6 +4847,27 @@ typedef menu_result (*menu_key_fn)(app *a, void *ctx, in_button key, int sel);
 
 /* The loop itself. Called only through menu_run below, which owns the flush on
  * either side of it. */
+/* A menu's words and cursor, as one number: FNV-1a over all of it. */
+static Uint32 fnv_str(Uint32 h, const char *s)
+{
+	if (s) for (; *s; s++) h = (h ^ (unsigned char)*s) * 16777619u;
+	return (h ^ 0xFF) * 16777619u;   /* a separator: "ab","c" is not "a","bc" */
+}
+
+static Uint32 menu_fingerprint(const char *heading, const menu_row *rows,
+                               int n, int sel)
+{
+	Uint32 h = fnv_str(2166136261u, heading);
+	int i;
+
+	for (i = 0; i < n; i++) {
+		h = fnv_str(h, rows[i].label);
+		h = fnv_str(h, rows[i].value);
+		h = (h ^ (rows[i].live ? 1u : 2u)) * 16777619u;
+	}
+	return (h ^ (Uint32)n ^ ((Uint32)sel << 16)) * 16777619u;
+}
+
 static menu_exit menu_run_body(app *a, const menu_style *st,
                                menu_build_fn build, menu_key_fn on_key,
                                void *ctx)
@@ -4839,6 +4875,8 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 	menu_row rows[MENU_RUN_ROWS];
 	const char *heading = NULL;
 	int sel = st->start, n = 0, b;
+	screen_pace pace = {0};
+	Uint32 drawn = 0;
 
 	while (a->running && !want_quit) {
 		n = build(ctx, rows, MENU_RUN_ROWS, &heading);
@@ -4928,6 +4966,17 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 			break;
 		}
 
+		/* The rows are rebuilt every pass from what the device says now -
+		 * a scan finding networks, a headset connecting, Muse moving to the
+		 * next track - and none of that is input. So what was built is
+		 * compared with what was last drawn, and a difference is a frame. */
+		{
+			Uint32 fp = menu_fingerprint(heading, rows, n, sel);
+
+			if (fp != drawn) ui_redraw_now();
+			if (!screen_draw_due(a, &pace)) { SDL_Delay(IDLE_POLL_MS); continue; }
+			drawn = fp;
+		}
 		tick_tint(a);
 		if (st->backdrop) {
 			st->backdrop(a, ctx);
@@ -4941,7 +4990,6 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		          st->follow_tint ? a->tint : st->accent);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 	return MENU_LEFT_GONE;
 }
