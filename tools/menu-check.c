@@ -225,6 +225,7 @@ static void tortos_menu_offline(void)
 	u.wifi = WIFI_OFF;
 	u.cards = "Plain Jane";
 	u.cards_dir = "Horizontal";
+	u.sys_order = "Year";
 	u.auto_off = 120;
 	u.suspend_timeout = 90;
 	n = sys_menu_build(&u, rows, &b, &heading);
@@ -262,6 +263,8 @@ static void tortos_menu_offline(void)
 	ck(!strcmp(val(&rows[US_DIR]), "Horizontal"), "and so does the direction");
 	ck(rows[US_DIR].live, "UI Direction is reachable offline too");
 	ck(rows[US_THEME].live, "UI Theme is reachable offline, being a look and not a service");
+	ck(!strcmp(rows[US_ORDER].label, "System Order") && !strcmp(val(&rows[US_ORDER]), "Year")
+	   && rows[US_ORDER].live, "System Order reads Year, offline too");
 	n = sys_menu_build(&u, rows, &b, &heading);
 	/* Live since 2026-09-06, when the pairing screen landed. The row used to
 	 * be dead and read "not yet", which was true of the screen and false of

@@ -102,6 +102,7 @@ static const db_default device_defaults[] = {
 	{ "bluetooth",  "0"  },    /* shipped default - seeding merges the two */
 	{ "cards",      CARDS_DEFAULT },
 	{ "cards_dir",  CARDS_DIR_DEFAULT },
+	{ "sys_order",  "year" },  /* SYS_ORDER_DEFAULT, config.h */
 };
 
 static const db_default library_defaults[] = {
