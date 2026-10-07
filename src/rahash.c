@@ -309,7 +309,8 @@ void ra_md5_hex(const void *data, size_t len, char *out)
  * third_party/), reading one sector at a time. The PC Engine and Genesis
  * shelves mix cartridges and CDs, so there it goes by extension - and only the
  * ones rhash reads as a disc: any other it would read whole. A Genesis .bin
- * stays a cartridge (plorpos-gkd.71). */
+ * stays a cartridge (plorpos-gkd.71). The Sega CD shelf is discs only
+ * (plorpos-vz3). */
 static uint32_t disc_console(const char *tag, const char *path)
 {
 	const char *dot = strrchr(path, '.');
@@ -318,7 +319,7 @@ static uint32_t disc_console(const char *tag, const char *path)
 
 	if (!strcmp(tag, "PS")) return RC_CONSOLE_PLAYSTATION;
 	if (!strcmp(tag, "PCE") && cd) return RC_CONSOLE_PC_ENGINE_CD;
-	if (!strcmp(tag, "MD") && cd) return RC_CONSOLE_SEGA_CD;
+	if ((!strcmp(tag, "MD") && cd) || !strcmp(tag, "SEGACD")) return RC_CONSOLE_SEGA_CD;
 	return 0;
 }
 
