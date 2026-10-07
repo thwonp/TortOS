@@ -5593,6 +5593,9 @@ static void muse_before_delete(const char *abs)
 	}
 }
 
+/* Singles' cover, put back when it has gone (upstream e1b6beb). */
+static void  singles_cover(void);
+
 static void xfer_screen(app *a)
 {
 	char       ssid[WIFI_SSID_MAX], ip[64];
@@ -5605,6 +5608,7 @@ static void xfer_screen(app *a)
 	g_logs_app = a;
 	hare_set_logs(pack_logs);
 	hare_set_before_delete(muse_before_delete);
+	singles_cover();                /* back, if it was taken off the card */
 	if (!hare_start(P_ROMS, P_CARD, P_SHARED, P_WEB)) {
 		menu_row row = { "Could not start", NULL, false };
 
@@ -8410,6 +8414,16 @@ static bool cover_file(int al, char *out, size_t n)
 	c = &g_cov[al];
 	ml_cover_base(g_muse_root, &g_muse, al, base, sizeof base);
 	if (!base[0]) return false;
+	/* Singles' is its own, the one put there for it or one put in its place,
+	 * never a song's: its songs have nothing to do with one another, and the
+	 * first one's picture became the album's (2026-10-05). So it is looked
+	 * for each time and Muse is never asked. */
+	if (g_muse.albums[al].singles) {
+		snprintf(out, n, "%s.jpg", base);
+		if (file_nonempty(out)) return true;
+		snprintf(out, n, "%s.png", base);
+		return file_nonempty(out);
+	}
 	if (c->st == COV_JPG || c->st == COV_PNG) {
 		snprintf(out, n, "%s.%s", base, c->st == COV_JPG ? "jpg" : "png");
 		return true;
@@ -9479,11 +9493,14 @@ static int museart_jobs(museart_job *jobs, int max)
 		    g_muse.albums[i].singles) continue;
 		muse_album_dir(i, dir, sizeof dir);
 		snprintf(key, sizeof key, "museart.%s", dir);
-		if (db_has(db_lib(), key)) continue;
 		ml_cover_base(g_muse_root, &g_muse, i, j->base, sizeof j->base);
 		snprintf(p, sizeof p, "%s.jpg", j->base);
 		have = file_nonempty(p);
 		if (!have) { snprintf(p, sizeof p, "%s.png", j->base); have = file_nonempty(p); }
+		/* Remembered only while the cover it gave is on the card: one deleted
+		 * since is asked about again, where the memory alone kept every such
+		 * album off the list for good (2026-10-05). */
+		if (have && db_has(db_lib(), key)) continue;
 		if (have && museart_image_size(p, &w, &h) && (w < h ? w : h) >= crisp) continue;
 		snprintf(j->artist, sizeof j->artist, "%s", g_muse.artists[muse_artist_of(i)].name);
 		snprintf(j->album, sizeof j->album, "%s", g_muse.albums[i].name);
@@ -12200,7 +12217,7 @@ static bool free_name(const char *dir, const char *name, char *out, size_t n)
 static void muse_tidy_singles(void)
 {
 	char music[LIB_PATH], singles[LIB_PATH + 16];
-	char from[LIB_PATH * 2], to[LIB_PATH * 2 + 16], cover[LIB_PATH * 2], src[LIB_PATH * 2];
+	char from[LIB_PATH * 2], to[LIB_PATH * 2 + 16];
 	char (*loose)[256] = NULL;
 	int nloose = 0, cap = 0, moved = 0, i;
 	struct dirent *e;
@@ -12238,7 +12255,20 @@ static void muse_tidy_singles(void)
 	if (moved)
 		fprintf(stderr, "muse: moved %d loose song%s into Music/%s\n",
 		        moved, moved == 1 ? "" : "s", ML_SINGLES);
+	singles_cover();
+}
 
+/* Singles' cover, the one shipped with TortOS, at Music/.media/Singles.png,
+ * once there is a Singles and unless it has a cover already. At every scan,
+ * and when the transfer screen opens, since a cover taken off the card there
+ * was otherwise back only at the next restart (2026-10-05). */
+static void singles_cover(void)
+{
+	char music[LIB_PATH], singles[LIB_PATH + 16], cover[LIB_PATH * 2], src[LIB_PATH * 2];
+	struct stat st;
+
+	snprintf(music, sizeof music, "%s/Music", P_CARD);
+	snprintf(singles, sizeof singles, "%s/%s", music, ML_SINGLES);
 	if (stat(singles, &st) != 0 || !S_ISDIR(st.st_mode)) return;
 	snprintf(cover, sizeof cover, "%s/.media/%s.jpg", music, ML_SINGLES);
 	if (file_nonempty(cover)) return;
