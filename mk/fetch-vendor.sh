@@ -78,7 +78,7 @@ fetch_core snes9x2010        3933890f520abb9dbb0e5276460785b20ce54d25f552b369caf
 # binary needs GLIBC_2.34 and the Brick has 2.33. Run mk/build-pcsx-rearmed.sh,
 # which builds the same commit in the launcher's toolchain and pins its own sha.
 # fbneo likewise (GLIBC_2.34 + GLIBCXX_3.4.29): run mk/build-fbneo.sh.
-fetch_core genesis_plus_gx   3673a22b906509461e23a5a118b1d1bec15cbda105f260cbcbc08a16b2124e48
+fetch_core picodrive         d0956ac7138ba4f8e5e849d4bd8c544f27108c17a03ea4944e56cc04a9c8028e
 fetch_core mednafen_pce_fast aca90a14b18108c86398da2267ef40d5145eaddbc1c1b310614d745b258552b1
 fetch_core mednafen_ngp      a2015668f9a9403b8bf6941b550fae2c618f37b79173e8ba27c95b95f96bdd99
 
