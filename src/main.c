@@ -3383,6 +3383,52 @@ static void draw_shelf(app *a)
 	else draw_games(a);
 }
 
+/* Drawing only when something changed. See g_redraw_at.
+ *
+ * The loop still runs every IDLE_POLL_MS when nothing is drawn, so the power
+ * button, Auto Off, the headphone jack and the Bluetooth sink are all still
+ * checked at the same rate as before - only the draw and the present are
+ * skipped. 16ms keeps the worst case from a press to its first frame where
+ * it was, one refresh.
+ *
+ * Why a poll and not a wait on the input devices: input arrives through two
+ * roads, SDL's own events and three raw evdev descriptors, and a held
+ * button produces no event at all while it repeats - in_repeat works from
+ * the clock. A wait that slept until the next event would have stopped key
+ * repeat dead. Polling costs a handful of syscalls a frame, against a full
+ * draw and a present. */
+#define IDLE_POLL_MS 16
+/* A gap this long between two passes means something else had the screen -
+ * a menu, a game, the art scraper - and whatever it drew is not the shelf.
+ * Catching it here covers every one of them without a list to keep. */
+#define AWAY_MS 100
+/* Drawn at least this often regardless. A backstop, not a mechanism: if some
+ * animation is ever added without telling g_redraw_at, it shows as a screen
+ * updating once a second, which is visibly wrong, rather than one that has
+ * silently frozen. */
+#define HEARTBEAT_MS 1000
+
+/* Whether a loop that shows the shelf draws it this pass, by the rule above:
+ * the main loop and Muse's shelf (plorpos-7ny.38 - that one drew every pass,
+ * 88% of a core under native PICO-8's menu). */
+static bool shelf_draw_due(app *a, Uint32 *last_pass, Uint32 last_render)
+{
+	Uint32 now = plat_now_ms();
+	/* Held counts as touched, not only pressed: a held direction
+	 * repeats from the clock and moves the shelf every 90ms. */
+	bool touched = false, away = now - *last_pass > AWAY_MS;
+	int b;
+
+	for (b = 0; b < IN_COUNT && !touched; b++)
+		touched = a->in.pressed[b] || a->in.down[b];
+	*last_pass = now;
+
+	/* texload_ready because finished art is installed while drawing:
+	 * a loop that never drew would never find it. */
+	return touched || away || texload_ready() || now >= g_redraw_at ||
+	       now - last_render >= HEARTBEAT_MS;
+}
+
 static void render(app *a)
 {
 	g_redraw_at = REDRAW_NEVER;
@@ -8944,11 +8990,14 @@ static void muse_shelf_screen(app *a, bool now)
 		}
 	}
 
+	/* 0: the first pass draws (away). */
+	Uint32 last_pass = 0, last_render = 0;
+
 	while (!done && !want_quit && a->running) {
 		int n = v->list.count, dir = 0;
 
 		muse_screen_poll();
-		cover_answers();
+		if (cover_answers()) redraw_now();
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; break; }
 		{
@@ -8995,11 +9044,13 @@ static void muse_shelf_screen(app *a, bool now)
 			v = nv;
 		}
 
-		tick_tint(a);
-		draw_shelf(a);
-		draw_chrome(a->r);
-		plat_present(a->r);
-		SDL_Delay(8);
+		if (shelf_draw_due(a, &last_pass, last_render)) {
+			tick_tint(a);
+			render(a);
+			last_render = plat_now_ms();
+		} else {
+			SDL_Delay(IDLE_POLL_MS);
+		}
 	}
 
 	evict_far(v, TEX_KEEP_FAR);
@@ -12874,30 +12925,6 @@ int main(int argc, char *argv[])
 		launch(&a);
 	}
 
-	/* Drawing only when something changed. See g_redraw_at.
-	 *
-	 * The loop still runs every IDLE_POLL_MS when nothing is drawn, so the power
-	 * button, Auto Off, the headphone jack and the Bluetooth sink are all still
-	 * checked at the same rate as before - only the draw and the present are
-	 * skipped. 16ms keeps the worst case from a press to its first frame where
-	 * it was, one refresh.
-	 *
-	 * Why a poll and not a wait on the input devices: input arrives through two
-	 * roads, SDL's own events and three raw evdev descriptors, and a held
-	 * button produces no event at all while it repeats - in_repeat works from
-	 * the clock. A wait that slept until the next event would have stopped key
-	 * repeat dead. Polling costs a handful of syscalls a frame, against a full
-	 * draw and a present. */
-	const Uint32 IDLE_POLL_MS = 16;
-	/* A gap this long between two passes means something else had the screen -
-	 * a menu, a game, the art scraper - and whatever it drew is not the shelf.
-	 * Catching it here covers every one of them without a list to keep. */
-	const Uint32 AWAY_MS = 100;
-	/* Drawn at least this often regardless. A backstop, not a mechanism: if some
-	 * animation is ever added without telling g_redraw_at, it shows as a screen
-	 * updating once a second, which is visibly wrong, rather than one that has
-	 * silently frozen. */
-	const Uint32 HEARTBEAT_MS = 1000;
 	Uint32 last_pass = 0, last_render = 0;
 
 	while (a.running) {
@@ -12960,27 +12987,12 @@ int main(int argc, char *argv[])
 		else update_games(&a);
 		if (!a.running) break;
 
-		{
-			Uint32 now = plat_now_ms();
-			/* Held counts as touched, not only pressed: a held direction
-			 * repeats from the clock and moves the shelf every 90ms. */
-			bool touched = false, away = now - last_pass > AWAY_MS;
-			int b;
-
-			for (b = 0; b < IN_COUNT && !touched; b++)
-				touched = a.in.pressed[b] || a.in.down[b];
-			last_pass = now;
-
-			/* texload_ready because finished art is installed while drawing:
-			 * a loop that never drew would never find it. */
-			if (touched || away || texload_ready() || now >= g_redraw_at ||
-			    now - last_render >= HEARTBEAT_MS) {
-				tick_tint(&a);
-				render(&a);
-				last_render = plat_now_ms();
-			} else {
-				SDL_Delay(IDLE_POLL_MS);
-			}
+		if (shelf_draw_due(&a, &last_pass, last_render)) {
+			tick_tint(&a);
+			render(&a);
+			last_render = plat_now_ms();
+		} else {
+			SDL_Delay(IDLE_POLL_MS);
 		}
 	}
 
