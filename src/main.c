@@ -1300,6 +1300,8 @@ static void muse_show(sysview *v, bool books)
 	cf_reset(&v->cf, 0);
 }
 
+static SDL_Texture *g_backdrop;   /* backdrop_cached */
+
 static void free_all_textures(app *a)
 {
 	/* Anything in flight was asked for against the shelf as it was. */
@@ -1318,6 +1320,7 @@ static void free_all_textures(app *a)
 	 * Now Playing without its art until the album changed (plorpos-gkd.65).
 	 * Loading it again is one decode, about 15 ms. */
 	np_forget();
+	if (g_backdrop) { SDL_DestroyTexture(g_backdrop); g_backdrop = NULL; }
 }
 
 
@@ -3264,10 +3267,7 @@ static void draw_games(app *a)
 	const system_cfg *s = &a->sys.systems[a->sys_cursor];
 	bool albums = is_muse(s);
 	const cf_layout *row = albums ? &CF_LAYOUT_ALBUMS : &CF_LAYOUT_GAMES;
-	SDL_Rect focus;
 
-	cf_focus_rect(row, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &focus);
-	ui_glow(a->r, &focus, s->accent, 100, 2.3f);
 	if (cf_draw(&v->cf, a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, v->list.count,
 	            game_get_tex, a,
 	            !CARD_DIRS[g_dir].vertical ? row
@@ -3312,6 +3312,44 @@ static void draw_no_games(app *a)
 	        TORTOS_SCREEN_W / 2, cy + 56, 0, UI_TEXT_DIM);
 }
 
+/* The background and the focus glow as one picture, kept while nothing they
+ * show changes - for SDL's software renderer only, the one under native
+ * PICO-8's menu: there the two scaled, tinted glows cost 32 of a 65 ms frame
+ * and Muse scrolled at 15 fps (plorpos-7ny.37). A GPU draws them for nothing.
+ * Freed with the shelf's textures, which is before its renderer goes. */
+static struct { unsigned tint, accent; SDL_Rect focus; bool glow; } g_backdrop_is;
+
+static bool backdrop_cached(app *a, const SDL_Rect *focus, unsigned accent)
+{
+	SDL_RendererInfo ri;
+	SDL_Texture *was;
+
+	if (SDL_GetRendererInfo(a->r, &ri) != 0 || !(ri.flags & SDL_RENDERER_SOFTWARE))
+		return false;
+	if (!g_backdrop) {
+		g_backdrop = SDL_CreateTexture(a->r, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET,
+		                               TORTOS_SCREEN_W, TORTOS_SCREEN_H);
+		if (!g_backdrop) return false;
+		SDL_SetTextureBlendMode(g_backdrop, SDL_BLENDMODE_NONE);
+		g_backdrop_is.glow = !focus;   /* differs from any ask: drawn below */
+	}
+	if (g_backdrop_is.tint != a->tint || g_backdrop_is.glow != !!focus ||
+	    (focus && (g_backdrop_is.accent != accent ||
+	               memcmp(&g_backdrop_is.focus, focus, sizeof *focus)))) {
+		was = SDL_GetRenderTarget(a->r);
+		if (SDL_SetRenderTarget(a->r, g_backdrop) != 0) return false;
+		draw_background(a);
+		if (focus) ui_glow(a->r, focus, accent, 100, 2.3f);
+		SDL_SetRenderTarget(a->r, was);
+		g_backdrop_is.tint = a->tint;
+		g_backdrop_is.glow = !!focus;
+		g_backdrop_is.accent = accent;
+		g_backdrop_is.focus = focus ? *focus : (SDL_Rect){ 0 };
+	}
+	SDL_RenderCopy(a->r, g_backdrop, NULL, NULL);
+	return true;
+}
+
 static void draw_shelf(app *a)
 {
 	/* Install whatever the workers finished, before anything is drawn.
@@ -3324,7 +3362,22 @@ static void draw_shelf(app *a)
 	 * the result ring and were discarded once it filled. Everything that draws
 	 * the shelf wants its textures, so the thing that draws the shelf drains. */
 	texload_drain(a);
-	draw_background(a);
+	{
+		bool games = a->sys.count > 0 && a->screen != SCREEN_SYSTEMS;
+		unsigned accent = 0;
+		SDL_Rect focus = { 0 };
+
+		/* The glow behind the focused card. */
+		if (games) {
+			accent = a->sys.systems[a->sys_cursor].accent;
+			cf_focus_rect(is_muse(&a->sys.systems[a->sys_cursor]) ? &CF_LAYOUT_ALBUMS
+			              : &CF_LAYOUT_GAMES, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &focus);
+		}
+		if (!backdrop_cached(a, games ? &focus : NULL, accent)) {
+			draw_background(a);
+			if (games) ui_glow(a->r, &focus, accent, 100, 2.3f);
+		}
+	}
 	if (a->sys.count <= 0) draw_no_games(a);
 	else if (a->screen == SCREEN_SYSTEMS) draw_systems(a);
 	else draw_games(a);
