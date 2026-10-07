@@ -74,6 +74,18 @@ static const struct { int code; in_button b; } padmap[] = {
 	{ 308, IN_L1 }, { 309, IN_R1 }, { 314, IN_L2 }, { 315, IN_R2 },
 	{ 310, IN_SELECT }, { 311, IN_START },
 };
+/* The same buttons for native PICO-8's SDL. With no mapping SDL guesses one
+ * from the evdev names, and these cross them: Start (BTN_TR) went to the
+ * right shoulder, which PICO-8 ignores, and R2 (BTN_START) paused it
+ * (plorpos-7ny.41). SDL numbers the buttons by code from BTN_JOYSTICK up:
+ * b0..b8 = 304..312, b9 = 314, b10 = 315. Menu (b8) is left out - it is the
+ * launcher's. The GUID is bus 0x19, vendor 1, product 1, version 0x100 with
+ * no name CRC, which SDL matches whatever the name. */
+const char plat_pico8_pad[] =
+	"SDL_GAMECONTROLLERCONFIG=19000000010000000100000000010000,ANBERNIC-keys,"
+	"a:b0,b:b1,y:b2,x:b3,leftshoulder:b4,rightshoulder:b5,back:b6,start:b7,"
+	"lefttrigger:b9,righttrigger:b10,"
+	"dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,platform:Linux,";
 
 static SDL_Window *win;
 static SDL_Renderer *ren;

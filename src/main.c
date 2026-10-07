@@ -10703,11 +10703,13 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 {
 	char home[CFG_STR * 2], desk[CFG_STR * 2 + 16], root[CFG_STR * 2];
 	char rect[48], preload[CFG_STR * 2 + 16], path[1024];
-	char *argv[18];   /* 18 at most: env, preload, PATH, AUDIODEV, the binary, 12 flags, NULL */
 #if defined(PLATFORM_H700)
+	char *argv[19];   /* 19 at most: env, preload, PATH, pad, AUDIODEV, the binary, 12 flags, NULL */
 	char audiodev[160];
 	aout_state as = aout_now();
 	const char *dev = aout_device(&as);
+#else
+	char *argv[18];   /* 18 at most: env, preload, PATH, the binary, 12 flags, NULL */
 #endif
 	int n = 0, ow = 0, oh = 0, flags;
 
@@ -10738,6 +10740,10 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 		argv[n++] = path;
 	}
 #if defined(PLATFORM_H700)
+	/* The pad as PICO-8 should see it - SDL's own guess crosses Start and R2
+	 * (plorpos-7ny.41). */
+	if (plat_pico8_preload || plat_pico8_path)
+		argv[n++] = (char *)plat_pico8_pad;
 	/* To the headset when that is where the sound goes, by its PCM name in
 	 * .asoundrc (bt-alsa.sh) - SDL opens AUDIODEV as its default device.
 	 * Chosen once: pico8_64 opens its device at start and keeps it, so a

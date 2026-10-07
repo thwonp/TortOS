@@ -169,6 +169,9 @@ bool plat_resident_ready_wait(void);
  * default, else a PCM name with the headset's link id (plorpos-7ny.35). */
 void plat_child_audio(const char *dev, const char *link);
 void plat_child_audio_reset(void);
+/* An SDL game-controller mapping for the pad, as SDL_GAMECONTROLLERCONFIG
+ * wants it, for native PICO-8 (plorpos-7ny.41). */
+extern const char plat_pico8_pad[];
 #endif
 /* One game for the resident. `console` is a RetroAchievements console id and
  * `cheevos` a set file for Diatom to watch; 0 and NULL mean the game has no
