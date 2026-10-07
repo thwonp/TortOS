@@ -155,6 +155,13 @@ static SDL_Surface *ov_surf;
 static uint8_t *ov_fb;
 static int ov_fd = -1;
 static struct fb_fix_screeninfo ov_fix;
+/* The page on glass as the frozen child left it, written back when the menu
+ * goes: Mali transaction elimination skips the child's tiles that match its
+ * own last write to that page, so a re-rendered still frame never replaced
+ * the menu the CPU copied over it - native PICO-8 flickered between its game
+ * and our menu after Continue (plorpos-7ny.36, 2026-10-06). */
+static uint8_t *ov_saved;
+static size_t ov_saved_at, ov_saved_len;
 
 bool plat_video_init_over_child(void)
 {
@@ -183,6 +190,11 @@ bool plat_video_init_over_child(void)
 		plat_video_quit();
 		return false;
 	}
+	ov_saved_at  = (size_t)v.yoffset * ov_fix.line_length;
+	ov_saved_len = (size_t)v.yres * ov_fix.line_length;
+	if (ov_saved_at + ov_saved_len <= ov_fix.smem_len &&
+	    (ov_saved = malloc(ov_saved_len)) != NULL)
+		memcpy(ov_saved, ov_fb + ov_saved_at, ov_saved_len);
 	SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
 	plat_geometry_init(ren);
 	return true;
@@ -251,6 +263,9 @@ void plat_video_quit(void)
 
 	if (ren) { SDL_DestroyRenderer(ren); ren = NULL; }
 	if (ov_surf) { SDL_FreeSurface(ov_surf); ov_surf = NULL; }
+	if (ov_saved && ov_fb) memcpy(ov_fb + ov_saved_at, ov_saved, ov_saved_len);
+	free(ov_saved);
+	ov_saved = NULL;
 	if (ov_fb) munmap(ov_fb, ov_fix.smem_len);
 	ov_fb = NULL;
 	if (ov_fd >= 0) { close(ov_fd); ov_fd = -1; }
