@@ -11,7 +11,7 @@ mk/fetch-sysroot.sh  # the device's SDL2  -> sysroot/           (once, needs adb
 make            # the launcher            -> build/tortos.elf
 make vendor     # five libretro cores     -> vendor/
 mk/build-mgba-bridge.sh  # the sixth      -> vendor/            (see below)
-make payload    # the installable card    -> out/sd/ and out/plorpOS-brick-v1.1.zip
+make payload    # the installable card    -> out/sd/ and out/plorpOS-brick-v$(VERSION).zip
 make native     # host build of the launcher, for working on how it looks
 make boot       # regenerate the boot animation
 make check      # every check below, offline, in a second or two
@@ -30,6 +30,22 @@ script the day that fork syncs.
 
 `make payload` needs a built diatom binary (`DIATOM_ELF`, defaulting to a
 sibling checkout).
+
+**The other ports** build the same way with `PLATFORM=` on every target, into
+`build/<platform>/` against a sysroot of their own:
+
+```sh
+mk/fetch-gkd-sysroot.sh        # GKD 350H Ultra (ROCKNIX)      -> sysroot-gkd/
+make PLATFORM=gkd && make PLATFORM=gkd payload
+mk/fetch-h700-sysroot.sh       # Anbernic H700 (BaseOS)        -> sysroot-h700/
+make PLATFORM=h700 && make PLATFORM=h700 payload
+```
+
+BaseOS has no SDL2 or FFmpeg of its own, so `mk/fetch-h700-sysroot.sh` builds
+both from source (about ten minutes) and `make PLATFORM=h700 payload` ships
+those libraries in `TortOS/lib/`. Its FFmpeg is configured with
+`--disable-everything` and a short filter list: a filter Muse starts using
+must be added to that list, or every track fails to open on the H700 alone.
 
 `make check` runs before every commit. Each part can be run alone, and each
 exists because something once broke in a way nothing noticed:

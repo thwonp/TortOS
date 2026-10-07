@@ -110,8 +110,8 @@ matters to you - a card is the one part of this that gets reformatted.
 | **B** | back to the systems row |
 | **X** | game info for the card under the cursor |
 | **Y** | favorite it - Favorites is a shelf of its own. Nothing on Muse's shelf |
-| **Volume rocker** | volume, everywhere, including in game |
-| **F1/F2** | brightness, everywhere, including in game |
+| **Volume rocker** | volume, everywhere, including in game. Held, it keeps stepping: 300 ms, then about eleven steps a second |
+| **F1/F2** | brightness, everywhere, including in game, held the same way. Home with the volume rocker on the GKD, MENU with it on the RG SP |
 | **Left stick** (Brick Pro) | the d-pad, in menus and in game; FN1/FN2 are its brightness keys |
 | **Right stick, stick clicks** (Brick Pro) | never seen by games (the bundled cores are all digital), but hotkeys: either click can be the modifier, and the right stick's directions are triggers with the modifier or alone. The left stick's triggers read "L Stick" |
 | **MENU** (on the systems row) | the plorpOS menu - settings that are about the firmware |
@@ -143,7 +143,7 @@ than any one console:
 | **Wi-Fi Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; **Cheevos**, the RetroAchievements account, or `sign in`; on the GKD, **SSH** and **Samba** switches; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed - see **Audio** below |
-| **System Settings** | **Auto Off**: how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Suspend Timeout**: how long a sleeping device waits for POWER before it suspends. **Mute Switch**: what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
+| **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off**: how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Suspend Timeout**: how long a sleeping device waits for POWER before it suspends. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
 | **UI Settings** | **UI Theme**: `Plain Jane` or `Fancy Pants`, which art the shelves wear. **UI Direction**: `Horizontal` or `Vertical` - see below |
 | **Scraping** | **Box Art**: fetch what the whole library is missing. **ScreenScraper**: the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build`. **Import gamelist.xml metadata**: see below |
 | **Controls** | every button and what it does, a page per place |
@@ -152,6 +152,12 @@ than any one console:
 Charging, or plugged into a computer, the device never sleeps, suspends or
 turns itself off: Auto Off, Auto Sleep and Suspend Timeout all wait until it is
 unplugged. As in NextUI - suspending on external power hangs the Brick.
+
+Date & Time has a row for each part of the clock and one for the time zone,
+each changed with left and right and set the moment it changes, so the time
+holds through a power-off. The zones are one or two cities per hour of offset,
+west to east. On the Brick the zone is New York until you choose one; on the
+GKD and the RG SP it reads `System`, the device's own, until you do.
 
 Over The Hare and Box Art need a network, and go quiet without one rather than
 disappearing - a row that vanishes teaches nobody why. Cheevos stays reachable
@@ -311,9 +317,10 @@ Brick was running.
 when the card has both. Muse opens on whichever you left it on, except that
 SELECT with a book playing lands on the books, on that book.
 
-**Sort By** puts the shelf in order by artist, the way the folders are, or by
-album title, two of the same title going in their artists' order. The jump
-goes by the initial of whichever it is: an artist's, or an album's.
+**Sort By** puts the shelf in order by artist, the way the folders are, by
+album title, two of the same title going in their artists' order, or by year,
+newest first and albums with no year last. The jump goes by the initial of
+whichever it is - an artist's, or an album's - and by year, a year at a time.
 
 **SELECT** opens Muse from anywhere that is not a running game: the
 shelf, every menu, and the in-game menu, where the game waits paused
@@ -323,8 +330,14 @@ to the shelf, and the shelf out of Muse. The exceptions are Over The Hare and a
 Box Art fetch, which only keep working while they are on screen.
 
 Albums go in `Music/`, a folder per artist and one inside it per album:
-`Music/Radiohead/The Bends/01 Planet Telex.mp3`. A folder of tracks straight
-under `Music/` - a podcast, a mix - is an album of its own. Over The Hare
+`Music/Radiohead/The Bends/01 Planet Telex.mp3`. A folder of
+tracks straight under `Music/` is filed under its artist when its tags say
+clearly who that is (the album artist, or the artist every track agrees on),
+moving to `Music/<artist>/<album>/` with its cover; one with no clear answer -
+a podcast, a mix - stays an album of its own. Songs straight in `Music/`, in
+no folder at all, are moved into `Music/Singles/` the next time the shelf is
+read, a name already there getting " (2)", and Singles has a cover of its own
+at `Music/.media/Singles.png` until you replace it. Over The Hare
 reaches `Music/` too, and albums sent that way are on the shelf when you leave
 its screen. MP3, M4A, M4B, AAC, FLAC, Ogg, Opus and WAV play. Tracks play in
 file-name order, and the number at the front of a file name is left off the
