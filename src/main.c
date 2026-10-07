@@ -4847,10 +4847,16 @@ typedef menu_result (*menu_key_fn)(app *a, void *ctx, in_button key, int sel);
 
 /* The loop itself. Called only through menu_run below, which owns the flush on
  * either side of it. */
-/* A menu's words and cursor, as one number: FNV-1a over all of it. */
+/* A menu's words and cursor, as one number: FNV-1a over all of it.
+ *
+ * A row's value is not always a string: MENU_NOTE_MARK, MENU_BODY_MARK and
+ * MENU_HR_MARK are the small numbers 1-3 cast to a pointer (menu.h), and
+ * reading through one killed the launcher the first time a menu with a note
+ * under it was gated. Those are hashed as the numbers they are. */
 static Uint32 fnv_str(Uint32 h, const char *s)
 {
-	if (s) for (; *s; s++) h = (h ^ (unsigned char)*s) * 16777619u;
+	if ((uintptr_t)s < 16) return (h ^ (Uint32)(uintptr_t)s ^ 0x100) * 16777619u;
+	for (; *s; s++) h = (h ^ (unsigned char)*s) * 16777619u;
 	return (h ^ 0xFF) * 16777619u;   /* a separator: "ab","c" is not "a","bc" */
 }
 
@@ -8776,6 +8782,9 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
+	screen_pace pace = {0};
+	Uint32 drawn = 0;
+
 	while (!done && !want_quit && a->running) {
 		const mu_now *mn;
 		bool loaded, open_now = false;
@@ -8783,7 +8792,7 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		const char *playing;
 
 		muse_screen_poll();
-		cover_answers();
+		if (cover_answers()) ui_redraw_now();
 		mn = musec_now();
 		loaded = mn->state == MU_PLAYING || mn->state == MU_PAUSED;
 		playing = musec_path();
@@ -8874,11 +8883,19 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 			continue;
 		}
 
+		/* The rows carry the playing track and its time, so a track
+		 * playing is a frame a second and a paused one is none. */
+		{
+			Uint32 fp = menu_fingerprint(heading, rows, n, sel);
+
+			if (fp != drawn) ui_redraw_now();
+			if (!screen_draw_due(a, &pace)) { SDL_Delay(IDLE_POLL_MS); continue; }
+			drawn = fp;
+		}
 		muse_backdrop(a);
 		menu_draw(a, heading, rows, n, sel, menu_std_width(a), MUSE_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 
 	free(rows);
@@ -9220,6 +9237,10 @@ static void album_art_screen(app *a)
 
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
+
+	screen_pace pace = {0};
+	Uint32 drawn = 0;
+
 	while (!done && !want_quit && a->running) {
 		if (working && museart_step(plat_now_ms()) == 0) {
 			working = false;
@@ -9229,7 +9250,10 @@ static void album_art_screen(app *a)
 			        st.problem);
 		}
 		museart_status_get(&st);
-		if (st.landed >= 0) album_art_landed(a, st.landed, st.rg);
+		if (st.landed >= 0) {
+			album_art_landed(a, st.landed, st.rg);
+			ui_redraw_now();                /* a new cover behind the panel */
+		}
 
 		ui_fit_text(ui_font(UI_F_LABEL),
 		            working ? (st.now[0] ? st.now : "starting")
@@ -9268,6 +9292,14 @@ static void album_art_screen(app *a)
 		 * doing what it was asked, and powering off halfway loses the rest. */
 		if (working) a->idle.since_ms = plat_now_ms();
 
+		/* Progress is the rows changing: drawn when they do. */
+		{
+			Uint32 fp = menu_fingerprint(head, rows, 3, -1);
+
+			if (fp != drawn) ui_redraw_now();
+			if (!screen_draw_due(a, &pace)) { SDL_Delay(IDLE_POLL_MS); continue; }
+			drawn = fp;
+		}
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -9276,7 +9308,6 @@ static void album_art_screen(app *a)
 		menu_draw(a, head, rows, 3, -1, menu_std_width(a), MUSE_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 	museart_cancel();
 	plat_input_flush();
