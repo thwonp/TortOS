@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <b>A <ins>fast</ins>, focused custom firmware for the GKD 350H Ultra and the TrimUI Brick, Brick Hammer and Brick Pro.</b><br>
+  <b>A <ins>fast</ins>, focused custom firmware for the GKD 350H Ultra, the TrimUI Brick, Brick Hammer and Brick Pro, and the Anbernic RG SP.</b><br>
   Plays fifteen classic consoles, and gets out of your way.
 </p>
 
@@ -33,6 +33,11 @@ TortOS does, it still does. On top of that:
   it up once and move it between them, saves and all. plorpOS tells the two
   apart when it starts. The left stick is a second d-pad, and the
   right stick and both stick clicks can be hotkeys.
+- **The Anbernic RG SP.** plorpOS is the frontend for
+  [BaseOS](https://github.com/pvaibhav/BaseOS), a small system for Anbernic's
+  H700 handhelds: BaseOS on the first card, plorpOS on the second. Wi-Fi,
+  Bluetooth headphones, shaders, native PICO-8 and Muse all work, and closing
+  the lid sleeps. See [Installing on the RG SP](docs/install-h700.md).
 
 **More to play**
 - **See updated "Supported Systems" table below for details**
@@ -53,7 +58,7 @@ TortOS does, it still does. On top of that:
 - **Configurable hotkeys** for Fast-forward, rewind, quick save, quick load and
   screenshots. Hotkeys can be set with or without a modifier button and persist per console. See [How do hotkeys work?](#faq)
 - **Shaders:** fifteen of them, scanlines to LCD grids and Pixel
-  Transparency, on the in-game menu's Shader row, on both devices. Each console remembers its own.
+  Transparency, on the in-game menu's Shader row, on every device. Each console remembers its own.
 - **Screenshots:** a hotkey saves a PNG of the screen, shader included, to
   `Screenshots/` on the card.
 - **Stretch, Aspect or Integer** display modes on every console.
@@ -63,7 +68,8 @@ TortOS does, it still does. On top of that:
 
 - **Your gamelist.xml metadata** can be imported on the device to avoid needing to re-scrape.
 - **Rename,** on a game's info screen: your name for it, on every shelf.
-- **Battery percentage** in the corner, under System Settings.
+- **Battery percentage** in a disc in the corner, under System Settings. A
+  green ring around it means charging, a red one a low battery.
 - **Delete Game,** on a game's info screen. The game goes; its saves, art and
   play time stay.
 - **A Saves folder per console,** so two games with the same name on two
@@ -71,6 +77,12 @@ TortOS does, it still does. On top of that:
 
 **Music**
 
+- **Muse keeps the Music folder tidy.** Songs left loose in `Music/` move
+  into `Music/Singles/`, an album with its own cover, and an album folder put
+  straight in `Music/` is filed under its artist when its tags say clearly who
+  that is. Nothing is overwritten, and an album with no clear artist stays put.
+- **Sort by Year** on Muse's shelf: newest first, and up and down jump a year
+  at a time.
 - **Music keeps playing through sleep.** A tap of POWER, or the configurable idle timer,
   while Muse plays turns only the screen off, and the album plays on.
   Now Playing's buttons work in the dark, iPod-style, and the volume keys work
@@ -125,7 +137,7 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 
 **Everything happens on the handheld.** Join Wi-Fi, fetch box art, sign in to RetroAchievements, pair headphones and send games over from your phone, all on the handheld. You need a computer once, to set up the card.
 
-**Your handheld stays yours.** plorpOS runs from the SD card. Take the card out and the Brick boots its own system again, and the GKD its own ROCKNIX.
+**Your handheld stays yours.** plorpOS runs from the SD card. Take the card out and the Brick boots its own system again, the GKD its own ROCKNIX, and the RG SP's BaseOS waits for another frontend.
 
 ## Features
 
@@ -174,10 +186,10 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 
 You need a TrimUI Brick, Brick Hammer or Brick Pro, a microSD card and, just this once, a computer. One card works in all three, so you can move it between a Brick and a Brick Pro. The full guide is [Installing on the Brick](docs/install-brick.md), also in the zip as `INSTALL.md`.
 
-On the GKD 350H Ultra, see [Installing on the GKD](docs/install-gkd.md) instead.
+On the GKD 350H Ultra, see [Installing on the GKD](docs/install-gkd.md) instead, and on the Anbernic RG SP, [Installing on the RG SP](docs/install-h700.md).
 
 1. **Format the card as exFAT,** with a Master Boot Record partition scheme. On a Mac, open Disk Utility, choose *View > Show All Devices*, and erase the card itself rather than its volume.
-2. **Download `plorpOS-brick-v1.4.zip`** from [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
+2. **Download `plorpOS-brick-v1.5.zip`** from [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
 3. **Copy everything inside it to the root of the card:** `TortOS/`, `.tmp_update/`, `trimui/`, `Roms/`, `Music/`, `Audiobooks/`, `Bios/` and `Saves/`.
 4. **Put the card in the Brick and turn it on.** The first boot installs plorpOS, and every boot after that starts it.
 5. **Add games** to the folders in `Roms/`, from the computer now or over Wi-Fi later.
@@ -200,7 +212,7 @@ The PIN is new every time you open Over The Hare.
 
 ### Removing plorpOS from the Brick
 
-Take the card out. The Brick boots its own system again. (On the GKD, see [Removing plorpOS](docs/install-gkd.md#removing-plorpos).)
+Take the card out. The Brick boots its own system again. (On the GKD, see [Removing plorpOS](docs/install-gkd.md#removing-plorpos), and on the RG SP, [Removing plorpOS](docs/install-h700.md#removing-plorpos).)
 
 Before you reformat the card or give the Brick away:
 
@@ -239,26 +251,26 @@ None of them is a driver, and none replaces anything the system needs to run.
 | **L1/R1** | Jump a screenful |
 | **MENU** | Settings for the device, or for the shelf you're in |
 | **SELECT** | Muse, the music and audiobook player. Press it again to close |
-| **POWER** | Tap to sleep, hold to turn off |
+| **POWER** | Tap to sleep, hold to turn off. Closing the RG SP's lid is a tap |
 
 **In a game,** MENU opens the in-game menu (its rows are listed below), and SELECT in that menu opens Muse. While music plays the game is silent, and pausing the music brings its sound back. A tap of POWER saves the game and sleeps; holding it saves the game and turns the device off.
 
 **In Muse,** A opens an album, plays a track or pauses it, L1 and R1 change track, left and right skip ten seconds (hold them to go faster: a minute a step after a second, five after three), and B goes back. A on a book carries on where you left it, and in a book with chapters L1 and R1 move by chapter. On Now Playing, Y changes the play mode for music: in order, repeat all, repeat one or shuffle. On a book, which always plays in order, Y changes the speed instead: 1x up to 2x, and 0.75x, kept for each book.
 
-The volume buttons work everywhere. Brightness is F1/F2 on the Brick, and Home with the volume buttons on the GKD. On the Brick Pro the brightness keys are FN1/FN2 and the left stick works as the d-pad in menus and games. Games never see the right stick or the stick clicks, since every bundled core is digital-only, but they can all be hotkeys.
+The volume buttons work everywhere. Brightness is F1/F2 on the Brick, Home with the volume buttons on the GKD, and MENU with the volume buttons on the RG SP. Hold any of them and the level keeps stepping, in games and native PICO-8 too. On the Brick Pro the brightness keys are FN1/FN2 and the left stick works as the d-pad in menus and games. Games never see the right stick or the stick clicks, since every bundled core is digital-only, but they can all be hotkeys.
 
 **plorpOS lists all of this itself,** under **MENU > Controls**: five pages, stepped through with left and right, so you never need this page to look a button up.
 
 <details>
 <summary>What's in each menu</summary>
 
-**The plorpOS menu,** MENU on the consoles row: Play Time; Wi-Fi Services (Wi-Fi, **Cheevos** - the RetroAchievements sign-in - SSH, Samba and Syncthing on the GKD, Over The Hare, then the networks); Bluetooth; Audio Output; System Settings (Auto Off, Auto Sleep, Suspend Timeout - see the FAQ below - Battery Percentage, and Mute Switch on the Brick); UI Settings (UI Theme, UI Direction); Scraping (Box Art, ScreenScraper, Import gamelist.xml metadata); Controls; About.
+**The plorpOS menu,** MENU on the consoles row: Play Time; Wi-Fi Services (Wi-Fi, **Cheevos** - the RetroAchievements sign-in - SSH, Samba and Syncthing on the GKD, Over The Hare, then the networks); Bluetooth; Audio Output; System Settings (Date & Time - the clock and the time zone - Auto Off, Auto Sleep, Suspend Timeout - see the FAQ below - Battery Percentage, and Mute Switch on the Brick); UI Settings (UI Theme, UI Direction); Scraping (Box Art, ScreenScraper, Import gamelist.xml metadata); Controls; About.
 
 **A console's menu,** MENU inside it: Core (PICO-8 only: fake-08 or native PICO-8), Sort By, Display Mode, Box Art for that console alone, and Rescan Folder for games copied since the device was turned on.
 
 **Favorites' menu:** Sort By, with a console's four orders.
 
-**Muse's menu,** MENU on its shelf: Show (music or audiobooks, when the card has both), Sort By (artist or album title, or author or title for books), Album Art, and Rescan Folder for anything copied since the device was turned on.
+**Muse's menu,** MENU on its shelf: Show (music or audiobooks, when the card has both), Sort By (artist, album title or year, or author or title for books), Album Art, and Rescan Folder for anything copied since the device was turned on.
 
 **The in-game menu:** Continue, Save, Load, Display, Shader, Palette (Game Boy), Disc (games with more than one disc), Cheevos, Hotkeys, Reset, Quit. In native PICO-8: Continue, Reset, Splore, Quit.
 
@@ -302,6 +314,7 @@ Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** an
 - **Brick:** Menu or Select.
 - **Brick Pro:** Menu, Select, L Stick Click or R Stick Click.
 - **GKD:** Menu, Home, Stick Click or Select.
+- **RG SP:** Menu or Select.
 
 With MENU as the modifier, a tap of MENU still opens the in-game menu when you let go, unless you pressed another button while holding it.
 
@@ -355,7 +368,7 @@ The device's volume buttons set the headphones' volume, and the headphones' own 
 <details>
 <summary><b>How do I add music?</b></summary>
 
-Put it in `Music/` on the card, from a computer or over Wi-Fi with Over The Hare, a folder per artist and a folder inside that per album: `Music/Radiohead/The Bends/01 Planet Telex.mp3`. MP3, M4A, M4B, AAC, FLAC, Ogg, Opus and WAV all play. Muse appears on the shelf once there's music, and each album's cover comes from its own files, or a picture in the album's folder. **MENU > Album Art** on Muse's shelf fetches a sharper cover over Wi-Fi from [MusicBrainz](https://musicbrainz.org)'s Cover Art Archive for any album whose files carry none, or only a small one.
+Put it in `Music/` on the card, from a computer or over Wi-Fi with Over The Hare, a folder per artist and a folder inside that per album: `Music/Radiohead/The Bends/01 Planet Telex.mp3`. An album folder put straight into `Music/` is moved under its artist when its tags name one, and songs in no folder at all are moved into `Music/Singles/`, an album of their own. MP3, M4A, M4B, AAC, FLAC, Ogg, Opus and WAV all play. Muse appears on the shelf once there's music, and each album's cover comes from its own files, or a picture in the album's folder. **MENU > Album Art** on Muse's shelf fetches a sharper cover over Wi-Fi from [MusicBrainz](https://musicbrainz.org)'s Cover Art Archive for any album whose files carry none, or only a small one.
 
 </details>
 
@@ -376,9 +389,13 @@ Battery saves are `.srm` files in `Saves/<console>/`, named after the game; the 
 <details>
 <summary><b>Something went wrong. How do I send the logs?</b></summary>
 
-Open **MENU > Wi-Fi Services > Over The Hare**, open its address in a browser, and click **Download logs** at the bottom of the first page. You get one `.tar.gz` file holding the last ten boots' logs and a short summary of the device, ready to send to whoever is helping you. Wi-Fi network, headset and account names are masked in it, and the logs on the card are left as they are. The logs themselves are in `.userdata/tg3040/logs/` (Brick) or `.userdata/gkd/logs/` (GKD) on the card.
+Open **MENU > Wi-Fi Services > Over The Hare**, open its address in a browser, and click **Download logs** at the bottom of the first page. You get one `.tar.gz` file holding the last ten boots' logs and a short summary of the device, ready to send to whoever is helping you. Wi-Fi network, headset and account names are masked in it, and the logs on the card are left as they are. The logs themselves are in `.userdata/tg3040/logs/` (Brick), `.userdata/gkd/logs/` (GKD) or `.userdata/rgsp/logs/` (RG SP) on the card.
 
 </details>
+
+## AI Usage Disclosure
+
+plorpOS was developed using AI assisted workflows. Every commit was thoroughly hand-tested along the way.  
 
 ## For developers
 
