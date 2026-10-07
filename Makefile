@@ -26,7 +26,7 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
         check check-cheevos check-hare check-httpd check-idle check-rahash \
         check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
         check-db check-stats check-sort check-bt check-backlog check-ss check-hkbind check-shaderlist \
-        check-gbpal check-titles hooks storeprobe deploy restart logs
+        check-gbpal check-titles check-clock hooks storeprobe deploy restart logs
 
 ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl
@@ -44,7 +44,7 @@ CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
          check-db check-stats check-sort check-bt check-backlog check-ss \
          check-muselib check-musequeue check-museart check-controls check-hkbind check-shaderlist check-gbpal \
-         check-gamelist check-logpack check-titles
+         check-gamelist check-logpack check-titles check-clock
 
 check:
 	@fail=0; for c in $(CHECKS); do \
@@ -549,6 +549,16 @@ check-sort: build-native/sort-check
 	if [ $$s -eq 77 ]; then \
 		echo "  install sqlite3 - the launcher needs it, not just this check" >&2; \
 	fi; exit $$s
+
+# Date & Time: each row moving only itself, the 12-hour words, and the zone
+# list running west to east - see tools/clock-check.c.
+check-clock: build-native/clock-check
+	@./build-native/clock-check
+
+build-native/clock-check: tools/clock-check.c src/clock.c src/clock.h FORCE
+	@mkdir -p build-native
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
+	      -o $@ tools/clock-check.c src/clock.c
 
 check-titles: build-native/titles-check
 	@./build-native/titles-check; s=$$?; \

@@ -52,6 +52,7 @@
 #include "game_menu.h"
 #include "hkbind.h"
 #include "shaderlist.h"
+#include "clock.h"
 #include "gbpal.h"
 #include "ui.h"
 #include "wifi_menu.h"
@@ -4686,6 +4687,12 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.auto_poweroff = a->auto_poweroff;
 		u.suspend_timeout = plat_suspend_timeout_secs();
 		u.mute_lock = db_get_int(db_dev(), "muteswitch", 0) == 1;
+		{
+			static char clk[32];
+
+			clock_label(time(NULL), clk, sizeof clk);
+			u.clock = clk;
+		}
 		u.batt_pct = db_get_int(db_dev(), "battpct", 0) == 1;
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
@@ -7310,6 +7317,99 @@ static void scraping_screen(app *a)
 	         scraping_build, scraping_key, NULL);
 }
 
+/* Date & Time (src/clock.h; upstream b3b4483). Each row is one part of the
+ * clock, changed with left and right and set the moment it changes: the system
+ * clock and the hardware clock both, so it holds through a power-off. Time
+ * Zone steps through CLOCK_ZONES and is the library database's "timezone".
+ *
+ * The Brick's zone was already that key, New York unless chosen, and its
+ * launch.sh points the system at it through boot.env. The GKD and the H700s
+ * follow their own system's zone until one is chosen here: ROCKNIX has a zone
+ * setting of its own, and a launcher default would quietly overrule it. */
+#if defined(PLATFORM_GKD) || defined(PLATFORM_H700)
+#define TZ_DEFAULT ""
+#else
+#define TZ_DEFAULT "America/New_York"
+#endif
+
+static void tz_get(char *id, size_t n)
+{
+	db_get_str(db_lib(), "timezone", id, n, TZ_DEFAULT);
+}
+
+typedef struct {
+	char field[CLK_FIELDS][24];
+	char zone[64];   /* a city, a zone id not on the list as it is, or System */
+} clock_ui;
+
+static const char *const CLOCK_ROW_NAMES[CLK_FIELDS] = {
+	"Year", "Month", "Day", "Hour", "Minute",
+};
+
+static int clock_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	clock_ui *c = ctx;
+	time_t now = time(NULL);
+	char id[64];
+	int i, z, n = 0;
+
+	*heading = "Date & Time";
+	for (i = 0; i < CLK_FIELDS && n < max; i++) {
+		clock_field_label(now, (clock_field)i, c->field[i], sizeof c->field[i]);
+		rows[n++] = (menu_row){ CLOCK_ROW_NAMES[i], c->field[i], true };
+	}
+	tz_get(id, sizeof id);
+	z = id[0] ? clock_zone_find(id) : -1;
+	snprintf(c->zone, sizeof c->zone, "%s",
+	         z >= 0 ? CLOCK_ZONES[z].city : id[0] ? id : "System");
+	if (n < max) rows[n++] = (menu_row){ "Time Zone", c->zone, true };
+	if (n + 3 <= max) {
+		rows[n++] = MENU_RULE;
+		rows[n++] = MENU_NOTE("Left/right: change");
+		/* Every device here has Wi-Fi, and each system sets its clock from
+		 * the network once it connects, so a time set here lasts until then. */
+		rows[n++] = MENU_NOTE("Wi-Fi sets the clock when connected");
+	}
+	return n;
+}
+
+static menu_result clock_key(app *a, void *ctx, in_button key, int sel)
+{
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : 0;
+
+	(void)a; (void)ctx;
+	if (!d) return MENU_STAY;
+	if (sel >= 0 && sel < CLK_FIELDS) {
+		plat_clock_set(clock_step(time(NULL), (clock_field)sel, d));
+	} else if (sel == CLK_FIELDS) {
+		char id[64];
+		int z;
+
+		/* From System, the first step lands on New York, as
+		 * clock_zone_step does for any zone not on its list. */
+		tz_get(id, sizeof id);
+		z = clock_zone_step(id, d);
+		db_set_str(db_lib(), "timezone", CLOCK_ZONES[z].id);
+		db_write_boot_env();
+		plat_clock_zone(CLOCK_ZONES[z].id);
+	}
+	return MENU_STAY;
+}
+
+static void clock_screen(app *a)
+{
+	clock_ui c;
+	menu_style st = {
+		/* Fixed, so the panel does not change size as "May" becomes
+		 * "September" under a held key */
+		.fixed_w = menu_std_width(a),
+		.accent  = MENU_ACCENT,
+	};
+
+	memset(&c, 0, sizeof c);
+	menu_run(a, &st, clock_build, clock_key, &c);
+}
+
 /* Settings > System Settings and UI Settings (plorpos-z0d.1): rows that
  * stood in the plorpOS menu itself until then, with the keys they always had.
  * The rows are src/sys_menu.c's, so tools/menu-check.c can state them. */
@@ -7392,6 +7492,7 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		db_set_int(db_dev(), "suspendtimeout", SUSPEND_TIMEOUT[at]);
 		return MENU_STAY;
 	}
+	if (sel == ST_CLOCK && key == IN_ACCEPT) { clock_screen(a); return MENU_STAY; }
 	/* Battery Percentage: a toggle, A or left/right, as Mute Switch. */
 	if (sel == ST_BATTPCT && (d || key == IN_ACCEPT)) {
 		db_set_int(db_dev(), "battpct", db_get_int(db_dev(), "battpct", 0) != 1);
@@ -13036,6 +13137,15 @@ int main(int argc, char *argv[])
 		db_write_boot_env();
 	}
 	t_mark("databases");
+	/* Local time is the card's chosen zone, in this process, from here on: the
+	 * Brick's launch.sh points the system at it too; elsewhere only a zone
+	 * chosen in Date & Time is applied (see TZ_DEFAULT). */
+	{
+		char tz[64];
+
+		tz_get(tz, sizeof tz);
+		if (tz[0]) plat_clock_zone(tz);
+	}
 
 	snprintf(path, sizeof path, "%s/systems.cfg", P_ROOT);
 	if (!cfg_load_systems(path, &a.sys)) {

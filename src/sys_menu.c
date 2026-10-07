@@ -169,6 +169,9 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	 * back. It and Auto Sleep are mutually exclusive - main.c's
 	 * ST_SLEEP/ST_AUTO_OFF handling - so at most one of those two labels is
 	 * ever a real interval, and why the two sit together, Auto Off on top. */
+	/* Date & Time leads: setup, where the timers are settings (upstream
+	 * b3b4483, which put it in the top menu; ours is regrouped - z0d.1). */
+	out[ST_CLOCK]    = (menu_row){ "Date & Time", u->clock, true };
 	sys_menu_auto_off_label(u->auto_poweroff, b->a, sizeof b->a);
 	out[ST_AUTO_OFF] = (menu_row){ "Auto Off",        b->a, true };
 	sys_menu_auto_off_label(u->auto_off, b->c, sizeof b->c);

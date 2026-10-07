@@ -4,6 +4,7 @@
 
 #include <SDL.h>
 #include <stdbool.h>
+#include <time.h>
 
 /* Everything that knows it is running on a TrimUI Brick lives here: the
  * display, the buttons that arrive on three different devices, the panel
@@ -319,6 +320,16 @@ bool plat_light_sleep(unsigned waited_ms);
  * flush, no escalation. For main.c's music_dark, the screen-off that lets an
  * album play on where light sleep would pause it (TortOS-a5k). */
 void plat_screen(bool on);
+
+/* Date & Time (src/clock.h). Set the clock to `t`, and the hardware clock with
+ * it, which keeps the time while the device is off. False if the system clock
+ * would not take it. */
+bool plat_clock_set(time_t t);
+
+/* Times read as local time in zone `id` from now on, in this process: a zone
+ * database name such as "America/New_York". The setting itself is the
+ * library database's "timezone". */
+void plat_clock_zone(const char *id);
 /* BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: the sleep interface, NextUI's PWR_sleep (plat_screen above is this project's own). See NOTICE. */
 
 /* A computer has enumerated the device - not merely a charger, which never

@@ -14,6 +14,8 @@
 #include <signal.h>
 #ifdef __linux__
 #include <linux/input.h>
+#include <linux/rtc.h>
+#include <sys/ioctl.h>
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +25,7 @@
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <sys/wait.h>
@@ -1913,4 +1916,47 @@ bool battery_read(const char *dir, int *pct, bool *charging)
 	(void)charging;
 	return false;
 #endif
+}
+
+/* ---- Date & Time ---------------------------------------------------------- */
+
+bool plat_clock_set(time_t t)
+{
+	struct timeval tv = { .tv_sec = t, .tv_usec = 0 };
+
+	if (settimeofday(&tv, NULL) != 0) {
+		fprintf(stderr, "clock: settimeofday: %s\n", strerror(errno));
+		return false;
+	}
+#ifdef __linux__
+	/* The hardware clock keeps UTC, as the kernel reads it back at boot
+	 * (CONFIG_RTC_HCTOSYS). Without this the time set here would last until
+	 * the next power-off - on the Pixel 2, back to whatever the clock held
+	 * before, 2018 on one never set. */
+	{
+		struct tm tm;
+		struct rtc_time rt;
+		int fd = open("/dev/rtc0", O_WRONLY | O_CLOEXEC);
+
+		if (fd < 0) {
+			fprintf(stderr, "clock: no hardware clock: %s\n", strerror(errno));
+			return true;
+		}
+		gmtime_r(&t, &tm);
+		memset(&rt, 0, sizeof rt);
+		rt.tm_year = tm.tm_year; rt.tm_mon = tm.tm_mon; rt.tm_mday = tm.tm_mday;
+		rt.tm_hour = tm.tm_hour; rt.tm_min = tm.tm_min; rt.tm_sec = tm.tm_sec;
+		if (ioctl(fd, RTC_SET_TIME, &rt) != 0)
+			fprintf(stderr, "clock: hardware clock: %s\n", strerror(errno));
+		close(fd);
+	}
+#endif
+	return true;
+}
+
+void plat_clock_zone(const char *id)
+{
+	if (!id || !id[0]) return;
+	setenv("TZ", id, 1);
+	tzset();
 }
