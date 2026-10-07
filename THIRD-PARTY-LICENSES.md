@@ -46,7 +46,7 @@ carries its own; see Runtime libraries.
 | `mednafen_pce_fast_libretro.so` | TurboGrafx-16 / PC Engine | GPL-2.0-or-later (Mednafen-derived) |
 | `mgba_libretro.so` | Game Boy, Game Boy Color, Game Boy Advance | MPL-2.0 |
 | `snes9x2010_libretro.so` | SNES | **Non-commercial** |
-| `genesis_plus_gx_libretro.so` | Genesis, Master System, Game Gear | **Non-commercial** |
+| `picodrive_libretro.so` | Genesis, 32X, Sega CD, Master System, Game Gear | **Non-commercial** (PicoDrive's own MAME-style license) |
 | `mednafen_ngp_libretro.so` | Neo Geo Pocket, Neo Geo Pocket Color | GPL-2.0 (Beetle NeoPop, Mednafen-derived) |
 | `pcsx_rearmed_libretro.so` | PlayStation | GPL-2.0 (built from libretro/pcsx_rearmed source, `mk/build-pcsx-rearmed.sh`) |
 | `fake08_libretro.so` | PICO-8 | MIT, with components under their own terms (Lua MIT, Zepto 8 WTFPL 2, LodePNG custom, an oval routine CC BY-SA 3.0, others); full text in `LICENSE-fake08.md` (built from jtothebell/fake-08 source with three patches of ours, `mk/build-fake08.sh`; the patches are MIT) |
@@ -55,7 +55,7 @@ carries its own; see Runtime libraries.
 The GKD card ships all nine. The Brick card ships the first six only - no
 pcsx_rearmed, fake08 or fbneo, and so no `LICENSE-fake08.md` or `LICENSE-FBNeo.txt`.
 
-**snes9x2010, genesis_plus_gx and fbneo carry a non-commercial restriction.** They are not open source
+**snes9x2010, picodrive and fbneo carry a non-commercial restriction.** They are not open source
 under either the OSI or FSF definition and they restrict commercial
 redistribution outright, which constrains what a card carrying them may be
 sold as - hobby redistribution is what every firmware shipping them relies

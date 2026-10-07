@@ -117,6 +117,11 @@ static const db_default library_defaults[] = {
 	 * tagged entry overrides a global of the same name. */
 	{ "coreopt..mgba_sgb_borders",  "OFF" },
 	{ "coreopt.GB.mgba_gb_model",   "Game Boy" },
+	/* PicoDrive's own default, PAR, reports square pixels: Genesis 1.4286,
+	 * Master System 1.3333. CRT is a television's shape, within 3% of what
+	 * genesis_plus_gx reported for all three Sega systems before PicoDrive
+	 * replaced it - so the picture keeps the shape it had (plorpos-xpt.7). */
+	{ "coreopt..picodrive_aspect",  "CRT" },
 	/* No mgba_gb_colors: a Game Boy game's palette is its own, palette.GB.<file>
 	 * and Auto without one, sent at every launch after these (plorpos-gkd.76). */
 	/* Neo Geo boots the AES BIOS, Europe/Asia (English): neo-epo.bin in

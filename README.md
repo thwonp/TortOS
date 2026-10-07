@@ -49,7 +49,7 @@ TortOS does, it still does. On top of that:
 - **PICO-8.** Carts play in fake-08 by default, with full save state and rewind functionality. 
   - Native PICO-8 with Splore is also fully supported (seriously, buy it) - Just put your raspberry-pi files in `Bios/` and switch the shelf.
   - A cart you play in Splore lands on the shelf with its full artwork.
-- **Sega CD,** on the Genesis shelf.
+- **Sega CD and 32X,** on the Genesis shelf.
 - **Achievements for disc games and arcade sets**
 
 **In a game**
@@ -160,11 +160,11 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 | PICO-8 | `Roms/Pico-8` | `.p8` `.png` | fake-08, or native PICO-8 |
 | Arcade | `Roms/Arcade` | `.zip` `.7z` | FBNeo |
 | NES | `Roms/NES` | `.nes` `.fds` `.unf` `.unif` `.zip` | FCEUmm |
-| Master System | `Roms/Master System` | `.sms` `.zip` | Genesis Plus GX |
+| Master System | `Roms/Master System` | `.sms` `.zip` | PicoDrive |
 | Game Boy | `Roms/Game Boy` | `.gb` `.dmg` `.zip` | mGBA |
-| Genesis and Sega CD | `Roms/Genesis` | `.md` `.gen` `.bin` `.smd` `.zip` `.chd` `.cue` `.m3u` | Genesis Plus GX |
+| Genesis, 32X and Sega CD | `Roms/Genesis` | `.md` `.gen` `.bin` `.smd` `.32x` `.zip` `.chd` `.cue` `.m3u` | PicoDrive |
 | TurboGrafx-16 and CD | `Roms/TurboGrafx-16` | `.pce` `.sgx` `.cue` `.ccd` `.chd` `.toc` `.m3u` `.zip` | Beetle PCE Fast |
-| Game Gear | `Roms/Game Gear` | `.gg` `.zip` | Genesis Plus GX |
+| Game Gear | `Roms/Game Gear` | `.gg` `.zip` | PicoDrive |
 | Neo Geo | `Roms/Neo Geo` | `.zip` `.7z` | FBNeo |
 | SNES | `Roms/SNES` | `.sfc` `.smc` `.zip` | Snes9x 2010 |
 | PlayStation | `Roms/PlayStation` | `.chd` `.cue` `.m3u` `.pbp` `.iso` `.img` | PCSX ReARMed |

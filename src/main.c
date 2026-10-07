@@ -11316,6 +11316,20 @@ static void launch(app *a)
 			memset(&a->in, 0, sizeof a->in);
 			return;
 		}
+		/* Sega CD saves from before PicoDrive (plorpos-xpt.7). genesis_plus_gx
+		 * kept ONE backup RAM per BIOS region, scd_U.brm beside the shelf's
+		 * saves; PicoDrive keeps the same raw 8 KB image per disc, as its
+		 * .srm. A disc with no .srm yet starts from the old shared one, so
+		 * every save made before the switch is still there. */
+		if (!strcmp(s->tag, "MD")) {
+			char brm[CFG_STR * 3], srm[LIB_PATH * 2];
+			const char *dot = strrchr(romfile, '.');
+
+			snprintf(brm, sizeof brm, "%s/scd_%c.brm", save, name[8]);
+			snprintf(srm, sizeof srm, "%s/%.*s.srm", save,
+			         dot ? (int)(dot - romfile) : (int)strlen(romfile), romfile);
+			if (access(srm, F_OK) != 0) copy_file(brm, srm);
+		}
 	}
 
 	/* Native PICO-8 with no pico8_64 is said, the same way, rather than
@@ -13518,6 +13532,12 @@ int main(int argc, char *argv[])
 	t_boot0 = plat_now_ms();
 	paths_init();
 	build_child_env();
+
+	/* PicoDrive replaced genesis_plus_gx (plorpos-xpt.7). A card updated by
+	 * unzipping over itself still has the old core, and Diatom maps every
+	 * core in the folder for as long as it runs. Gone from the next boot. */
+	snprintf(path, sizeof path, "%s/cores/genesis_plus_gx_libretro.so", P_ROOT);
+	unlink(path);
 
 	/* Before anything reads a setting. Two databases, because the files this
 	 * replaced kept per-device and per-card data apart on purpose - see db.h.
