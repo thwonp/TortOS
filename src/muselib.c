@@ -139,8 +139,11 @@ static void list_dir(const char *dir, names *dirs, names *files)
 		if (e->d_name[0] == '.') continue;
 		if (snprintf(full, sizeof full, "%s/%s", dir, e->d_name) >= (int)sizeof full)
 			continue;
-		if (stat(full, &st) != 0) continue;
-		if (S_ISDIR(st.st_mode)) { if (dirs) names_add(dirs, e->d_name); }
+		bool isdir;
+		if (e->d_type == DT_DIR) isdir = true;
+		else if (e->d_type != DT_UNKNOWN && e->d_type != DT_LNK) isdir = false;
+		else { if (stat(full, &st) != 0) continue; isdir = S_ISDIR(st.st_mode); }
+		if (isdir) { if (dirs) names_add(dirs, e->d_name); }
 		else if (files && ml_is_audio(e->d_name)) names_add(files, e->d_name);
 	}
 	closedir(d);

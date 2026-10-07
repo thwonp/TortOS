@@ -188,7 +188,8 @@ typedef struct {
 /* Defined down with the shelf building it belongs to, declared here because
  * the input loop calls it the moment a favorite changes. */
 static void refresh_favorites_shelf(app *a);
-static void build_muse_shelf(app *a);
+static void build_muse_shelf(app *a, bool bg);
+static void muse_walk_poll(app *a);
 /* How a Muse screen was left: back one level, Muse closed altogether, or the
  * library rebuilt under it by Rescan Folder, so every album index it held is
  * stale and the shelf has to find itself again. */
@@ -621,6 +622,12 @@ static char   g_muse_root[CFG_STR * 2];
 /* Bumped by every build of the library, so a Muse screen can tell that MENU's
  * Rescan Folder replaced it while its menu was open - see muse_menu. */
 static unsigned g_muse_gen;
+/* The boot walk of the library - see muse_walk. */
+static SDL_Thread *g_walk_thread;    /* a walk started and not yet put in */
+static SDL_atomic_t g_walk_done;
+static ml_lib g_walk_lib;
+static bool g_walk_ok;
+static unsigned g_walk_ms;           /* how long it took, for the log */
 
 static bool is_muse(const system_cfg *s)
 {
@@ -9278,10 +9285,37 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 {
 	const mu_now *mn = musec_now();
 
-	if (g_muse.ntracks == 0) return false;
 	g_muse_over = over;
 	g_muse_over_ctx = ctx;
 	g_muse_gone = false;
+	/* Asked for before the boot walk is done: say so at once, and open as
+	 * soon as it is in, unless B says never mind (plorpos-18j). */
+	if (g_walk_thread) {
+		menu_row row = { "Loading your library...", NULL, false };
+		ui_pace pace = {0};
+
+		while (g_walk_thread) {
+			plat_input_poll(&a->in);
+			if (a->in.quit_requested) { a->running = false; break; }
+			if (power_check(a) == PWR_POWEROFF) { muse_power(a); break; }
+			if (menu_leaving(a)) break;
+			muse_walk_poll(a);
+			if (!g_walk_thread) break;
+			if (!screen_draw_due(a, &pace, 0)) { SDL_Delay(IDLE_POLL_MS); continue; }
+			muse_backdrop(a);
+			menu_draw(a, "Muse", &row, 1, -1, 0, MUSE_ACCENT);
+			draw_chrome(a->r);
+			plat_present(a->r);
+		}
+		plat_input_flush();
+		memset(&a->in, 0, sizeof a->in);
+	}
+	if (g_walk_thread || g_muse.ntracks == 0 || !a->running || g_muse_gone) {
+		g_muse_over = NULL;
+		g_muse_over_ctx = NULL;
+		g_menu_closing = false;
+		return g_muse_gone;
+	}
 	muse_shelf_screen(a, mn->state == MU_PLAYING || mn->state == MU_PAUSED);
 	g_muse_over = NULL;
 	g_muse_over_ctx = NULL;
@@ -12462,11 +12496,111 @@ static void muse_file_albums(void)
  *
  * Hidden when the folder is empty or missing, the same rule an empty system
  * and an empty Favorites shelf follow: a card should lead somewhere. */
-static void build_muse_shelf(app *a)
+/* Reading the library is the one slow part: every folder under Music/ and
+ * Audiobooks/, about four seconds cold for 13k tracks on exFAT, which used to
+ * stand between power-on and the first frame (plorpos-18j). At boot it is
+ * walked on a thread instead and Muse's card is on the shelf from the start,
+ * empty until muse_walk_poll puts the library in; muse_open waits for it
+ * behind a panel. The thread only fills g_walk_lib - every g_ global stays the
+ * main thread's. A rescan walks on the main thread as it always has: it is
+ * warm by then, and Rescan Folder is asked from inside Muse, which has to
+ * have a library to come back to. */
+static int muse_walk(void *unused)
+{
+	unsigned t0 = plat_now_ms();
+
+	(void)unused;
+	g_walk_ok = ml_scan_card(g_muse_root, &g_walk_lib);
+	g_walk_ms = plat_now_ms() - t0;
+	SDL_AtomicSet(&g_walk_done, 1);
+	return 0;
+}
+
+/* Whether `dir` has anything in it but dot entries: one read, enough to say
+ * whether Muse's card belongs on the shelf before the walk has said so. */
+static bool muse_dir_used(const char *dir)
+{
+	DIR *d = opendir(dir);
+	struct dirent *e;
+	bool used = false;
+
+	if (!d) return false;
+	while (!used && (e = readdir(d))) used = e->d_name[0] != '.';
+	closedir(d);
+	return used;
+}
+
+/* Put what the walk found in place of the empty library, on the main thread:
+ * the per-album arrays, the years and books from the databases, and the
+ * shelf. A walk that found nothing playable takes its card off again. */
+static void muse_install(app *a)
+{
+	int i, m;
+
+	g_muse = g_walk_lib;
+	memset(&g_walk_lib, 0, sizeof g_walk_lib);
+	g_muse_gen++;
+	for (m = 0; m < a->sys.count; m++)
+		if (is_muse(&a->sys.systems[m])) break;
+	if (!g_walk_ok || g_muse.ntracks == 0 ||
+	    !(g_book_done = calloc((size_t)g_muse.nalbums, sizeof *g_book_done))) {
+		fprintf(stderr, "scan: %-16s no music or books in %s\n", "Muse", g_muse_root);
+		ml_free(&g_muse);
+		if (m >= a->sys.count) return;
+		/* Always the last card: it is appended after everything else. */
+		texload_bump();
+		if (a->sys_tex[m]) SDL_DestroyTexture(a->sys_tex[m]);
+		a->sys_tex[m] = NULL;
+		a->sys.count--;
+		if (a->sys_cursor >= a->sys.count) {
+			a->sys_cursor = a->sys.count ? a->sys.count - 1 : 0;
+			a->screen = SCREEN_SYSTEMS;
+			cf_reset(&a->cf_sys, a->sys_cursor);
+		}
+		ui_redraw_now();
+		return;
+	}
+	g_cov = calloc((size_t)g_muse.nalbums, sizeof *g_cov);
+	year_load();
+	flat_albums_find();
+	for (i = 0; i < g_muse.nalbums; i++) {
+		char key[LIB_PATH + 8], val[16];
+
+		if (!g_muse.albums[i].book) continue;
+		book_key(i, key, sizeof key);
+		db_get_str(db_dev(), key, val, sizeof val, "");
+		g_book_done[i] = !strcmp(val, "finished");
+	}
+	/* The order sort_load gave the empty view is kept: fill_view uses it. */
+	if (m < a->sys.count) muse_fill_view(&a->view[m]);
+	fprintf(stderr, "scan: %-16s %d artists, %d albums, %d books, %d tracks in %u ms\n",
+	        "Muse", g_muse.nartists, ml_count(&g_muse, false), ml_count(&g_muse, true),
+	        g_muse.ntracks, g_walk_ms);
+	ui_redraw_now();
+}
+
+/* From the main loop and muse_open's wait: the library, once it is read. */
+static void muse_walk_poll(app *a)
+{
+	if (!g_walk_thread || !SDL_AtomicGet(&g_walk_done)) return;
+	SDL_WaitThread(g_walk_thread, NULL);
+	g_walk_thread = NULL;
+	muse_install(a);
+}
+
+/* `bg`: walk on a thread, for boot. Otherwise the library is in on return. */
+static void build_muse_shelf(app *a, bool bg)
 {
 	system_cfg *s;
 	int i;
 
+	/* A boot walk still going when the card is read again is read again
+	 * with it: what it found is about to be replaced anyway. */
+	if (g_walk_thread) {
+		SDL_WaitThread(g_walk_thread, NULL);
+		g_walk_thread = NULL;
+		ml_free(&g_walk_lib);
+	}
 	/* Everything indexed by album goes with the albums: a rescan can put a
 	 * different album at every index. */
 	g_muse_gen++;
@@ -12481,22 +12615,17 @@ static void build_muse_shelf(app *a)
 	np_forget();
 	snprintf(g_muse_root, sizeof g_muse_root, "%s", P_CARD);
 	muse_tidy_singles();
-	if (!ml_scan_card(g_muse_root, &g_muse) || g_muse.ntracks == 0) {
-		fprintf(stderr, "scan: %-16s no music or books in %s\n", "Muse", g_muse_root);
-		return;
-	}
-	g_cov = calloc((size_t)g_muse.nalbums, sizeof *g_cov);
-	year_load();
-	g_book_done = calloc((size_t)g_muse.nalbums, sizeof *g_book_done);
-	if (!g_book_done) { ml_free(&g_muse); return; }
-	flat_albums_find();
-	for (i = 0; i < g_muse.nalbums; i++) {
-		char key[LIB_PATH + 8], val[16];
+	{
+		char dir[sizeof g_muse_root + 16];
 
-		if (!g_muse.albums[i].book) continue;
-		book_key(i, key, sizeof key);
-		db_get_str(db_dev(), key, val, sizeof val, "");
-		g_book_done[i] = !strcmp(val, "finished");
+		snprintf(dir, sizeof dir, "%s/Music", g_muse_root);
+		bool used = muse_dir_used(dir);
+		snprintf(dir, sizeof dir, "%s/Audiobooks", g_muse_root);
+		if (!used && !muse_dir_used(dir)) {
+			fprintf(stderr, "scan: %-16s no music or books in %s\n", "Muse",
+			        g_muse_root);
+			return;
+		}
 	}
 	{
 		char show[16];
@@ -12513,17 +12642,20 @@ static void build_muse_shelf(app *a)
 	snprintf(s->card, CFG_STR, "%s", "MUSE.png");
 	s->accent = MUSE_ACCENT;
 	memset(&a->view[i], 0, sizeof a->view[i]);
-	muse_fill_view(&a->view[i]);
 	a->sys_tex[i] = NULL;
 	a->sys_w[i] = a->sys_h[i] = 0;
 	a->sys_cb[i] = 0;
 	a->sys.count++;
-	fprintf(stderr, "scan: %-16s %d artists, %d albums, %d books, %d tracks\n", "Muse",
-	        g_muse.nartists, ml_count(&g_muse, false), ml_count(&g_muse, true),
-	        g_muse.ntracks);
+
+	SDL_AtomicSet(&g_walk_done, 0);
+	if (bg && (g_walk_thread = SDL_CreateThread(muse_walk, "tortos-musewalk", NULL)))
+		return;
+	muse_walk(NULL);
+	muse_install(a);
 }
 
-static void scan_all(app *a)
+/* `bg`: Muse's library may still be being read on return - see muse_walk. */
+static void scan_all(app *a, bool bg)
 {
 	for (int i = 0; i < a->sys.count; i++) {
 		sysview *v = &a->view[i];
@@ -12568,7 +12700,7 @@ static void scan_all(app *a)
 	}
 	hide_empty_systems(a);
 	build_favorites_shelf(a);
-	build_muse_shelf(a);
+	build_muse_shelf(a, bg);
 }
 
 /* Read the card again and rebuild every shelf, for when something outside the
@@ -12638,7 +12770,7 @@ static void rescan_all(app *a)
 		return;
 	}
 
-	scan_all(a);
+	scan_all(a, false);
 	display_load(a);     /* indexes by tag, so it is safe to run again */
 	shader_load(a);
 	engine_load(a);
@@ -13490,7 +13622,7 @@ int main(int argc, char *argv[])
 	/* Scan every system now, not when one is opened: it is three directory
 	 * reads, it happens behind the boot animation, and it means walking into
 	 * a system is a frame rather than a wait. */
-	scan_all(&a);
+	scan_all(&a, true);
 	t_mark("library scan");
 	/* After the scan, because it indexes by system, and before anything can
 	 * launch, because the mode has to reach Diatom with the first RUN. */
@@ -13723,6 +13855,7 @@ int main(int argc, char *argv[])
 		 * and the covers it was asked for by Muse's shelf, which that shelf
 		 * has to be drawn again to ask the worker for. */
 		muse_poll();
+		muse_walk_poll(&a);
 		if (cover_answers()) ui_redraw_now();
 		year_fill();
 		/* Once, when the years being read are all in: not card by card,
