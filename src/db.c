@@ -2,6 +2,7 @@
 /* See db.h. No SDL and no platform header, deliberately, so the check can link
  * it without a window - the same reason atomic.c is kept clean. */
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -655,22 +656,48 @@ bool db_write_boot_env(void)
 	 * refusing to create the file: this thing's whole license to be a cache is
 	 * that deleting it costs nothing, and skipping here would make a deleted
 	 * boot.env stay deleted until some unrelated setting moved. */
+	/* And the memo starts as what is ON THE CARD, not as nothing. Empty, it
+	 * made every launcher start rewrite an unchanged file, and a hard reset
+	 * in the ~30 s before that write reached the card - the RG SP's reset
+	 * button is easy to hit - left no boot.env: both radios off for that
+	 * boot (plorpos-7ny.29). A file that is missing, short or different is
+	 * still rewritten, so a lost one still heals at the next start. */
+	if (!last[0] && (f = fopen(g_boot_env, "r"))) {
+		size_t got = fread(last, 1, sizeof last - 1, f);
+		last[got] = '\0';
+		fclose(f);
+	}
 	{
 		struct stat sb;
 		if (!strcmp(body, last) && stat(g_boot_env, &sb) == 0) return true;
 	}
 
-	/* Written to a temporary and renamed, but NOT fsynced. rename is what
-	 * makes it atomic, so launch.sh can never source half a file; the fsync
-	 * would only add durability, and this file is derived - losing it to a
-	 * power cut costs one boot at the shipped defaults and the next settings
-	 * change rewrites it. That is the whole reason it is allowed to be a
-	 * cache. */
+	/* Written to a temporary, synced, renamed, and the directory synced.
+	 * rename is what makes it atomic, so launch.sh can never source half a
+	 * file. The syncs are what make it survive a hard reset: losing it costs
+	 * a boot with the radios off, and on the RG SP that reset is one stray
+	 * press away (plorpos-7ny.29). Only a real change gets here (above). */
 	snprintf(tmp, sizeof tmp, "%s.new", g_boot_env);
 	if (!(f = fopen(tmp, "w"))) return false;
-	if (fputs(body, f) == EOF) { fclose(f); unlink(tmp); return false; }
+	if (fputs(body, f) == EOF || fflush(f) != 0 || fsync(fileno(f)) != 0) {
+		fclose(f);
+		unlink(tmp);
+		return false;
+	}
 	if (fclose(f) != 0) { unlink(tmp); return false; }
 	if (rename(tmp, g_boot_env) != 0) { unlink(tmp); return false; }
+	{
+		char dir[1100];
+		char *sl;
+		int fd;
+
+		snprintf(dir, sizeof dir, "%s", g_boot_env);
+		sl = strrchr(dir, '/');
+		if (sl) {
+			*(sl == dir ? sl + 1 : sl) = '\0';
+			if ((fd = open(dir, O_RDONLY)) >= 0) { fsync(fd); close(fd); }
+		}
+	}
 
 	snprintf(last, sizeof last, "%s", body);
 	return true;
