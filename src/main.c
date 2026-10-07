@@ -2885,10 +2885,10 @@ static bool power_due_ctx(void *ctx)
 
 /* The battery, top right: the one piece of chrome. Off - the default - it is
  * what it always was, a small red disc when the battery is low. On (System
- * Settings > Battery Percentage, plorpos-gkd.86.3), a disc with the
- * percentage in it, on every screen the launcher draws: red at BATT_LOW_PCT
- * or under, green while charging, quiet otherwise. Drawn with horizontal
- * spans - SDL has no circle. */
+ * Settings > Battery Percentage, plorpos-gkd.86.3), a quiet gray disc with
+ * the percentage in it, on every screen the launcher draws, ringed red at
+ * BATT_LOW_PCT or under and green while charging (plorpos-6jj). Drawn with
+ * horizontal spans - SDL has no circle. */
 static int g_batt_show = -1;      /* the setting; -1 = read it again */
 
 static void battery_indicator_changed(void) { g_batt_show = -1; ui_redraw_now(); }
@@ -2896,7 +2896,9 @@ static void battery_indicator_changed(void) { g_batt_show = -1; ui_redraw_now();
 static void fill_disc(SDL_Renderer *r, int cx, int cy, int rad)
 {
 	for (int dy = -rad; dy <= rad; dy++) {
-		int dx = (int)(sqrt((double)(rad * rad - dy * dy)) + 0.5);
+		/* Against rad + 1/2, so the top, bottom and sides are not a lone
+		 * pixel sticking out of the round. */
+		int dx = (int)sqrt((double)(rad * rad + rad - dy * dy));
 		SDL_RenderDrawLine(r, cx - dx, cy + dy, cx + dx, cy + dy);
 	}
 }
@@ -2907,7 +2909,7 @@ static void draw_battery(SDL_Renderer *r)
 	if (!g_batt_show) {
 		if (battery_low()) {
 			SDL_SetRenderDrawColor(r, 224, 72, 72, 255);
-			fill_disc(r, TORTOS_SCREEN_W - 34, 34, 9);
+			fill_disc(r, TORTOS_SCREEN_W - 38, 38, 14);
 		}
 		return;
 	}
@@ -2918,19 +2920,25 @@ static void draw_battery(SDL_Renderer *r)
 	if (!g_batt_ok) return;
 
 	TTF_Font *f = ui_font(UI_F_BADGE);
-	/* Sized for "100", the widest it gets, so the disc never changes size -
-	 * and small, in the corner: clear of a long shelf title, which runs to
-	 * about x 920, and of the GKD's in-game menu, whose panel reaches x 999
-	 * from y 41 (measured 2026-10-05; user: no overlap, one size for all). */
-	int rad = ui_text_width(f, "100") / 2 + 3;
+	/* Sized for "100", the widest it gets, so the disc never changes size,
+	 * in the corner, clear of a long shelf title, which runs to about x 920.
+	 * One size for all: 50% larger than gkd.86.3's, which leaves it a few
+	 * pixels over the corner of the GKD's in-game menu panel (x 999 from
+	 * y 41) - the user's call, 2026-10-07 (plorpos-6jj). */
+	int rad = ui_text_width(f, "100") / 2 + 6;   /* ring 3 + 3 clear of the digits */
 	int cx = TORTOS_SCREEN_W - 10 - rad, cy = 4 + rad;
 	char num[8];
 
 	SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
-	if (g_batt_charging)                 SDL_SetRenderDrawColor(r, 64, 168, 96, 255);
-	else if (g_batt_pct <= BATT_LOW_PCT) SDL_SetRenderDrawColor(r, 224, 72, 72, 255);
-	else                                 SDL_SetRenderDrawColor(r, 84, 88, 104, 255);
-	fill_disc(r, cx, cy, rad);
+	/* The state is a ring; the fill is always the quiet gray. */
+	bool ring = g_batt_charging || g_batt_pct <= BATT_LOW_PCT;
+	if (ring) {
+		if (g_batt_charging) SDL_SetRenderDrawColor(r, 64, 168, 96, 255);
+		else                 SDL_SetRenderDrawColor(r, 224, 72, 72, 255);
+		fill_disc(r, cx, cy, rad);
+	}
+	SDL_SetRenderDrawColor(r, 84, 88, 104, 255);
+	fill_disc(r, cx, cy, ring ? rad - 3 : rad);
 	snprintf(num, sizeof num, "%d", g_batt_pct);
 	/* Centered on the digits' ink, not their line box. */
 	ui_text(r, f, num, cx, cy - ui_font_ascent(f) + ui_font_cap(f) / 2, 0, UI_TEXT);

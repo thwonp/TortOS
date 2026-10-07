@@ -40,7 +40,7 @@ static const float font_mul[UI_F_COUNT] = {
 	[UI_F_LABEL] = 1.50f,   /* 48 */
 	[UI_F_META]  = 1.00f,   /* 32 */
 	[UI_F_CARD]  = 1.94f,   /* 62, in card pixels - the title IS the card */
-	[UI_F_BADGE] = 0.42f,   /* 13 */
+	[UI_F_BADGE] = 0.63f,   /* 20 */
 };
 
 static TTF_Font *fonts[UI_F_COUNT];
