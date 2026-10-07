@@ -861,9 +861,28 @@ void ui_rail_v(SDL_Renderer *r, int screen_w, int screen_h, float index, int cou
 
 void ui_round_rect(SDL_Renderer *r, const SDL_Rect *q, int radius, SDL_Color col)
 {
+	SDL_RendererInfo info;
+	float sx = 1.0f, sy = 1.0f;
 	int y;
 
 	if (q->w <= 0 || q->h <= 0) return;
+	/* SDL's software renderer - menus over a frozen child - rounds every
+	 * scaled rect to whole pixels, so at the H700's 0.625 the one-unit rows
+	 * below landed twice on some pixel rows and on none of others: light and
+	 * dark lines across a translucent plate (plorpos-7ny.42). There it is
+	 * drawn once in panel pixels instead. GL rasterises the rows as they are. */
+	SDL_RenderGetScale(r, &sx, &sy);
+	if ((sx != 1.0f || sy != 1.0f) && SDL_GetRendererInfo(r, &info) == 0 &&
+	    (info.flags & SDL_RENDERER_SOFTWARE)) {
+		int x0 = (int)lroundf(q->x * sx), y0 = (int)lroundf(q->y * sy);
+		SDL_Rect p = { x0, y0, (int)lroundf((q->x + q->w) * sx) - x0,
+		               (int)lroundf((q->y + q->h) * sy) - y0 };
+
+		SDL_RenderSetScale(r, 1.0f, 1.0f);
+		ui_round_rect(r, &p, (int)lroundf(radius * sy), col);
+		SDL_RenderSetScale(r, sx, sy);
+		return;
+	}
 	if (radius * 2 > q->w) radius = q->w / 2;
 	if (radius * 2 > q->h) radius = q->h / 2;
 	if (radius < 0) radius = 0;
