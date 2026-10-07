@@ -2758,26 +2758,10 @@ static bool power_due_ctx(void *ctx)
 
 /* ---------- when the next frame is needed -------------------------------- */
 
-/* The earliest moment something already on screen will look different with
- * nobody touching anything - a card mid-move, the tint still easing toward a
- * new system, a long title about to scroll, the volume line about to go.
- * REDRAW_NEVER means nothing drawn in the last frame changes by itself.
- *
- * Gathered WHILE drawing, because the things that move are the things that
- * know they are moving: cf_draw already returns whether a move is in flight,
- * and a marquee is the only thing that knows where it is in its hold. render
- * resets it and every drawing path that animates pulls it earlier. The main
- * loop then only draws when it has come due, or when there was input.
- *
- * It exists because the shelf was redrawn and presented at the refresh rate
- * whether or not anything had changed. Measured on the Brick 2026-09-13, idle
- * on a shelf: 26.6% of a core and 88 voluntary context switches a second, all
- * of it the main thread, for a picture that was not moving. */
-#define REDRAW_NEVER UINT32_MAX
-static Uint32 g_redraw_at = 0;
-
-static void redraw_at(Uint32 t) { if (t < g_redraw_at) g_redraw_at = t; }
-static void redraw_now(void)    { g_redraw_at = 0; }
+/* See ui_redraw_at in ui.h. It began here, for the shelf alone: measured on
+ * the Brick 2026-09-13, idle on a shelf, 26.6% of a core and 88 voluntary
+ * context switches a second, all of it the main thread, for a picture that
+ * was not moving. */
 
 /* The battery, top right: the one piece of chrome. Off - the default - it is
  * what it always was, a small red disc when the battery is low. On (System
@@ -2787,7 +2771,7 @@ static void redraw_now(void)    { g_redraw_at = 0; }
  * spans - SDL has no circle. */
 static int g_batt_show = -1;      /* the setting; -1 = read it again */
 
-static void battery_indicator_changed(void) { g_batt_show = -1; redraw_now(); }
+static void battery_indicator_changed(void) { g_batt_show = -1; ui_redraw_now(); }
 
 static void fill_disc(SDL_Renderer *r, int cx, int cy, int rad)
 {
@@ -2810,7 +2794,7 @@ static void draw_battery(SDL_Renderer *r)
 	battery_poll();
 	/* The number changes with nobody touching anything, so an idle shelf
 	 * still wakes for the next reading. */
-	redraw_at(g_batt_next);
+	ui_redraw_at(g_batt_next);
 	if (!g_batt_ok) return;
 
 	TTF_Font *f = ui_font(UI_F_BADGE);
@@ -2949,7 +2933,7 @@ static void draw_systems(app *a)
 	ui_glow(a->r, &focus, s->accent, 110, 2.4f);
 	if (cf_draw(&a->cf_sys, a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->sys.count,
 	            sys_get_tex, a, &lay))
-		redraw_now();
+		ui_redraw_now();
 
 	/* WHICH SYSTEM THE WORDS BELOW DESCRIBE, and how visible they are.
 	 *
@@ -3192,9 +3176,8 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 			                phase, UI_TEXT);
 			/* Not "a title is sliding, so keep drawing". It ping-pongs for
 			 * as long as the game is focused, with 1.4s of stillness at the
-			 * start and 0.9s at the far end, so ask for the moment it next
-			 * moves and sleep through the holds. The phase clock is
-			 * plat_now_ms, the same one the main loop compares against.
+			 * start and 0.9s at the far end, and ui_pingpong asks for the
+			 * moment it next moves, so the loop sleeps through the holds.
 			 *
 			 * Only the holds can be skipped; the travel between them is
 			 * motion and has to be drawn. Measured on the Brick 2026-09-13,
@@ -3208,7 +3191,6 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 			 * is the feature doing its job while it is being used. And a device
 			 * set down on a long title with nobody looking is ended by Auto Off,
 			 * so there is no long unattended stretch of it to save. */
-			redraw_at(plat_now_ms() + ui_pingpong_wait(tw - boxw, phase));
 		} else {
 			ui_text(a->r, ft2, g->title, tx, 40, 0, UI_TEXT);
 		}
@@ -3272,7 +3254,7 @@ static void draw_games(app *a)
 	            game_get_tex, a,
 	            !CARD_DIRS[g_dir].vertical ? row
 	            : albums ? &CF_LAYOUT_ALBUMS_V : &CF_LAYOUT_GAMES_V))
-		redraw_now();
+		ui_redraw_now();
 	/* Warm where the move is about to cut to, one card per frame, underneath
 	 * the departure that is still being drawn. Eviction waits: the cursor is
 	 * already at the destination and evict_far measures from the cursor, so
@@ -3383,7 +3365,7 @@ static void draw_shelf(app *a)
 	else draw_games(a);
 }
 
-/* Drawing only when something changed. See g_redraw_at.
+/* Drawing only when something changed. See ui_redraw_at in ui.h.
  *
  * The loop still runs every IDLE_POLL_MS when nothing is drawn, so the power
  * button, Auto Off, the headphone jack and the Bluetooth sink are all still
@@ -3399,46 +3381,52 @@ static void draw_shelf(app *a)
  * draw and a present. */
 #define IDLE_POLL_MS 16
 /* A gap this long between two passes means something else had the screen -
- * a menu, a game, the art scraper - and whatever it drew is not the shelf.
+ * a menu, a game, the art scraper - and whatever it drew is not this one.
  * Catching it here covers every one of them without a list to keep. */
 #define AWAY_MS 100
 /* Drawn at least this often regardless. A backstop, not a mechanism: if some
- * animation is ever added without telling g_redraw_at, it shows as a screen
+ * animation is ever added without telling ui_redraw_at, it shows as a screen
  * updating once a second, which is visibly wrong, rather than one that has
  * silently frozen. */
 #define HEARTBEAT_MS 1000
 
-/* Whether a loop that shows the shelf draws it this pass, by the rule above:
- * the main loop and Muse's shelf (plorpos-7ny.38 - that one drew every pass,
- * 88% of a core under native PICO-8's menu). */
-static bool shelf_draw_due(app *a, Uint32 *last_pass, Uint32 last_render)
+/* Where one screen loop is in that rule. Zeroed, its first pass draws. */
+typedef struct { Uint32 last_pass, last_draw; } screen_pace;
+
+/* Whether a screen loop draws this pass, by the rule above. Every loop that
+ * can sit idle asks this and, on false, sleeps IDLE_POLL_MS instead of
+ * drawing (plorpos-7ny.38/.39: the loops that did not drew and presented every
+ * pass - 88% of a core for Muse's shelf under native PICO-8's menu).
+ *
+ * On true the schedule is reset here, BEFORE anything is drawn, because what
+ * animates re-arms it while drawing - tick_tint included, which a loop calls
+ * ahead of the frame. */
+static bool screen_draw_due(app *a, screen_pace *p)
 {
 	Uint32 now = plat_now_ms();
 	/* Held counts as touched, not only pressed: a held direction
 	 * repeats from the clock and moves the shelf every 90ms. */
-	bool touched = false, away = now - *last_pass > AWAY_MS;
+	bool touched = false, away = now - p->last_pass > AWAY_MS;
 	int b;
 
 	for (b = 0; b < IN_COUNT && !touched; b++)
 		touched = a->in.pressed[b] || a->in.down[b];
-	*last_pass = now;
+	p->last_pass = now;
 
 	/* texload_ready because finished art is installed while drawing:
 	 * a loop that never drew would never find it. */
-	return touched || away || texload_ready() || now >= g_redraw_at ||
-	       now - last_render >= HEARTBEAT_MS;
+	if (!(touched || away || texload_ready() || ui_redraw_due(now) ||
+	      now - p->last_draw >= HEARTBEAT_MS))
+		return false;
+	p->last_draw = now;
+	ui_redraw_reset();
+	return true;
 }
 
 static void render(app *a)
 {
-	g_redraw_at = REDRAW_NEVER;
 	draw_shelf(a);
 	draw_chrome(a->r);
-	/* The tint lands exactly on its target now (see tick_tint), so this is a
-	 * test that ends rather than one that is true forever. */
-	if (a->sys.count > 0 && a->tint != a->sys.systems[a->sys_cursor].accent)
-		redraw_now();
-	redraw_at(plat_osd_until());
 	plat_present(a->r);
 }
 
@@ -3470,6 +3458,9 @@ static void tick_tint(app *a)
 	dg = (int)((next >> 8) & 255) - (int)((target >> 8) & 255);
 	db = (int)(next & 255) - (int)(target & 255);
 	a->tint = (abs(dr) <= 12 && abs(dg) <= 12 && abs(db) <= 12) ? target : next;
+	/* It lands exactly on its target (above), so this is a test that ends
+	 * rather than one that is true forever. */
+	if (a->tint != target) ui_redraw_now();
 }
 
 /* ---------- transitions --------------------------------------------------- */
@@ -8991,13 +8982,13 @@ static void muse_shelf_screen(app *a, bool now)
 	}
 
 	/* 0: the first pass draws (away). */
-	Uint32 last_pass = 0, last_render = 0;
+	screen_pace pace = {0};
 
 	while (!done && !want_quit && a->running) {
 		int n = v->list.count, dir = 0;
 
 		muse_screen_poll();
-		if (cover_answers()) redraw_now();
+		if (cover_answers()) ui_redraw_now();
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; break; }
 		{
@@ -9044,10 +9035,9 @@ static void muse_shelf_screen(app *a, bool now)
 			v = nv;
 		}
 
-		if (shelf_draw_due(a, &last_pass, last_render)) {
+		if (screen_draw_due(a, &pace)) {
 			tick_tint(a);
 			render(a);
-			last_render = plat_now_ms();
 		} else {
 			SDL_Delay(IDLE_POLL_MS);
 		}
@@ -12925,7 +12915,7 @@ int main(int argc, char *argv[])
 		launch(&a);
 	}
 
-	Uint32 last_pass = 0, last_render = 0;
+	screen_pace pace = {0};
 
 	while (a.running) {
 		plat_input_poll(&a.in);
@@ -12948,7 +12938,7 @@ int main(int argc, char *argv[])
 		 * and the covers it was asked for by Muse's shelf, which that shelf
 		 * has to be drawn again to ask the worker for. */
 		muse_poll();
-		if (cover_answers()) redraw_now();
+		if (cover_answers()) ui_redraw_now();
 
 		/* Auto Off is the same line as the power button, on every screen
 		 * that draws. Diatom watches it during a game, because it owns the
@@ -12987,10 +12977,9 @@ int main(int argc, char *argv[])
 		else update_games(&a);
 		if (!a.running) break;
 
-		if (shelf_draw_due(&a, &last_pass, last_render)) {
+		if (screen_draw_due(&a, &pace)) {
 			tick_tint(&a);
 			render(&a);
-			last_render = plat_now_ms();
 		} else {
 			SDL_Delay(IDLE_POLL_MS);
 		}

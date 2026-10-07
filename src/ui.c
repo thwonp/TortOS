@@ -405,12 +405,24 @@ int ui_text_tabular(SDL_Renderer *r, TTF_Font *f, const char *s, int x, int y,
  * Shared rather than written twice. A long title scrolling sideways on the
  * shelf and a long description scrolling down a card are the same gesture, and
  * two copies of this arithmetic would drift the moment either was retuned. */
+/* See ui.h. */
+static unsigned redraw_at_ms = 0;
+
+void ui_redraw_at(unsigned ms) { if (ms < redraw_at_ms) redraw_at_ms = ms; }
+void ui_redraw_now(void)       { redraw_at_ms = 0; }
+void ui_redraw_reset(void)     { redraw_at_ms = UI_REDRAW_NEVER; }
+bool ui_redraw_due(unsigned now) { return now >= redraw_at_ms; }
+
 int ui_pingpong(int over, unsigned phase)
 {
 	int travel = over * 1000 / MQ_SPEED_PXPS;
 	unsigned cycle, p;
 
 	if (over <= 0) return 0;
+	/* Whoever asks where it is draws it there, so it asks for the moment
+	 * it next moves - and sleeps through the holds, 1.4s at the start and
+	 * 0.9s at the far end. */
+	ui_redraw_at(plat_now_ms() + ui_pingpong_wait(over, phase));
 	if (travel < 1) travel = 1;
 	cycle = (unsigned)(MQ_HOLD_MS + travel + MQ_END_MS + travel);
 	p     = phase % cycle;
@@ -432,6 +444,9 @@ int ui_scrollthrough(int cycle, unsigned phase)
 	if (travel < 1) travel = 1;
 	lap = (unsigned)(MQ_HOLD_MS + travel);
 	p   = phase % lap;
+	/* Only the hold at the top stands still; after it, it moves until it
+	 * wraps and holds again. */
+	ui_redraw_at(plat_now_ms() + (p < MQ_HOLD_MS ? MQ_HOLD_MS - p : 0));
 	if (p < MQ_HOLD_MS) return 0;
 	return (int)((p - MQ_HOLD_MS) * (unsigned)cycle / (unsigned)travel);
 }

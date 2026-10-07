@@ -123,6 +123,30 @@ int ui_text_tabular(SDL_Renderer *r, TTF_Font *f, const char *s, int x, int y,
                     int anchor, SDL_Color col);
 int ui_text_tabular_width(TTF_Font *f, const char *s);
 
+/* When the next frame is needed: the earliest moment something already on
+ * screen will look different with nobody touching anything - a card mid-move,
+ * the tint still easing, a long title about to scroll, the volume line about
+ * to go. UI_REDRAW_NEVER means nothing drawn in the last frame changes by
+ * itself.
+ *
+ * Gathered WHILE drawing, because the things that move are the things that
+ * know they are moving. A loop resets it before it draws (ui_redraw_reset),
+ * every drawing path that animates pulls it earlier (ui_redraw_at), and the
+ * loop then only draws again once it has come due (ui_redraw_due) or there
+ * was input. ui_pingpong and ui_scrollthrough report for themselves, so
+ * every marquee and every scrolling panel is covered without its caller
+ * having to remember.
+ *
+ * It lives here rather than in one screen because every screen needs it
+ * (plorpos-7ny.39): only the shelf used it, and every other loop drew and
+ * presented every pass while idle - a menu over a paused game cost as much
+ * CPU as the game itself. Times are plat_now_ms. */
+#define UI_REDRAW_NEVER 0xFFFFFFFFu
+void ui_redraw_at(unsigned ms);
+void ui_redraw_now(void);
+void ui_redraw_reset(void);
+bool ui_redraw_due(unsigned now);
+
 /* The ping-pong offset a marquee is at, in pixels, for `phase` ms into it.
  * Exposed so a panel that scrolls itself vertically keeps the same timing as
  * a title that scrolls sideways. */
@@ -166,9 +190,10 @@ void ui_fit_text(TTF_Font *f, const char *src, char *dst, size_t dstn,
  * string you cannot tell where the title ended and restarted. This rests at
  * the beginning, so the idle state is always canonical.
  *
- * Costs nothing this launcher was not already paying. Every screen redraws
- * every frame, and ui_text caches the rendered texture per (font, string,
- * color) - so sliding it is a moving destination rect, not a re-render. */
+ * Cheap while it moves: ui_text caches the rendered texture per (font,
+ * string, color), so sliding it is a moving destination rect, not a
+ * re-render. Free while it holds: ui_pingpong asks for the frame it next
+ * moves on (ui_redraw_at), and a gated loop sleeps until then. */
 void ui_text_marquee(SDL_Renderer *r, TTF_Font *f, const char *s,
                      int x, int y, int w, unsigned phase, SDL_Color col);
 

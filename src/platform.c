@@ -1732,6 +1732,8 @@ void plat_draw_osd(SDL_Renderer *r)
 {
 	if (!osd_kind) return;
 	if (SDL_GetTicks() - osd_shown_at > OSD_WINDOW_MS) { osd_kind = 0; return; }
+	/* Its going is a change too: one more frame when the window ends. */
+	ui_redraw_at(plat_osd_until());
 
 	float pct = (float)osd_val / osd_max;
 	if (pct < 0) pct = 0; else if (pct > 1) pct = 1;
