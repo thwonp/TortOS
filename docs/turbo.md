@@ -8,7 +8,7 @@
   picks it never reaches the game.
 - The same again: that button is normal again. Any number can be turbo at once.
 - Turbo Assign again before picking: cancelled.
-- Turbo Assign held three seconds: every turbo button is cleared.
+- Turbo Assign held two seconds: every turbo button is cleared.
 
 A, B, X, Y, L1, R1, L2 and R2 can be turbo. Directions, START and SELECT
 cannot. A notice says what happened each time.

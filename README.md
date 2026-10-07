@@ -322,7 +322,7 @@ Bind **Turbo Assign** under **Hotkeys** in the in-game menu, like any other hotk
 - **Press Turbo Assign, then a button.** That button is turbo now: hold it and it presses itself about ten times a second. The press that picks it isn't sent to the game.
 - **Do the same again** to make that button normal again. Several buttons can be turbo at once.
 - **Press Turbo Assign twice** to change your mind before picking a button.
-- **Hold Turbo Assign for 3 seconds** to make every button normal again.
+- **Hold Turbo Assign for 2 seconds** to make every button normal again.
 
 A short notice says what happened each time. A, B, X, Y, L1, R1, L2 and R2 can be turbo; the d-pad, START and SELECT can't. Turbo lasts until you quit the game: the in-game menu and Muse don't touch it, and the next game starts with none. A button the console doesn't use, like X on the NES, does nothing as turbo either.
 

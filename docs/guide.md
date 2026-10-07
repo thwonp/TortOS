@@ -215,7 +215,7 @@ screen; this is the same thing by hand, for a card written some other way.
 **Turbo is a hotkey, Turbo Assign,** bound under Hotkeys like the others. In a
 game, press it and then a button, and that button presses itself about ten
 times a second for as long as you hold it; the same again turns it back. Hold
-Turbo Assign three seconds to clear every turbo button. It lasts until the game
+Turbo Assign two seconds to clear every turbo button. It lasts until the game
 quits. How it works, and why X and Y are no longer turbo by default, is in
 [turbo.md](turbo.md).
 
