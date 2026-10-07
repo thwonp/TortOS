@@ -35,6 +35,20 @@ NEOGEO.png joined on 2026-10-01: Evan Amos's Neo Geo AES, from Commons
 `File:Neo-Geo-AES-FL.png` (public domain, own work), processed the same way -
 trimmed to its alpha, longest side 369.
 
+SEGACD.png and 32X.png joined on 2026-10-07 (plorpos-vz3): Evan Amos's
+`File:Sega-CD-Model2-Set.png` (a Genesis Model 2 on a Sega CD 2) and
+`File:Sega-Genesis-Model2-32X.png` (a Genesis Model 2 with the 32X in its
+slot), both public domain, own work. An add-on alone does not read as a
+console, so these are the sets, the way they were sold and used. Trimmed to
+their alpha, width 369. The originals are kept outside the repository.
+
+The classic SEGACD.png is drawn in the house style (plorpos-vz3). The classic
+32X.png's mark is the 32X logo itself, chosen by the user: a seeklogo.com PNG
+(red EC1D25 lettering with a black drop shadow on white), unmixed per pixel
+into its red and black so the white drops out with the edges intact, the
+shadow recoloured dark red to read on the card. The logo is Sega's trade
+dress and identifies the platform, like the photographs.
+
 ## ARCADE.png
 
 Not a console and not by Evan Amos. Arcade is every board FBNeo knows, so

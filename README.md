@@ -167,11 +167,16 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 | Game Gear | `Roms/Game Gear` | `.gg` `.zip` | PicoDrive |
 | Neo Geo | `Roms/Neo Geo` | `.zip` `.7z` | FBNeo |
 | SNES | `Roms/SNES` | `.sfc` `.smc` `.zip` | Snes9x 2010 |
+| Sega CD | `Roms/Sega CD` | `.chd` `.cue` `.m3u` | PicoDrive |
+| Sega 32X | `Roms/32X` | `.32x` `.zip` | PicoDrive |
 | PlayStation | `Roms/PlayStation` | `.chd` `.cue` `.m3u` `.pbp` `.iso` `.img` | PCSX ReARMed |
 | Neo Geo Pocket | `Roms/Neo Geo Pocket` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop |
 | Game Boy Color | `Roms/Game Boy Color` | `.gbc` `.cgb` `.zip` | mGBA |
 | Neo Geo Pocket Color | `Roms/Neo Geo Pocket Color` | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` | Beetle NeoPop |
 | Game Boy Advance | `Roms/Game Boy Advance` | `.gba` `.agb` `.zip` | mGBA |
+
+Sega CD and 32X games can also go straight in `Roms/Genesis`, beside the
+cartridges; use their own folders to give them their own cards.
 
 **BIOS files** go loose in `Bios/`, never in a folder of their own.
 

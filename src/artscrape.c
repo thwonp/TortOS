@@ -70,35 +70,35 @@
  * case that exposed it: the card had 27 games with no art and 23 of them were
  * sitting in "NEC - PC Engine CD - TurboGrafx-CD", 946 entries this scraper
  * had never looked at. Reported as missing art for months; it was a missing
- * lookup. Sega CD is the same shape.
+ * lookup. Sega CD is the same shape, and the Genesis shelf has a third: 32X
+ * games may sit beside the cartridges (plorpos-vz3).
  *
  * The second collection is only fetched if the first left something unmatched,
  * so a cartridge-only shelf costs exactly what it did before. */
-static const struct { const char *folder, *remote, *remote2; } MAP[] = {
+static const struct { const char *folder, *remote[3]; } MAP[] = {
 	/* Arcade art is filed by set under FBNeo's catalog; Neo Geo sets have their
 	 * own. Both are named by the full title, not the set name (plorpos-gkd.56.3). */
-	{ "Arcade",           "FBNeo - Arcade Games", NULL },
+	{ "Arcade", { "FBNeo - Arcade Games" } },
 	/* FBNeo's catalog second: it files every Neo Geo set as well, under
 	 * FBNeo's own names, and the Neo Geo one has 257 covers to its 6,456. */
-	{ "Neo Geo",          "SNK - Neo Geo", "FBNeo - Arcade Games" },
-	{ "NES",              "Nintendo - Nintendo Entertainment System",
-	                      "Nintendo - Family Computer Disk System" },
-	{ "SNES",             "Nintendo - Super Nintendo Entertainment System", NULL },
-	{ "PlayStation",      "Sony - PlayStation", NULL },
-	{ "Game Boy",         "Nintendo - Game Boy", NULL },
-	{ "Game Boy Color",   "Nintendo - Game Boy Color", NULL },
-	{ "Game Boy Advance", "Nintendo - Game Boy Advance", NULL },
-	{ "Genesis",          "Sega - Mega Drive - Genesis",
-	                      "Sega - Mega-CD - Sega CD" },
-	{ "Master System",    "Sega - Master System - Mark III", NULL },
-	{ "Game Gear",        "Sega - Game Gear", NULL },
-	{ "TurboGrafx-16",    "NEC - PC Engine - TurboGrafx 16",
-	                      "NEC - PC Engine CD - TurboGrafx-CD" },
+	{ "Neo Geo", { "SNK - Neo Geo", "FBNeo - Arcade Games" } },
+	{ "NES", { "Nintendo - Nintendo Entertainment System", "Nintendo - Family Computer Disk System" } },
+	{ "SNES", { "Nintendo - Super Nintendo Entertainment System" } },
+	{ "PlayStation", { "Sony - PlayStation" } },
+	{ "Game Boy", { "Nintendo - Game Boy" } },
+	{ "Game Boy Color", { "Nintendo - Game Boy Color" } },
+	{ "Game Boy Advance", { "Nintendo - Game Boy Advance" } },
+	{ "Genesis", { "Sega - Mega Drive - Genesis", "Sega - Mega-CD - Sega CD", "Sega - 32X" } },
+	{ "Sega CD", { "Sega - Mega-CD - Sega CD" } },
+	{ "32X", { "Sega - 32X" } },
+	{ "Master System", { "Sega - Master System - Mark III" } },
+	{ "Game Gear", { "Sega - Game Gear" } },
+	{ "TurboGrafx-16", { "NEC - PC Engine - TurboGrafx 16", "NEC - PC Engine CD - TurboGrafx-CD" } },
 	/* Two machines, two catalogs. The mono Pocket's art is NOT in the Color
 	 * repo - checked, it 404s - which is the whole reason they are separate
 	 * shelves rather than one mixed one. */
-	{ "Neo Geo Pocket",       "SNK - Neo Geo Pocket", NULL },
-	{ "Neo Geo Pocket Color", "SNK - Neo Geo Pocket Color", NULL },
+	{ "Neo Geo Pocket", { "SNK - Neo Geo Pocket" } },
+	{ "Neo Geo Pocket Color", { "SNK - Neo Geo Pocket Color" } },
 };
 #define MAP_N ((int)(sizeof MAP / sizeof MAP[0]))
 
@@ -109,7 +109,7 @@ static const char *remote_nth(const char *folder, int n)
 
 	for (i = 0; i < MAP_N; i++)
 		if (!strcmp(MAP[i].folder, folder))
-			return n == 0 ? MAP[i].remote : n == 1 ? MAP[i].remote2 : NULL;
+			return n >= 0 && n < 3 ? MAP[i].remote[n] : NULL;
 	return NULL;
 }
 
@@ -118,7 +118,7 @@ static const char *remote_for(const char *folder)
 	int i;
 
 	for (i = 0; i < MAP_N; i++)
-		if (!strcmp(MAP[i].folder, folder)) return MAP[i].remote;
+		if (!strcmp(MAP[i].folder, folder)) return MAP[i].remote[0];
 	return NULL;
 }
 

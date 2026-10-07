@@ -11219,6 +11219,13 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 #endif
 }
 
+/* The shelves a Sega CD disc can be on: its own, or mixed in with the Genesis
+ * cartridges (plorpos-vz3). */
+static bool is_sega_cd_shelf(const system_cfg *s)
+{
+	return !strcmp(s->tag, "MD") || !strcmp(s->tag, "SEGACD");
+}
+
 /* The firmware file a disc on this shelf boots with. One per shelf, except a
  * Sega CD on the Genesis shelf: genesis_plus_gx loads bios_CD_E, _J or _U by
  * the disc's region, which it reads from the security code at 0x20B of the
@@ -11230,7 +11237,7 @@ static void disc_bios_for(const system_cfg *s, const char *rom, char *out, size_
 	unsigned char head[0x20C];
 
 	snprintf(out, n, "%s", s->disc_bios);
-	if (strcmp(s->tag, "MD") || !cd_read_head(rom, head, sizeof head)) return;
+	if (!is_sega_cd_shelf(s) || !cd_read_head(rom, head, sizeof head)) return;
 	snprintf(out, n, "bios_CD_%c.bin",
 	         head[0x20B] == 0x64 ? 'E' : head[0x20B] == 0xA1 ? 'J' : 'U');
 }
@@ -11320,12 +11327,13 @@ static void launch(app *a)
 		 * kept ONE backup RAM per BIOS region, scd_U.brm beside the shelf's
 		 * saves; PicoDrive keeps the same raw 8 KB image per disc, as its
 		 * .srm. A disc with no .srm yet starts from the old shared one, so
-		 * every save made before the switch is still there. */
-		if (!strcmp(s->tag, "MD")) {
+		 * every save made before the switch is still there. The old one is
+		 * always Genesis's: the Sega CD shelf came after (plorpos-vz3). */
+		if (is_sega_cd_shelf(s)) {
 			char brm[CFG_STR * 3], srm[LIB_PATH * 2];
 			const char *dot = strrchr(romfile, '.');
 
-			snprintf(brm, sizeof brm, "%s/scd_%c.brm", save, name[8]);
+			snprintf(brm, sizeof brm, "%s/Saves/Genesis/scd_%c.brm", P_CARD, name[8]);
 			snprintf(srm, sizeof srm, "%s/%.*s.srm", save,
 			         dot ? (int)(dot - romfile) : (int)strlen(romfile), romfile);
 			if (access(srm, F_OK) != 0) copy_file(brm, srm);
