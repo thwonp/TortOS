@@ -776,11 +776,18 @@ unsigned plat_resident_generation(void) { return d_generation; }
  * means a previous launcher died mid-game and this one just started: the
  * game on screen is real, but this launcher believes it owns the display, so
  * end the session and start clean rather than draw over live output. */
-static bool dconnect(void)
+/* `ready_ms`: how long Diatom has to say READY once the socket is open. An
+ * open socket is a Diatom that is up, and right after a cold boot it opens it
+ * BEFORE premapping its cores - about 3.5 s, from a cold card - and answers
+ * only after. A launch that gave it 400 ms, as every caller once did, lost
+ * that race on every resume at power-on and fell back to a standalone
+ * emulator, where Menu ends the game (plorpos-7ny.34). */
+static bool dconnect_within(unsigned ready_ms)
 {
 	struct sockaddr_un a;
 	const char *path = plat_resident_socket();
 	char *l;
+	unsigned t0;
 
 	if (dsock >= 0) return true;
 	if (!path) return false;
@@ -801,8 +808,13 @@ static bool dconnect(void)
 	snprintf(a.sun_path, sizeof a.sun_path, "%s", path);
 	if (connect(dsock, (struct sockaddr *)&a, sizeof a) != 0) { dclose(); return false; }
 
-	while ((l = dline(400))) {
+	t0 = plat_now_ms();
+	while (dsock >= 0 && plat_now_ms() - t0 < ready_ms &&
+	       (l = dline((int)(ready_ms - (plat_now_ms() - t0))))) {
 		if (strncmp(l, "READY", 5) == 0) {
+			if (plat_now_ms() - t0 >= 400)
+				fprintf(stderr, "diatom: ready after %u ms (still starting)\n",
+				        plat_now_ms() - t0);
 			if (strstr(l, "state=running")) {
 				unsigned t0 = plat_now_ms();
 				fprintf(stderr, "diatom: had a game running; stopping it\n");
@@ -818,9 +830,16 @@ static bool dconnect(void)
 	return false;
 }
 
+static bool dconnect(void) { return dconnect_within(400); }
+
 bool plat_resident_ready(void)
 {
 	return dconnect();
+}
+
+bool plat_resident_ready_wait(void)
+{
+	return dconnect_within(8000);
 }
 
 

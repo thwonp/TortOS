@@ -161,6 +161,9 @@ bool plat_spawn_detached(char *const argv[], const char *const envkv[],
 #define RES_PAUSED 2   /* Diatom only: menu open, the launcher owns the display */
 const char *plat_resident_socket(void);
 bool plat_resident_ready(void);
+/* The same, for a launch: a Diatom that is up but still starting gets up to
+ * 8 s to say READY rather than 400 ms (plorpos-7ny.34). */
+bool plat_resident_ready_wait(void);
 /* One game for the resident. `console` is a RetroAchievements console id and
  * `cheevos` a set file for Diatom to watch; 0 and NULL mean the game has no
  * achievements, which is the ordinary case (Diatom ADR-0026). `save` is the

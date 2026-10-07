@@ -10757,7 +10757,7 @@ static void launch(app *a)
 	 * ADR-0032. Stated before the RUN goes out, which sends it. */
 	plat_resident_quiet(musec_playing());
 
-	if (!native && plat_resident_ready()) {
+	if (!native && plat_resident_ready_wait()) {
 		/* The emulator is already up, holding its context and every core,
 		 * so this is ~200ms rather than ~1100. Nothing here is torn
 		 * down -- this process keeps its own context through the whole game,
