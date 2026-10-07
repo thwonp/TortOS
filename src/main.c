@@ -10625,8 +10625,13 @@ static bool native_tick(void *ctx)
 	 * plorpos-cdd. */
 	{
 		aout_state s = aout_now();
+		const char *out = aout_device(&s);
 
-		plat_child_audio(musec_playing() ? NULL : aout_device(&s), g_bt_link);
+		plat_child_audio(musec_playing() ? NULL : out, g_bt_link);
+		/* And the headset's volume, which the volume keys move only through
+		 * this: without it a press reached the headset when the menu next
+		 * opened (plorpos-ahc). Sent on a change only. */
+		bt_volume_follow(out, false);
 	}
 #endif
 	return musec_playing();
