@@ -52,6 +52,7 @@
 #include "game_menu.h"
 #include "hkbind.h"
 #include "shaderlist.h"
+#include "clock.h"
 #include "gbpal.h"
 #include "ui.h"
 #include "wifi_menu.h"
@@ -62,6 +63,7 @@
 #include <errno.h>
 #include <ftw.h>
 #include <ctype.h>
+#include <dirent.h>
 #include <math.h>
 #include <signal.h>
 #include <stdio.h>
@@ -123,6 +125,8 @@ typedef struct {
 	 * the title is the order, and the jump goes by it as a games shelf's
 	 * does. */
 	bool jump_by_name;
+	/* In year order the jump goes a year at a time instead (plorpos-xav). */
+	bool jump_by_year;
 } sysview;
 
 /* Diatom's display modes, in the order TortOS offers them: the sensible
@@ -184,7 +188,8 @@ typedef struct {
 /* Defined down with the shelf building it belongs to, declared here because
  * the input loop calls it the moment a favorite changes. */
 static void refresh_favorites_shelf(app *a);
-static void build_muse_shelf(app *a);
+static void build_muse_shelf(app *a, bool bg);
+static void muse_walk_poll(app *a);
 /* How a Muse screen was left: back one level, Muse closed altogether, or the
  * library rebuilt under it by Rescan Folder, so every album index it held is
  * stale and the shelf has to find itself again. */
@@ -617,6 +622,12 @@ static char   g_muse_root[CFG_STR * 2];
 /* Bumped by every build of the library, so a Muse screen can tell that MENU's
  * Rescan Folder replaced it while its menu was open - see muse_menu. */
 static unsigned g_muse_gen;
+/* The boot walk of the library - see muse_walk. */
+static SDL_Thread *g_walk_thread;    /* a walk started and not yet put in */
+static SDL_atomic_t g_walk_done;
+static ml_lib g_walk_lib;
+static bool g_walk_ok;
+static unsigned g_walk_ms;           /* how long it took, for the log */
 
 static bool is_muse(const system_cfg *s)
 {
@@ -629,6 +640,19 @@ static bool is_muse(const system_cfg *s)
 enum { COV_UNKNOWN, COV_ASKED, COV_JPG, COV_PNG, COV_FOLDER, COV_NONE };
 typedef struct { unsigned char st; unsigned asked_ms; } cover_state;
 static cover_state *g_cov;
+
+/* Each album's year, from its first track's tags, which only the daemon reads
+ * (plorpos-xav). Read once and kept in the card's db as "muse.year.<folder>" =
+ * "<folder mtime> <year>", so an album is asked about again only when its
+ * folder changes - never on every start. One per album in g_muse, rebuilt with
+ * it: 0 none in the tags, -1 not known yet. year_fill asks for the unknown
+ * ones one at a time, on the launcher's own screens and never during a game. */
+static int  *g_year;
+static int   g_year_asked = -1;
+static unsigned g_year_asked_ms, g_year_t0;
+static int   g_year_read;
+static bool  g_year_landed;   /* the last one read: a shelf in year order re-sorts */
+static void  year_fill(void);
 
 /* ---- Muse: books ------------------------------------------------------------ */
 
@@ -835,31 +859,63 @@ static void np_forget(void)
 	g_np.done = false;
 }
 
+/* A system card's file in the chosen set, and the default set's to fall back
+ * on. A set may be incomplete and still be worth showing. Favorites is the
+ * standing example: it is a shelf, not a console, so a set of hardware
+ * photographs has nothing to put there and borrows the default's card rather
+ * than falling all the way through to the generated one. */
+static bool sys_card_paths(const app *a, int i, char *set, char *def, size_t n)
+{
+	snprintf(set, n, "%s/cards/%s/%s", P_ROOT, CARD_SETS[g_cards].dir,
+	         a->sys.systems[i].card);
+	snprintf(def, n, "%s/cards/%s/%s", P_ROOT, CARDS_DEFAULT, a->sys.systems[i].card);
+	return g_cards != 0;          /* whether the default is a different file */
+}
+
+/* The generated card, for a system with no file in either set. Needs the
+ * renderer, so it is made on the main thread. */
+static void sys_card_generated(app *a, int i)
+{
+	a->sys_tex[i] = ui_make_card(a->r, a->sys.systems[i].name, a->sys.systems[i].accent,
+	                             &a->sys_w[i], &a->sys_h[i]);
+}
+
+/* On the frame, as every system card was until 2026-10-02. Now only when
+ * there is no loader thread, as for --shot. */
+static void sys_card_load_now(app *a, int i)
+{
+	char set[CFG_STR * 2], def[CFG_STR * 2];
+	bool other = sys_card_paths(a, i, set, def, sizeof set);
+
+	a->sys_tex[i] = load_image(a->r, set, &a->sys_w[i], &a->sys_h[i], &a->sys_cb[i]);
+	if (!a->sys_tex[i] && other)
+		a->sys_tex[i] = load_image(a->r, def, &a->sys_w[i], &a->sys_h[i], &a->sys_cb[i]);
+	if (!a->sys_tex[i]) sys_card_generated(a, i);
+}
+
+/* System cards come from the loader threads like covers, under a shelf number
+ * no real shelf has (texload uses -1 for an idle worker). All thirteen used to
+ * be decoded on the main thread before the first frame - 640x820 PNGs, about
+ * 370 ms of the GKD Pixel 2's boot, measured 2026-10-02 - whether or not the
+ * system shelf was what came up. */
+#define SYS_CARDS_SHELF (-2)
+
 static SDL_Texture *sys_get_tex(void *ctx, int i, int *w, int *h, float *cb)
 {
 	app *a = ctx;
 	if (!a->sys_tex[i]) {
-		char path[CFG_STR * 2];
+		char set[CFG_STR * 2], def[CFG_STR * 2];
+		bool other = sys_card_paths(a, i, set, def, sizeof set);
 
-		snprintf(path, sizeof path, "%s/cards/%s/%s", P_ROOT,
-		         CARD_SETS[g_cards].dir, a->sys.systems[i].card);
-		a->sys_tex[i] = load_image(a->r, path, &a->sys_w[i], &a->sys_h[i],
-		                           &a->sys_cb[i]);
-		/* A set may be incomplete and still be worth showing. Favorites is
-		 * the standing example: it is a shelf, not a console, so a set of
-		 * hardware photographs has nothing to put there and borrows the
-		 * default's card rather than falling all the way through to the
-		 * generated one. */
-		if (!a->sys_tex[i] && g_cards != 0) {
-			snprintf(path, sizeof path, "%s/cards/%s/%s", P_ROOT,
-			         CARDS_DEFAULT, a->sys.systems[i].card);
-			a->sys_tex[i] = load_image(a->r, path, &a->sys_w[i], &a->sys_h[i],
-		                           &a->sys_cb[i]);
-		}
-		if (!a->sys_tex[i])
-			a->sys_tex[i] = ui_make_card(a->r, a->sys.systems[i].name,
-			                             a->sys.systems[i].accent,
-			                             &a->sys_w[i], &a->sys_h[i]);
+		/* Ask and draw nothing this frame; cf_draw skips a card with no
+		 * texture. No worker means doing it here, as before. */
+		if (!texload_want(SYS_CARDS_SHELF, i, set, other ? def : NULL))
+			sys_card_load_now(a, i);
+	}
+	if (!a->sys_tex[i]) {
+		*w = *h = 0;
+		if (cb) *cb = 1.0f;
+		return NULL;
 	}
 	*w = a->sys_w[i];
 	*h = a->sys_h[i];
@@ -1136,6 +1192,20 @@ static void texload_drain(app *a)
 	while (texload_take(&s, &i, &surf)) {
 		sysview *v;
 
+		if (s == SYS_CARDS_SHELF) {
+			if (i >= 0 && i < a->sys.count && !a->sys_tex[i]) {
+				if (surf) {
+					a->sys_cb[i] = content_bottom(surf);
+					a->sys_tex[i] = SDL_CreateTextureFromSurface(a->r, surf);
+					if (a->sys_tex[i])
+						SDL_QueryTexture(a->sys_tex[i], NULL, NULL,
+						                 &a->sys_w[i], &a->sys_h[i]);
+				}
+				if (!a->sys_tex[i]) sys_card_generated(a, i);
+			}
+			if (surf) SDL_FreeSurface(surf);
+			continue;
+		}
 		if (s < 0 || s >= a->sys.count) { if (surf) SDL_FreeSurface(surf); continue; }
 		v = &a->view[s];
 		/* The shelf may have moved on, or something else may have filled this
@@ -1259,6 +1329,59 @@ static void prime_sys_window(app *a)
 	}
 }
 
+/* The system cards the shelf's row draws: the focused one and up to three
+ * either side, wrapping round the ends as cf_draw does. `n`th nearest first,
+ * so asking in this order decodes the middle of the screen first. Returns
+ * false past the last. */
+static bool sys_card_visible(const app *a, int n, int *item)
+{
+	int count = a->sys.count, half = count - 1 < CF_HALF_WINDOW ? count - 1 : CF_HALF_WINDOW;
+	int k = (n + 1) / 2, side = n % 2 ? 1 : -1;
+
+	if (count <= 0 || k > half) return false;
+	*item = ((a->sys_cursor + side * k) % count + count) % count;
+	return true;
+}
+
+/* At boot, before the display is up: the loader threads start on the cards
+ * the first frame will show while video, input and settings are set up
+ * (about 430 ms on the GKD Pixel 2), instead of after. */
+static void sys_cards_ask_visible(app *a)
+{
+	char set[CFG_STR * 2], def[CFG_STR * 2];
+	int n, i;
+
+	for (n = 0; sys_card_visible(a, n, &i); n++) {
+		bool other = sys_card_paths(a, i, set, def, sizeof set);
+		texload_want(SYS_CARDS_SHELF, i, set, other ? def : NULL);
+	}
+}
+
+/* And just before the first frame, install them as they finish, so it has
+ * them all and none fills in after. Normally they are done by now; the cap
+ * means a slow card read costs the boot at most `cap_ms`, and the rest fill
+ * in as before. */
+static void sys_cards_wait_visible(app *a, unsigned cap_ms)
+{
+	unsigned t0 = plat_now_ms();
+
+	for (;;) {
+		bool all = true;
+		int n, i;
+
+		texload_drain(a);
+		for (n = 0; sys_card_visible(a, n, &i); n++)
+			if (!a->sys_tex[i]) { all = false; break; }
+		if (all) return;
+		if (plat_now_ms() - t0 >= cap_ms) {
+			fprintf(stderr, "boot: system cards not all in after %u ms; "
+			                "the rest fill in\n", cap_ms);
+			return;
+		}
+		SDL_Delay(4);
+	}
+}
+
 /* One shelf's card art, dropped.
  *
  * Every one of these arrays is indexed by POSITION in the list, so reordering
@@ -1300,6 +1423,8 @@ static void muse_show(sysview *v, bool books)
 	cf_reset(&v->cf, 0);
 }
 
+static SDL_Texture *g_backdrop;   /* backdrop_cached */
+
 static void free_all_textures(app *a)
 {
 	/* Anything in flight was asked for against the shelf as it was. */
@@ -1318,6 +1443,7 @@ static void free_all_textures(app *a)
 	 * Now Playing without its art until the album changed (plorpos-gkd.65).
 	 * Loading it again is one decode, about 15 ms. */
 	np_forget();
+	if (g_backdrop) { SDL_DestroyTexture(g_backdrop); g_backdrop = NULL; }
 }
 
 
@@ -1864,6 +1990,9 @@ static void aout_save(aout_policy p)
  * prevent. The shell loop already knows, so it writes and this reads. */
 #if !defined(PLATFORM_GKD)
 static char g_bt_link[32];    /* the published link's ACL handle, see bt_reconnect */
+/* Native PICO-8 is running and may hold the headset: Diatom stays off it, as
+ * for Muse (aout_apply). Set on the Brick only, see run_pico8. plorpos-cdd. */
+static bool g_pico8_runs;
 #endif
 
 static const char *aout_bt_sink(void)
@@ -2131,7 +2260,7 @@ static void aout_apply(bool force)
 		if (muse) musec_sink_again();
 	}
 	snprintf(link_seen, sizeof link_seen, "%s", out[0] ? g_bt_link : "");
-	aout_tell_diatom(&s, muse ? "" : out, force || (fresh && !muse), muse);
+	aout_tell_diatom(&s, muse || g_pico8_runs ? "" : out, force || (fresh && !muse), muse);
 	if (muse) musec_sink(out);
 	bt_volume_follow(out, fresh);
 #endif
@@ -2153,6 +2282,7 @@ static void aout_before_muse(void)
 static void muse_screen_poll(void)
 {
 	muse_poll();
+	year_fill();
 	if (musec_heard()) aout_apply(false);
 }
 
@@ -2403,6 +2533,26 @@ static void on_shot(bool ok, const char *path)
 	if (notice_render(ok ? "Screenshot saved" : "Screenshot failed",
 	                  name ? name + 1 : path, p))
 		plat_resident_line("OVERLAY\tpath=%s\tms=2000", p);
+}
+
+/* Turbo Assign (plorpos-tkh): Diatom asked, the map is already sent; this is
+ * the notice, mid-game like the screenshot's. Cancelling takes the "press a
+ * button" one down at once rather than leaving it to time out. */
+static void on_turbo(plat_turbo_event ev, const char *btn)
+{
+	char p[CFG_STR * 2], line[32];
+
+	snprintf(p, sizeof p, "%s/notice.dtov", P_USERDATA);
+	switch (ev) {
+	case PLAT_TURBO_CANCEL:  plat_resident_line("OVERLAY\tpath=%s\tms=0", p); return;
+	case PLAT_TURBO_ARMED:   snprintf(line, sizeof line, "Press a button"); break;
+	case PLAT_TURBO_ON:      snprintf(line, sizeof line, "On: %s", btn);   break;
+	case PLAT_TURBO_OFF:     snprintf(line, sizeof line, "Off: %s", btn);  break;
+	case PLAT_TURBO_CLEARED: snprintf(line, sizeof line, "Cleared");       break;
+	}
+	if (notice_render("Turbo", line, p))
+		plat_resident_line("OVERLAY\tpath=%s\tms=%d", p,
+		                   ev == PLAT_TURBO_ARMED ? 4000 : 1500);
 }
 
 /* ---------- where you were ------------------------------------------------ */
@@ -2755,41 +2905,27 @@ static bool power_due_ctx(void *ctx)
 
 /* ---------- when the next frame is needed -------------------------------- */
 
-/* The earliest moment something already on screen will look different with
- * nobody touching anything - a card mid-move, the tint still easing toward a
- * new system, a long title about to scroll, the volume line about to go.
- * REDRAW_NEVER means nothing drawn in the last frame changes by itself.
- *
- * Gathered WHILE drawing, because the things that move are the things that
- * know they are moving: cf_draw already returns whether a move is in flight,
- * and a marquee is the only thing that knows where it is in its hold. render
- * resets it and every drawing path that animates pulls it earlier. The main
- * loop then only draws when it has come due, or when there was input.
- *
- * It exists because the shelf was redrawn and presented at the refresh rate
- * whether or not anything had changed. Measured on the Brick 2026-09-13, idle
- * on a shelf: 26.6% of a core and 88 voluntary context switches a second, all
- * of it the main thread, for a picture that was not moving. */
-#define REDRAW_NEVER UINT32_MAX
-static Uint32 g_redraw_at = 0;
-
-static void redraw_at(Uint32 t) { if (t < g_redraw_at) g_redraw_at = t; }
-static void redraw_now(void)    { g_redraw_at = 0; }
+/* See ui_redraw_at in ui.h. It began here, for the shelf alone: measured on
+ * the Brick 2026-09-13, idle on a shelf, 26.6% of a core and 88 voluntary
+ * context switches a second, all of it the main thread, for a picture that
+ * was not moving. */
 
 /* The battery, top right: the one piece of chrome. Off - the default - it is
  * what it always was, a small red disc when the battery is low. On (System
- * Settings > Battery Percentage, plorpos-gkd.86.3), a disc with the
- * percentage in it, on every screen the launcher draws: red at BATT_LOW_PCT
- * or under, green while charging, quiet otherwise. Drawn with horizontal
- * spans - SDL has no circle. */
+ * Settings > Battery Percentage, plorpos-gkd.86.3), a quiet gray disc with
+ * the percentage in it, on every screen the launcher draws, ringed red at
+ * BATT_LOW_PCT or under and green while charging (plorpos-6jj). Drawn with
+ * horizontal spans - SDL has no circle. */
 static int g_batt_show = -1;      /* the setting; -1 = read it again */
 
-static void battery_indicator_changed(void) { g_batt_show = -1; redraw_now(); }
+static void battery_indicator_changed(void) { g_batt_show = -1; ui_redraw_now(); }
 
 static void fill_disc(SDL_Renderer *r, int cx, int cy, int rad)
 {
 	for (int dy = -rad; dy <= rad; dy++) {
-		int dx = (int)(sqrt((double)(rad * rad - dy * dy)) + 0.5);
+		/* Against rad + 1/2, so the top, bottom and sides are not a lone
+		 * pixel sticking out of the round. */
+		int dx = (int)sqrt((double)(rad * rad + rad - dy * dy));
 		SDL_RenderDrawLine(r, cx - dx, cy + dy, cx + dx, cy + dy);
 	}
 }
@@ -2800,30 +2936,36 @@ static void draw_battery(SDL_Renderer *r)
 	if (!g_batt_show) {
 		if (battery_low()) {
 			SDL_SetRenderDrawColor(r, 224, 72, 72, 255);
-			fill_disc(r, TORTOS_SCREEN_W - 34, 34, 9);
+			fill_disc(r, TORTOS_SCREEN_W - 38, 38, 14);
 		}
 		return;
 	}
 	battery_poll();
 	/* The number changes with nobody touching anything, so an idle shelf
 	 * still wakes for the next reading. */
-	redraw_at(g_batt_next);
+	ui_redraw_at(g_batt_next);
 	if (!g_batt_ok) return;
 
 	TTF_Font *f = ui_font(UI_F_BADGE);
-	/* Sized for "100", the widest it gets, so the disc never changes size -
-	 * and small, in the corner: clear of a long shelf title, which runs to
-	 * about x 920, and of the GKD's in-game menu, whose panel reaches x 999
-	 * from y 41 (measured 2026-10-05; user: no overlap, one size for all). */
-	int rad = ui_text_width(f, "100") / 2 + 3;
+	/* Sized for "100", the widest it gets, so the disc never changes size,
+	 * in the corner, clear of a long shelf title, which runs to about x 920.
+	 * One size for all: 50% larger than gkd.86.3's, which leaves it a few
+	 * pixels over the corner of the GKD's in-game menu panel (x 999 from
+	 * y 41) - the user's call, 2026-10-07 (plorpos-6jj). */
+	int rad = ui_text_width(f, "100") / 2 + 6;   /* ring 3 + 3 clear of the digits */
 	int cx = TORTOS_SCREEN_W - 10 - rad, cy = 4 + rad;
 	char num[8];
 
 	SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
-	if (g_batt_charging)                 SDL_SetRenderDrawColor(r, 64, 168, 96, 255);
-	else if (g_batt_pct <= BATT_LOW_PCT) SDL_SetRenderDrawColor(r, 224, 72, 72, 255);
-	else                                 SDL_SetRenderDrawColor(r, 84, 88, 104, 255);
-	fill_disc(r, cx, cy, rad);
+	/* The state is a ring; the fill is always the quiet gray. */
+	bool ring = g_batt_charging || g_batt_pct <= BATT_LOW_PCT;
+	if (ring) {
+		if (g_batt_charging) SDL_SetRenderDrawColor(r, 64, 168, 96, 255);
+		else                 SDL_SetRenderDrawColor(r, 224, 72, 72, 255);
+		fill_disc(r, cx, cy, rad);
+	}
+	SDL_SetRenderDrawColor(r, 84, 88, 104, 255);
+	fill_disc(r, cx, cy, ring ? rad - 3 : rad);
 	snprintf(num, sizeof num, "%d", g_batt_pct);
 	/* Centered on the digits' ink, not their line box. */
 	ui_text(r, f, num, cx, cy - ui_font_ascent(f) + ui_font_cap(f) / 2, 0, UI_TEXT);
@@ -2946,7 +3088,7 @@ static void draw_systems(app *a)
 	ui_glow(a->r, &focus, s->accent, 110, 2.4f);
 	if (cf_draw(&a->cf_sys, a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, a->sys.count,
 	            sys_get_tex, a, &lay))
-		redraw_now();
+		ui_redraw_now();
 
 	/* WHICH SYSTEM THE WORDS BELOW DESCRIBE, and how visible they are.
 	 *
@@ -3189,9 +3331,8 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 			                phase, UI_TEXT);
 			/* Not "a title is sliding, so keep drawing". It ping-pongs for
 			 * as long as the game is focused, with 1.4s of stillness at the
-			 * start and 0.9s at the far end, so ask for the moment it next
-			 * moves and sleep through the holds. The phase clock is
-			 * plat_now_ms, the same one the main loop compares against.
+			 * start and 0.9s at the far end, and ui_pingpong asks for the
+			 * moment it next moves, so the loop sleeps through the holds.
 			 *
 			 * Only the holds can be skipped; the travel between them is
 			 * motion and has to be drawn. Measured on the Brick 2026-09-13,
@@ -3205,7 +3346,6 @@ static void draw_game_text(app *a, sysview *v, const system_cfg *s, int idx)
 			 * is the feature doing its job while it is being used. And a device
 			 * set down on a long title with nobody looking is ended by Auto Off,
 			 * so there is no long unattended stretch of it to save. */
-			redraw_at(plat_now_ms() + ui_pingpong_wait(tw - boxw, phase));
 		} else {
 			ui_text(a->r, ft2, g->title, tx, 40, 0, UI_TEXT);
 		}
@@ -3264,15 +3404,12 @@ static void draw_games(app *a)
 	const system_cfg *s = &a->sys.systems[a->sys_cursor];
 	bool albums = is_muse(s);
 	const cf_layout *row = albums ? &CF_LAYOUT_ALBUMS : &CF_LAYOUT_GAMES;
-	SDL_Rect focus;
 
-	cf_focus_rect(row, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &focus);
-	ui_glow(a->r, &focus, s->accent, 100, 2.3f);
 	if (cf_draw(&v->cf, a->r, TORTOS_SCREEN_W, TORTOS_SCREEN_H, v->list.count,
 	            game_get_tex, a,
 	            !CARD_DIRS[g_dir].vertical ? row
 	            : albums ? &CF_LAYOUT_ALBUMS_V : &CF_LAYOUT_GAMES_V))
-		redraw_now();
+		ui_redraw_now();
 	/* Warm where the move is about to cut to, one card per frame, underneath
 	 * the departure that is still being drawn. Eviction waits: the cursor is
 	 * already at the destination and evict_far measures from the cursor, so
@@ -3312,6 +3449,44 @@ static void draw_no_games(app *a)
 	        TORTOS_SCREEN_W / 2, cy + 56, 0, UI_TEXT_DIM);
 }
 
+/* The background and the focus glow as one picture, kept while nothing they
+ * show changes - for SDL's software renderer only, the one under native
+ * PICO-8's menu: there the two scaled, tinted glows cost 32 of a 65 ms frame
+ * and Muse scrolled at 15 fps (plorpos-7ny.37). A GPU draws them for nothing.
+ * Freed with the shelf's textures, which is before its renderer goes. */
+static struct { unsigned tint, accent; SDL_Rect focus; bool glow; } g_backdrop_is;
+
+static bool backdrop_cached(app *a, const SDL_Rect *focus, unsigned accent)
+{
+	SDL_RendererInfo ri;
+	SDL_Texture *was;
+
+	if (SDL_GetRendererInfo(a->r, &ri) != 0 || !(ri.flags & SDL_RENDERER_SOFTWARE))
+		return false;
+	if (!g_backdrop) {
+		g_backdrop = SDL_CreateTexture(a->r, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET,
+		                               TORTOS_SCREEN_W, TORTOS_SCREEN_H);
+		if (!g_backdrop) return false;
+		SDL_SetTextureBlendMode(g_backdrop, SDL_BLENDMODE_NONE);
+		g_backdrop_is.glow = !focus;   /* differs from any ask: drawn below */
+	}
+	if (g_backdrop_is.tint != a->tint || g_backdrop_is.glow != !!focus ||
+	    (focus && (g_backdrop_is.accent != accent ||
+	               memcmp(&g_backdrop_is.focus, focus, sizeof *focus)))) {
+		was = SDL_GetRenderTarget(a->r);
+		if (SDL_SetRenderTarget(a->r, g_backdrop) != 0) return false;
+		draw_background(a);
+		if (focus) ui_glow(a->r, focus, accent, 100, 2.3f);
+		SDL_SetRenderTarget(a->r, was);
+		g_backdrop_is.tint = a->tint;
+		g_backdrop_is.glow = !!focus;
+		g_backdrop_is.accent = accent;
+		g_backdrop_is.focus = focus ? *focus : (SDL_Rect){ 0 };
+	}
+	SDL_RenderCopy(a->r, g_backdrop, NULL, NULL);
+	return true;
+}
+
 static void draw_shelf(app *a)
 {
 	/* Install whatever the workers finished, before anything is drawn.
@@ -3324,22 +3499,75 @@ static void draw_shelf(app *a)
 	 * the result ring and were discarded once it filled. Everything that draws
 	 * the shelf wants its textures, so the thing that draws the shelf drains. */
 	texload_drain(a);
-	draw_background(a);
+	/* And any system card still missing is asked for again: a game list
+	 * draws none, so nothing else would ask, and a full queue turns an ask
+	 * away. Thirteen checks once they are all in. */
+	for (int i = 0; i < a->sys.count; i++)
+		if (!a->sys_tex[i]) {
+			int w, h;
+			sys_get_tex(a, i, &w, &h, NULL);
+		}
+	{
+		bool games = a->sys.count > 0 && a->screen != SCREEN_SYSTEMS;
+		unsigned accent = 0;
+		SDL_Rect focus = { 0 };
+
+		/* The glow behind the focused card. */
+		if (games) {
+			accent = a->sys.systems[a->sys_cursor].accent;
+			cf_focus_rect(is_muse(&a->sys.systems[a->sys_cursor]) ? &CF_LAYOUT_ALBUMS
+			              : &CF_LAYOUT_GAMES, TORTOS_SCREEN_W, TORTOS_SCREEN_H, &focus);
+		}
+		if (!backdrop_cached(a, games ? &focus : NULL, accent)) {
+			draw_background(a);
+			if (games) ui_glow(a->r, &focus, accent, 100, 2.3f);
+		}
+	}
 	if (a->sys.count <= 0) draw_no_games(a);
 	else if (a->screen == SCREEN_SYSTEMS) draw_systems(a);
 	else draw_games(a);
 }
 
+/* Drawing only when something changed. See ui_redraw_at in ui.h.
+ *
+ * The loop still runs every IDLE_POLL_MS when nothing is drawn, so the power
+ * button, Auto Off, the headphone jack and the Bluetooth sink are all still
+ * checked at the same rate as before - only the draw and the present are
+ * skipped. 16ms keeps the worst case from a press to its first frame where
+ * it was, one refresh.
+ *
+ * Why a poll and not a wait on the input devices: input arrives through two
+ * roads, SDL's own events and three raw evdev descriptors, and a held
+ * button produces no event at all while it repeats - in_repeat works from
+ * the clock. A wait that slept until the next event would have stopped key
+ * repeat dead. Polling costs a handful of syscalls a frame, against a full
+ * draw and a present. */
+#define IDLE_POLL_MS UI_IDLE_POLL_MS
+
+/* Whether a screen loop draws this pass: ui_draw_due's rule, with this app's
+ * input and art. Every loop that can sit idle asks this and, on false, sleeps
+ * IDLE_POLL_MS instead of drawing (plorpos-7ny.38/.39: the loops that did not
+ * drew and presented every pass - 88% of a core for Muse's shelf under native
+ * PICO-8's menu). `shown` is menu_fingerprint for a screen whose rows are
+ * rebuilt from live state, 0 for one that only changes with input. */
+static bool screen_draw_due(app *a, ui_pace *p, Uint32 shown)
+{
+	/* Held counts as touched, not only pressed: a held direction
+	 * repeats from the clock and moves the shelf every 90ms. */
+	bool touched = false;
+	int b;
+
+	for (b = 0; b < IN_COUNT && !touched; b++)
+		touched = a->in.pressed[b] || a->in.down[b];
+	/* texload_ready because finished art is installed while drawing:
+	 * a loop that never drew would never find it. */
+	return ui_draw_due(p, touched || texload_ready(), shown);
+}
+
 static void render(app *a)
 {
-	g_redraw_at = REDRAW_NEVER;
 	draw_shelf(a);
 	draw_chrome(a->r);
-	/* The tint lands exactly on its target now (see tick_tint), so this is a
-	 * test that ends rather than one that is true forever. */
-	if (a->sys.count > 0 && a->tint != a->sys.systems[a->sys_cursor].accent)
-		redraw_now();
-	redraw_at(plat_osd_until());
 	plat_present(a->r);
 }
 
@@ -3371,6 +3599,9 @@ static void tick_tint(app *a)
 	dg = (int)((next >> 8) & 255) - (int)((target >> 8) & 255);
 	db = (int)(next & 255) - (int)(target & 255);
 	a->tint = (abs(dr) <= 12 && abs(dg) <= 12 && abs(db) <= 12) ? target : next;
+	/* It lands exactly on its target (above), so this is a test that ends
+	 * rather than one that is true forever. */
+	if (a->tint != target) ui_redraw_now();
 }
 
 /* ---------- transitions --------------------------------------------------- */
@@ -3438,12 +3669,10 @@ static void anim_launch(app *a, unsigned ms)
  * Timed against the shutdown rather than chosen. Measured 2026-08-28: 1.42 s
  * from the Power off press to adbd dying, of which the old 620 ms animation
  * was the first slice - the rest was a black screen while sync and the kernel
- * finished. So the animation runs to about 900 ms and then DOES NOT clear.
- *
- * Not clearing is the point. Whatever was last presented stays on the panel
- * until the kernel cuts it, so the mark sits there through the remainder of
- * the shutdown and the screen going dark is the device going dark. The boot
- * animation relies on exactly the same thing at the other end. */
+ * finished. So the animation runs to about 900 ms and then DOES NOT clear: the
+ * closed shell is its last frame. power_off turns the backlight off right
+ * after, rather than leaving the shell lit until the kernel cuts the panel
+ * (which is how it was until 2026-10-02). */
 static void anim_poweroff(app *a)
 {
 	const unsigned T_IN = 430, T_HEAD = 260, T_DIM = 210;
@@ -3486,14 +3715,19 @@ static void anim_poweroff(app *a)
 static void power_off(app *a)
 {
 	fprintf(stderr, "power: off\n");
-	/* Here rather than only on the return path: launch.sh runs its leds_off at
-	 * the TOP of its restart loop, and a power-off breaks that loop instead of
-	 * going round it, so this is the last chance to darken them. */
+	/* Here rather than only on the return path: launch.sh runs its leds_off
+	 * before each restart of the launcher, and a power-off breaks that loop
+	 * instead of going round it, so this is the last chance to darken them. */
 	plat_leds_off();
 	remember_place(a);
 	book_keep(true);
 	plat_request_poweroff();
 	anim_poweroff(a);
+	/* And dark the moment it ends. The rest of the shutdown is not instant -
+	 * on the GKD Pixel 2 it waits for the programs on the card to go before
+	 * unmounting it - and the shell stayed lit through all of it. Eric's
+	 * call, 2026-10-02, for both devices. */
+	plat_screen(false);
 	a->running = false;
 }
 
@@ -3639,6 +3873,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	int scroll_span = 0;
 	int scroll_split = 0;  /* first pinned row: the rule, or n if there is none */
 	int scroll_foot = 0;   /* the pinned rows' total height */
+	bool pinned = false;   /* a cursor list with its footer pinned under it */
 	/* A SMALL, FAST GIVE WHEN THE WINDOW SCROLLS - not a full slide.
 	 *
 	 * REPEAT_RATE_MS is 90, so any animation long enough to watch is
@@ -3734,14 +3969,31 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 			 * it. A different row count is a different menu and starts at the
 			 * top rather than inheriting someone else's scroll. */
 			static int win_n = -1, win_first;
+			int body_n = n, j;
+
+			/* A FOOTER STAYS PUT. A rule followed by nothing but notes - the
+			 * Wi-Fi screen's address and key legend - is about the list, not
+			 * in it, and as the last rows of a list taller than the screen it
+			 * was never on it: no cursor can walk down to a row it cannot
+			 * select (plorpos-3pk.8, the RG SP's 768-unit screen). So it is
+			 * pinned under the window the way a cursorless card pins its own,
+			 * and only the rows above it scroll. */
+			for (j = n - 1; j >= 0 && rows[j].label && !rows[j].live; j--) ;
+			if (j > sel && j < n - 1 && !rows[j].label && !ROW_IS_HR(rows[j])) {
+				pinned = true;
+				body_n = scroll_split = j;
+				for (; j < n; j++) scroll_foot += ROW_H(rows[j]);
+				avail -= scroll_foot;
+			}
 
 			vis = avail / row_h;
 			if (vis < 1) vis = 1;
-			if (vis > n) vis = n;
+			if (vis > body_n) vis = body_n;
+			if (pinned) scroll_h = vis * row_h;
 
 			if (win_n != n) win_first = 0;
 			win_n = n;
-			win_first = menu_window_first(rows, n, sel, vis, win_first);
+			win_first = menu_window_first(rows, body_n, sel, vis, win_first);
 			first = win_first;
 		} else {
 			/* NO CURSOR MEANS NOTHING CAN SCROLL IT, so it scrolls itself.
@@ -3813,7 +4065,8 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 		 * A body row is not a footer. A synopsis short enough to fit without
 		 * scrolling ends in prose, which is the panel's content and wants the
 		 * same pad under it that a list does. */
-		if (!scroll_h && last >= 0 && last < n && rows[last].label &&
+		if (pinned) last = n - 1;            /* the footer is on screen */
+		if ((!scroll_h || pinned) && last >= 0 && last < n && rows[last].label &&
 		    ROW_IS_NOTE(rows[last]) && !ROW_IS_BODY(rows[last]))
 			panel.h -= pad * 5 / 12;
 	}
@@ -3977,6 +4230,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 		}
 		if (wcur < 0.5f && wcur > -0.5f) wcur = 0.0f;
 		win_off = wcur;
+		if (wcur != 0.0f || wmid >= 0.5f || wmid <= -0.5f) ui_redraw_now();
 	}
 
 	if (sel >= 0 && sel < n && rows[sel].label) {
@@ -4041,6 +4295,16 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 			pl_y  += (pl_my - pl_y) * k;
 			pl_h  += (pl_mh - pl_h) * k;
 		}
+		/* Landed outright within half a pixel, as the window give is: a
+		 * chase like this never arrives by itself, and a menu that only
+		 * draws while something is moving would draw forever. */
+		if (fabsf(pl_y - (float)ty_sel) < 0.5f && fabsf(pl_my - (float)ty_sel) < 0.5f &&
+		    fabsf(pl_h - tgt_h) < 0.5f && fabsf(pl_mh - tgt_h) < 0.5f) {
+			pl_y = pl_my = (float)ty_sel;
+			pl_h = pl_mh = tgt_h;
+		} else {
+			ui_redraw_now();
+		}
 
 		/* A soft white plate, not the system's color. The accent already
 		 * frames the panel; using it again for the cursor made the two
@@ -4074,14 +4338,20 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	if (vis < n) {
 		SDL_Rect rc = { panel.x + UI_PANEL_BORDER, content_y,
 		                panel.w - UI_PANEL_BORDER * 2,
-		                panel.y + panel.h - pad - content_y };
+		                pinned ? scroll_h : panel.y + panel.h - pad - content_y };
 		SDL_RenderSetClipRect(a->r, &rc);
 	}
-	for (k = 0, i = (first > 0 ? first - 1 : first);
-	     i < n && i <= first + vis; k++, i++) {
+	for (k = 0, i = (first > 0 ? first - 1 : first); i < n; k++, i++) {
 		int y, ty, j;
 		float sel_w;
 		SDL_Color lc, vc;
+
+		/* Past the window's spare row: done, or on to the pinned footer. */
+		if (i > first + vis && !(pinned && i >= scroll_split)) {
+			if (!pinned) break;
+			i = scroll_split - 1;
+			continue;
+		}
 
 		if (scroll_h && i >= scroll_split) {
 			/* Pinned. Measured from the bottom of the viewport rather than
@@ -4342,7 +4612,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 	 * slot carousel's rail uses. Hung just off the rows rather than centered in
 	 * the padding: with a heading above, the padding is already spoken for by
 	 * the separator, and the indicator belongs to the list in any case. */
-	if (vis < n && !scroll_h) {
+	if (vis < n && (!scroll_h || pinned)) {
 		/* A triangle pointing the way the list continues, rather than three
 		 * dots that said "there is more" without saying which way. Drawn as
 		 * rows because there is no filled-triangle primitive and this needs
@@ -4358,7 +4628,7 @@ static void menu_draw_ex(app *a, const char *heading, const menu_row *rows,
 			if (first > 0)
 				SDL_RenderFillRect(a->r, &(SDL_Rect){ cx - up_w / 2,
 				                   content_y - off - th + k, up_w, 1 });
-			if (first + vis < n)
+			if (first + vis < (pinned ? scroll_split : n))
 				SDL_RenderFillRect(a->r, &(SDL_Rect){ cx - down_w / 2,
 				                   content_y + vis * row_h + off + k, down_w, 1 });
 		}
@@ -4453,6 +4723,12 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.auto_poweroff = a->auto_poweroff;
 		u.suspend_timeout = plat_suspend_timeout_secs();
 		u.mute_lock = db_get_int(db_dev(), "muteswitch", 0) == 1;
+		{
+			static char clk[32];
+
+			clock_label(time(NULL), clk, sizeof clk);
+			u.clock = clk;
+		}
 		u.batt_pct = db_get_int(db_dev(), "battpct", 0) == 1;
 		u.audio_policy = ao.policy;
 		u.audio_dest   = aout_actual(&ao);
@@ -4574,6 +4850,8 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 	rows[1 + n] = (menu_row){ "Cancel", NULL, true };
 	sel = 1 + n;
 
+	ui_pace pace = {0};
+
 	for (;;) {
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; return -1; }
@@ -4588,6 +4866,7 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 		if (in_repeat(&a->in, IN_DOWN)) sel = sel < 1 + n ? sel + 1 : 1;
 		if (a->in.pressed[IN_ACCEPT]) return sel <= n ? sel - 1 : -1;
 
+		if (!screen_draw_due(a, &pace, 0)) { SDL_Delay(IDLE_POLL_MS); continue; }
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -4596,7 +4875,6 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 		menu_draw(a, heading, rows, 2 + n, sel, 0, MENU_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 }
 
@@ -4609,6 +4887,8 @@ static bool confirm_panel(app *a, const char *heading, const char *msg,
 /* Rows to read and nothing to choose, until A or B: a job's result. */
 static void note_panel(app *a, const char *heading, const menu_row *rows, int n)
 {
+	ui_pace pace = {0};
+
 	for (;;) {
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; return; }
@@ -4618,6 +4898,7 @@ static void note_panel(app *a, const char *heading, const menu_row *rows, int n)
 		}
 		if (menu_leaving(a) || a->in.pressed[IN_ACCEPT]) return;
 
+		if (!screen_draw_due(a, &pace, 0)) { SDL_Delay(IDLE_POLL_MS); continue; }
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -4626,7 +4907,6 @@ static void note_panel(app *a, const char *heading, const menu_row *rows, int n)
 		menu_draw(a, heading, rows, n, -1, 0, MENU_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 }
 
@@ -4717,6 +4997,33 @@ typedef menu_result (*menu_key_fn)(app *a, void *ctx, in_button key, int sel);
 
 /* The loop itself. Called only through menu_run below, which owns the flush on
  * either side of it. */
+/* A menu's words and cursor, as one number: FNV-1a over all of it.
+ *
+ * A row's value is not always a string: MENU_NOTE_MARK, MENU_BODY_MARK and
+ * MENU_HR_MARK are the small numbers 1-3 cast to a pointer (menu.h), and
+ * reading through one killed the launcher the first time a menu with a note
+ * under it was gated. Those are hashed as the numbers they are. */
+static Uint32 fnv_str(Uint32 h, const char *s)
+{
+	if ((uintptr_t)s < 16) return (h ^ (Uint32)(uintptr_t)s ^ 0x100) * 16777619u;
+	for (; *s; s++) h = (h ^ (unsigned char)*s) * 16777619u;
+	return (h ^ 0xFF) * 16777619u;   /* a separator: "ab","c" is not "a","bc" */
+}
+
+static Uint32 menu_fingerprint(const char *heading, const menu_row *rows,
+                               int n, int sel)
+{
+	Uint32 h = fnv_str(2166136261u, heading);
+	int i;
+
+	for (i = 0; i < n; i++) {
+		h = fnv_str(h, rows[i].label);
+		h = fnv_str(h, rows[i].value);
+		h = (h ^ (rows[i].live ? 1u : 2u)) * 16777619u;
+	}
+	return (h ^ (Uint32)n ^ ((Uint32)sel << 16)) * 16777619u;
+}
+
 static menu_exit menu_run_body(app *a, const menu_style *st,
                                menu_build_fn build, menu_key_fn on_key,
                                void *ctx)
@@ -4724,6 +5031,7 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 	menu_row rows[MENU_RUN_ROWS];
 	const char *heading = NULL;
 	int sel = st->start, n = 0, b;
+	ui_pace pace = {0};
 
 	while (a->running && !want_quit) {
 		n = build(ctx, rows, MENU_RUN_ROWS, &heading);
@@ -4813,6 +5121,14 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 			break;
 		}
 
+		/* The rows are rebuilt every pass from what the device says now -
+		 * a scan finding networks, a headset connecting, Muse moving to the
+		 * next track - and none of that is input. So what was built is
+		 * compared with what was last drawn, and a difference is a frame. */
+		if (!screen_draw_due(a, &pace, menu_fingerprint(heading, rows, n, sel))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		tick_tint(a);
 		if (st->backdrop) {
 			st->backdrop(a, ctx);
@@ -4826,7 +5142,6 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		          st->follow_tint ? a->tint : st->accent);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 	return MENU_LEFT_GONE;
 }
@@ -5313,6 +5628,9 @@ static void muse_before_delete(const char *abs)
 	}
 }
 
+/* Singles' cover, put back when it has gone (upstream e1b6beb). */
+static void  singles_cover(void);
+
 static void xfer_screen(app *a)
 {
 	char       ssid[WIFI_SSID_MAX], ip[64];
@@ -5325,6 +5643,7 @@ static void xfer_screen(app *a)
 	g_logs_app = a;
 	hare_set_logs(pack_logs);
 	hare_set_before_delete(muse_before_delete);
+	singles_cover();                /* back, if it was taken off the card */
 	if (!hare_start(P_ROMS, P_CARD, P_SHARED, P_WEB)) {
 		menu_row row = { "Could not start", NULL, false };
 
@@ -6101,6 +6420,8 @@ static void bt_screen(app *a)
 	int sel = 0;                  /* ROW space: 0 is the toggle, then devices */
 	bool done = false;
 
+	ui_pace pace = {0};
+
 	while (!done && !want_quit && a->running) {
 		unsigned now = plat_now_ms();
 		int nrows, i;
@@ -6265,6 +6586,10 @@ static void bt_screen(app *a)
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
+		if (!screen_draw_due(a, &pace, menu_fingerprint("Bluetooth", rows, nrows, sel))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -6273,7 +6598,6 @@ static void bt_screen(app *a)
 		menu_draw(a, "Bluetooth", rows, nrows, sel, menu_std_width(a), MENU_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 
 	/* On the way out, not while the list is up: `bluetoothctl devices` reads
@@ -6335,6 +6659,8 @@ static bool stats_screen(app *a)
 	bool done = false;
 
 	stats_format(stats_total_seconds(), total, sizeof total);
+
+	ui_pace pace = {0};
 
 	while (!done && !want_quit && a->running) {
 		int shown = 0, i;
@@ -6523,6 +6849,10 @@ static bool stats_screen(app *a)
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
+		if (!screen_draw_due(a, &pace, menu_fingerprint("Play Time", rows, shown, ngames ? cursor - top + 1 : -1))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -6534,7 +6864,6 @@ static bool stats_screen(app *a)
 		          MENU_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 	return false;
 }
@@ -6550,6 +6879,8 @@ static void about_screen(app *a)
 	bool done = false;
 
 	snprintf(ver, sizeof ver, "%s", TORTOS_VERSION);
+
+	ui_pace pace = {0};
 
 	while (!done && !want_quit && a->running) {
 		static unsigned next_check;
@@ -6594,6 +6925,10 @@ static void about_screen(app *a)
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
+		if (!screen_draw_due(a, &pace, menu_fingerprint("About", rows, 4, -1))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -6602,7 +6937,6 @@ static void about_screen(app *a)
 		menu_draw(a, "About", rows, 4, -1, menu_std_width(a), MENU_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 }
 
@@ -6621,6 +6955,8 @@ static void controls_screen(app *a)
 {
 	ctl_page page = CTL_SHELF;
 	bool done = false;
+
+	ui_pace pace = {0};
 
 	while (!done && !want_quit && a->running) {
 		menu_row rows[CTL_MAX_ROWS];
@@ -6648,6 +6984,10 @@ static void controls_screen(app *a)
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
+		if (!screen_draw_due(a, &pace, menu_fingerprint(head, rows, n, -1))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -6656,7 +6996,6 @@ static void controls_screen(app *a)
 		menu_draw(a, head, rows, n, -1, menu_std_width(a), MENU_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 }
 
@@ -7018,6 +7357,99 @@ static void scraping_screen(app *a)
 	         scraping_build, scraping_key, NULL);
 }
 
+/* Date & Time (src/clock.h; upstream b3b4483). Each row is one part of the
+ * clock, changed with left and right and set the moment it changes: the system
+ * clock and the hardware clock both, so it holds through a power-off. Time
+ * Zone steps through CLOCK_ZONES and is the library database's "timezone".
+ *
+ * The Brick's zone was already that key, New York unless chosen, and its
+ * launch.sh points the system at it through boot.env. The GKD and the H700s
+ * follow their own system's zone until one is chosen here: ROCKNIX has a zone
+ * setting of its own, and a launcher default would quietly overrule it. */
+#if defined(PLATFORM_GKD) || defined(PLATFORM_H700)
+#define TZ_DEFAULT ""
+#else
+#define TZ_DEFAULT "America/New_York"
+#endif
+
+static void tz_get(char *id, size_t n)
+{
+	db_get_str(db_lib(), "timezone", id, n, TZ_DEFAULT);
+}
+
+typedef struct {
+	char field[CLK_FIELDS][24];
+	char zone[64];   /* a city, a zone id not on the list as it is, or System */
+} clock_ui;
+
+static const char *const CLOCK_ROW_NAMES[CLK_FIELDS] = {
+	"Year", "Month", "Day", "Hour", "Minute",
+};
+
+static int clock_build(void *ctx, menu_row *rows, int max, const char **heading)
+{
+	clock_ui *c = ctx;
+	time_t now = time(NULL);
+	char id[64];
+	int i, z, n = 0;
+
+	*heading = "Date & Time";
+	for (i = 0; i < CLK_FIELDS && n < max; i++) {
+		clock_field_label(now, (clock_field)i, c->field[i], sizeof c->field[i]);
+		rows[n++] = (menu_row){ CLOCK_ROW_NAMES[i], c->field[i], true };
+	}
+	tz_get(id, sizeof id);
+	z = id[0] ? clock_zone_find(id) : -1;
+	snprintf(c->zone, sizeof c->zone, "%s",
+	         z >= 0 ? CLOCK_ZONES[z].city : id[0] ? id : "System");
+	if (n < max) rows[n++] = (menu_row){ "Time Zone", c->zone, true };
+	if (n + 3 <= max) {
+		rows[n++] = MENU_RULE;
+		rows[n++] = MENU_NOTE("Left/right: change");
+		/* Every device here has Wi-Fi, and each system sets its clock from
+		 * the network once it connects, so a time set here lasts until then. */
+		rows[n++] = MENU_NOTE("Wi-Fi sets the clock when connected");
+	}
+	return n;
+}
+
+static menu_result clock_key(app *a, void *ctx, in_button key, int sel)
+{
+	int d = key == IN_RIGHT ? 1 : key == IN_LEFT ? -1 : 0;
+
+	(void)a; (void)ctx;
+	if (!d) return MENU_STAY;
+	if (sel >= 0 && sel < CLK_FIELDS) {
+		plat_clock_set(clock_step(time(NULL), (clock_field)sel, d));
+	} else if (sel == CLK_FIELDS) {
+		char id[64];
+		int z;
+
+		/* From System, the first step lands on New York, as
+		 * clock_zone_step does for any zone not on its list. */
+		tz_get(id, sizeof id);
+		z = clock_zone_step(id, d);
+		db_set_str(db_lib(), "timezone", CLOCK_ZONES[z].id);
+		db_write_boot_env();
+		plat_clock_zone(CLOCK_ZONES[z].id);
+	}
+	return MENU_STAY;
+}
+
+static void clock_screen(app *a)
+{
+	clock_ui c;
+	menu_style st = {
+		/* Fixed, so the panel does not change size as "May" becomes
+		 * "September" under a held key */
+		.fixed_w = menu_std_width(a),
+		.accent  = MENU_ACCENT,
+	};
+
+	memset(&c, 0, sizeof c);
+	menu_run(a, &st, clock_build, clock_key, &c);
+}
+
 /* Settings > System Settings and UI Settings (plorpos-z0d.1): rows that
  * stood in the plorpOS menu itself until then, with the keys they always had.
  * The rows are src/sys_menu.c's, so tools/menu-check.c can state them. */
@@ -7100,6 +7532,7 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 		db_set_int(db_dev(), "suspendtimeout", SUSPEND_TIMEOUT[at]);
 		return MENU_STAY;
 	}
+	if (sel == ST_CLOCK && key == IN_ACCEPT) { clock_screen(a); return MENU_STAY; }
 	/* Battery Percentage: a toggle, A or left/right, as Mute Switch. */
 	if (sel == ST_BATTPCT && (d || key == IN_ACCEPT)) {
 		db_set_int(db_dev(), "battpct", db_get_int(db_dev(), "battpct", 0) != 1);
@@ -7108,7 +7541,7 @@ static menu_result system_settings_key(app *a, void *ctx, in_button key, int sel
 	}
 	/* Mute Switch: a toggle, so A flips it as well as left/right
 	 * (TortOS-ib9). */
-#if !defined(PLATFORM_GKD)
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
 	if (sel == ST_MUTESW && (d || key == IN_ACCEPT)) {
 		bool lock = db_get_int(db_dev(), "muteswitch", 0) != 1;
 
@@ -7200,6 +7633,38 @@ static int sysmenu_build(void *ctx, menu_row *rows, int max,
 	return n > max ? max : n;
 }
 
+/* Shelf `sys` put in its order again, the cursor on the same game - or on
+ * Muse's shelf the same album, whose folder is its `file`. */
+static void shelf_resort(app *a, int sys)
+{
+	sysview *v = &a->view[sys];
+	char keep[LIB_PATH];
+	int i, keep_owner = -1;
+
+	keep[0] = '\0';
+	if (v->cursor >= 0 && v->cursor < v->list.count) {
+		snprintf(keep, sizeof keep, "%s", v->list.items[v->cursor].file);
+		/* On Favorites a file name is not enough: the same one can be on
+		 * the shelf twice, from two systems. */
+		if (v->owner) keep_owner = v->owner[v->cursor];
+	}
+	sort_shelf(a, sys);
+
+	/* The textures are indexed by position, so they moved with nothing.
+	 * Dropping them lets the next frame fetch each card's art for where it
+	 * now sits. */
+	free_view_textures(v);
+
+	v->cursor = 0;
+	for (i = 0; i < v->list.count; i++)
+		if (!strcmp(v->list.items[i].file, keep) &&
+		    (!v->owner || v->owner[i] == keep_owner)) {
+			v->cursor = i;
+			break;
+		}
+	cf_reset(&v->cf, v->cursor);
+}
+
 /* Left and right cycle the value on a row that has one; A opens whatever the
  * row leads to. Everything else the runner has already dealt with. */
 static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
@@ -7273,40 +7738,15 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		 * would appear to have jumped on its own. Which game you were
 		 * looking at is the thing that survives a reorder; where it happened
 		 * to sit in the old order is not. On Muse's shelf the same goes for
-		 * the album, whose folder is its `file`. */
+		 * the album, whose folder is its `file`. See shelf_resort. */
 		if (d && sel == SM_SORT) {
 			sysview *v = &a->view[a->sys_cursor];
-			char keep[LIB_PATH];
-			int i, keep_owner = -1;
-
-			keep[0] = '\0';
-			if (v->cursor >= 0 && v->cursor < v->list.count) {
-				snprintf(keep, sizeof keep, "%s",
-				         v->list.items[v->cursor].file);
-				/* On Favorites a file name is not enough: the same one can
-				 * be on the shelf twice, from two systems. */
-				if (v->owner) keep_owner = v->owner[v->cursor];
-			}
 
 			v->sort = is_muse(&a->sys.systems[a->sys_cursor])
 			        ? (v->sort + d + ML_ORDERS) % ML_ORDERS
 			        : sort_step(v->sort, d);
-			sort_shelf(a, a->sys_cursor);
+			shelf_resort(a, a->sys_cursor);
 			sort_save(a);
-
-			/* The textures are indexed by position, so they moved with
-			 * nothing. Dropping them lets the next frame fetch each card's
-			 * art for where it now sits. */
-			free_view_textures(v);
-
-			v->cursor = 0;
-			for (i = 0; i < v->list.count; i++)
-				if (!strcmp(v->list.items[i].file, keep) &&
-				    (!v->owner || v->owner[i] == keep_owner)) {
-					v->cursor = i;
-					break;
-				}
-			cf_reset(&v->cf, v->cursor);
 			return MENU_STAY;
 		}
 		if (key != IN_ACCEPT) return MENU_STAY;
@@ -7645,6 +8085,8 @@ static int slot_strip(app *a, SDL_Texture *bg, int saving)
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
+	ui_pace pace = {0};
+
 	while (!done && !want_quit) {
 		plat_input_poll(&a->in);
 
@@ -7675,6 +8117,10 @@ static int slot_strip(app *a, SDL_Texture *bg, int saving)
 			}
 		}
 
+		if (!screen_draw_due(a, &pace, 0)) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
 		SDL_RenderClear(a->r);
 		draw_paused_frame(a, bg);
@@ -7685,7 +8131,6 @@ static int slot_strip(app *a, SDL_Texture *bg, int saving)
 		slot_draw(a, &sv, sel);
 		draw_battery(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 
 	for (i = 0; i <= GM_SLOTS; i++)
@@ -7871,6 +8316,8 @@ static bool cheevo_detail_screen(app *a, SDL_Texture *bg, bool over_shelf,
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
+	ui_pace pace = {0};
+
 	while (!done && !want_quit) {
 		plat_input_poll(&a->in);
 
@@ -7895,11 +8342,14 @@ static bool cheevo_detail_screen(app *a, SDL_Texture *bg, bool over_shelf,
 			}
 		}
 
+		if (!screen_draw_due(a, &pace, 0)) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		chv_backdrop(a, bg, over_shelf);
 		menu_draw_ex(a, c->title, rows, n, -1, fixed, a->tint, vcols, false, 0);
 		draw_battery(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 
 	plat_input_flush();
@@ -7999,6 +8449,16 @@ static bool cover_file(int al, char *out, size_t n)
 	c = &g_cov[al];
 	ml_cover_base(g_muse_root, &g_muse, al, base, sizeof base);
 	if (!base[0]) return false;
+	/* Singles' is its own, the one put there for it or one put in its place,
+	 * never a song's: its songs have nothing to do with one another, and the
+	 * first one's picture became the album's (2026-10-05). So it is looked
+	 * for each time and Muse is never asked. */
+	if (g_muse.albums[al].singles) {
+		snprintf(out, n, "%s.jpg", base);
+		if (file_nonempty(out)) return true;
+		snprintf(out, n, "%s.png", base);
+		return file_nonempty(out);
+	}
 	if (c->st == COV_JPG || c->st == COV_PNG) {
 		snprintf(out, n, "%s.%s", base, c->st == COV_JPG ? "jpg" : "png");
 		return true;
@@ -8046,6 +8506,88 @@ static bool cover_answers(void)
 		}
 	}
 	return landed;
+}
+
+/* The key album `al`'s year is kept under, and its folder's mtime, -1 when it
+ * cannot be read. */
+static long long year_key(int al, char *key, size_t n)
+{
+	const char *p = g_muse.tracks[g_muse.albums[al].first].path;
+	const char *slash = strrchr(p, '/');
+	char dir[LIB_PATH * 2 + 8];
+	struct stat st;
+	int k = slash ? (int)(slash - p) : 0;
+
+	snprintf(key, n, "muse.year.%.*s", k, p);
+	snprintf(dir, sizeof dir, "%s/%.*s", g_muse_root, k, p);
+	return stat(dir, &st) == 0 ? (long long)st.st_mtime : -1;
+}
+
+/* The years kept from earlier visits, for the albums whose folders have not
+ * changed since; the rest are left to year_fill. */
+static void year_load(void)
+{
+	char key[LIB_PATH + 16], val[48];
+	long long m, was;
+	int i, y;
+
+	free(g_year);
+	g_year = malloc(sizeof *g_year * (size_t)g_muse.nalbums);
+	g_year_asked = -1;
+	g_year_read = 0;
+	if (!g_year) return;
+	for (i = 0; i < g_muse.nalbums; i++) {
+		g_year[i] = -1;
+		if (g_muse.albums[i].n <= 0) { g_year[i] = 0; continue; }
+		m = year_key(i, key, sizeof key);
+		db_get_str(db_lib(), key, val, sizeof val, "");
+		if (m >= 0 && sscanf(val, "%lld %d", &was, &y) == 2 && was == m) g_year[i] = y;
+	}
+}
+
+/* One step of reading the years nobody knows yet: take the daemon's answer,
+ * keep it, ask about the next album. Answers are matched by folder, so one
+ * that lands after a rescan finds its album or none. An answer lost with the
+ * daemon is asked for again after 5 s, as a cover is. */
+static void year_fill(void)
+{
+	char track[LIB_PATH * 2], key[LIB_PATH + 16], val[48];
+	unsigned now = plat_now_ms();
+	int al, y, i;
+
+	if (!g_year) return;
+	if (musec_year_take(track, sizeof track, &y)) {
+		al = ml_album_of(&g_muse, track);
+		if (al >= 0 && g_year[al] < 0) {
+			long long m = year_key(al, key, sizeof key);
+
+			/* Unreadable is none for now and not kept: a card that
+			 * hiccuped is asked again next time, not believed for good. */
+			g_year[al] = y > 0 ? y : 0;
+			if (y >= 0 && m >= 0) {
+				snprintf(val, sizeof val, "%lld %d", m, y);
+				db_set_str(db_lib(), key, val);
+			}
+			g_year_read++;
+		}
+		if (al == g_year_asked) g_year_asked = -1;
+	}
+	if (g_year_asked >= 0 && now - g_year_asked_ms < 5000) return;
+	for (i = 0; i < g_muse.nalbums && g_year[i] >= 0; i++) {}
+	if (i == g_muse.nalbums) {
+		if (g_year_read) {
+			fprintf(stderr, "muse: %d years read in %u ms\n", g_year_read, now - g_year_t0);
+			g_year_read = 0;
+			g_year_landed = true;
+		}
+		g_year_asked = -1;
+		return;
+	}
+	if (!g_year_read && g_year_asked < 0) g_year_t0 = now;
+	if (musec_year_ask(g_muse.tracks[g_muse.albums[i].first].path)) {
+		g_year_asked = i;
+		g_year_asked_ms = now;
+	}
 }
 
 /* A cover's shape, wherever it is drawn: square, and square-cornered - Eric's
@@ -8613,6 +9155,8 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
+	ui_pace pace = {0};
+
 	while (!done && !want_quit && a->running) {
 		const mu_now *mn;
 		bool loaded, open_now = false;
@@ -8620,7 +9164,7 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 		const char *playing;
 
 		muse_screen_poll();
-		cover_answers();
+		if (cover_answers()) ui_redraw_now();
 		mn = musec_now();
 		loaded = mn->state == MU_PLAYING || mn->state == MU_PAUSED;
 		playing = musec_path();
@@ -8711,11 +9255,16 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 			continue;
 		}
 
+		/* The rows carry the playing track and its time, so a track
+		 * playing is a frame a second and a paused one is none. */
+		if (!screen_draw_due(a, &pace, menu_fingerprint(heading, rows, n, sel))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		muse_backdrop(a);
 		menu_draw(a, heading, rows, n, sel, menu_std_width(a), MUSE_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 
 	free(rows);
@@ -8736,10 +9285,37 @@ static bool muse_open(app *a, const menu_style *over, void *ctx)
 {
 	const mu_now *mn = musec_now();
 
-	if (g_muse.ntracks == 0) return false;
 	g_muse_over = over;
 	g_muse_over_ctx = ctx;
 	g_muse_gone = false;
+	/* Asked for before the boot walk is done: say so at once, and open as
+	 * soon as it is in, unless B says never mind (plorpos-18j). */
+	if (g_walk_thread) {
+		menu_row row = { "Loading your library...", NULL, false };
+		ui_pace pace = {0};
+
+		while (g_walk_thread) {
+			plat_input_poll(&a->in);
+			if (a->in.quit_requested) { a->running = false; break; }
+			if (power_check(a) == PWR_POWEROFF) { muse_power(a); break; }
+			if (menu_leaving(a)) break;
+			muse_walk_poll(a);
+			if (!g_walk_thread) break;
+			if (!screen_draw_due(a, &pace, 0)) { SDL_Delay(IDLE_POLL_MS); continue; }
+			muse_backdrop(a);
+			menu_draw(a, "Muse", &row, 1, -1, 0, MUSE_ACCENT);
+			draw_chrome(a->r);
+			plat_present(a->r);
+		}
+		plat_input_flush();
+		memset(&a->in, 0, sizeof a->in);
+	}
+	if (g_walk_thread || g_muse.ntracks == 0 || !a->running || g_muse_gone) {
+		g_muse_over = NULL;
+		g_muse_over_ctx = NULL;
+		g_menu_closing = false;
+		return g_muse_gone;
+	}
 	muse_shelf_screen(a, mn->state == MU_PLAYING || mn->state == MU_PAUSED);
 	g_muse_over = NULL;
 	g_muse_over_ctx = NULL;
@@ -8866,11 +9442,14 @@ static void muse_shelf_screen(app *a, bool now)
 		}
 	}
 
+	/* 0: the first pass draws (away). */
+	ui_pace pace = {0};
+
 	while (!done && !want_quit && a->running) {
 		int n = v->list.count, dir = 0;
 
 		muse_screen_poll();
-		cover_answers();
+		if (cover_answers()) ui_redraw_now();
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) { a->running = false; break; }
 		{
@@ -8917,11 +9496,12 @@ static void muse_shelf_screen(app *a, bool now)
 			v = nv;
 		}
 
-		tick_tint(a);
-		draw_shelf(a);
-		draw_chrome(a->r);
-		plat_present(a->r);
-		SDL_Delay(8);
+		if (screen_draw_due(a, &pace, 0)) {
+			tick_tint(a);
+			render(a);
+		} else {
+			SDL_Delay(IDLE_POLL_MS);
+		}
 	}
 
 	evict_far(v, TEX_KEEP_FAR);
@@ -8969,15 +9549,20 @@ static int museart_jobs(museart_job *jobs, int max)
 		bool have;
 
 		/* Not a book: MusicBrainz knows records, and a book's cover is its
-		 * own file or the picture in its folder. */
-		if (g_muse.albums[i].n <= 0 || g_muse.albums[i].book) continue;
+		 * own file or the picture in its folder. Nor Singles, which is no
+		 * record at all and has its own cover. */
+		if (g_muse.albums[i].n <= 0 || g_muse.albums[i].book ||
+		    g_muse.albums[i].singles) continue;
 		muse_album_dir(i, dir, sizeof dir);
 		snprintf(key, sizeof key, "museart.%s", dir);
-		if (db_has(db_lib(), key)) continue;
 		ml_cover_base(g_muse_root, &g_muse, i, j->base, sizeof j->base);
 		snprintf(p, sizeof p, "%s.jpg", j->base);
 		have = file_nonempty(p);
 		if (!have) { snprintf(p, sizeof p, "%s.png", j->base); have = file_nonempty(p); }
+		/* Remembered only while the cover it gave is on the card: one deleted
+		 * since is asked about again, where the memory alone kept every such
+		 * album off the list for good (2026-10-05). */
+		if (have && db_has(db_lib(), key)) continue;
 		if (have && museart_image_size(p, &w, &h) && (w < h ? w : h) >= crisp) continue;
 		snprintf(j->artist, sizeof j->artist, "%s", g_muse.artists[muse_artist_of(i)].name);
 		snprintf(j->album, sizeof j->album, "%s", g_muse.albums[i].name);
@@ -9053,6 +9638,9 @@ static void album_art_screen(app *a)
 
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
+
+	ui_pace pace = {0};
+
 	while (!done && !want_quit && a->running) {
 		if (working && museart_step(plat_now_ms()) == 0) {
 			working = false;
@@ -9062,7 +9650,10 @@ static void album_art_screen(app *a)
 			        st.problem);
 		}
 		museart_status_get(&st);
-		if (st.landed >= 0) album_art_landed(a, st.landed, st.rg);
+		if (st.landed >= 0) {
+			album_art_landed(a, st.landed, st.rg);
+			ui_redraw_now();                /* a new cover behind the panel */
+		}
 
 		ui_fit_text(ui_font(UI_F_LABEL),
 		            working ? (st.now[0] ? st.now : "starting")
@@ -9101,6 +9692,11 @@ static void album_art_screen(app *a)
 		 * doing what it was asked, and powering off halfway loses the rest. */
 		if (working) a->idle.since_ms = plat_now_ms();
 
+		/* Progress is the rows changing: drawn when they do. */
+		if (!screen_draw_due(a, &pace, menu_fingerprint(head, rows, 3, -1))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -9109,7 +9705,6 @@ static void album_art_screen(app *a)
 		menu_draw(a, head, rows, 3, -1, menu_std_width(a), MUSE_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 	museart_cancel();
 	plat_input_flush();
@@ -9139,6 +9734,8 @@ static void synopsis_screen(app *a, const char *title, const char *text,
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
+	ui_pace pace = {0};
+
 	while (!done && !want_quit && a->running) {
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) break;
@@ -9151,6 +9748,10 @@ static void synopsis_screen(app *a, const char *title, const char *text,
 			if (pa == PWR_POWEROFF) { power_off(a); break; }
 		}
 
+		if (!screen_draw_due(a, &pace, 0)) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
@@ -9158,7 +9759,6 @@ static void synopsis_screen(app *a, const char *title, const char *text,
 		menu_draw_ex(a, title, rows, n, -1, fixed, accent, NULL, false, loop_at);
 		draw_battery(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 
 	plat_input_flush();
@@ -9207,6 +9807,8 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
+	ui_pace pace = {0};
+
 	while (!done && !want_quit) {
 		plat_input_poll(&a->in);
 
@@ -9244,6 +9846,10 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 			}
 		}
 
+		if (!screen_draw_due(a, &pace, menu_fingerprint(heading, rows, n, sel))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		chv_backdrop(a, bg, over_shelf);
 		/* visits_all: every achievement can be opened, earned or not, so
 		 * `live` here is about color and not about reach. */
@@ -9251,7 +9857,6 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 		             vcols, true, 0);
 		draw_battery(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 
 	free(rows);
@@ -9347,6 +9952,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
+
+	ui_pace pace = {0};
 
 	while (!done && !want_quit) {
 		plat_input_poll(&a->in);
@@ -9449,11 +10056,14 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 		rows[ROWS + 1] = MENU_NOTE(capturing ? "Press a button    Menu: cancel"
 		                                     : "A: set    X: clear");
 
+		if (!screen_draw_due(a, &pace, menu_fingerprint("Hotkeys", rows, ROWS + 2, sel))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		chv_backdrop(a, bg, false);
 		menu_draw(a, "Hotkeys", rows, ROWS + 2, sel, 0, MENU_ACCENT);
 		draw_battery(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 
 	plat_input_flush();
@@ -9632,6 +10242,10 @@ static dark_end music_dark(app *a, unsigned *waited)
 		unsigned now;
 
 		musec_poll();
+		/* Routed in the dark too, as Muse's own screens route: a headset
+		 * that drops and comes back with the screen off took the song to
+		 * the speaker and left it there until a wake (2026-10-06). */
+		if (musec_heard()) aout_apply(false);
 		now = plat_now_ms();
 		if (musec_playing())               stopped = 0;
 		else if (!stopped)                 stopped = now ? now : 1;
@@ -10077,7 +10691,9 @@ static void game_menu(app *a)
 		c.resume = true;
 	g_menu_closing = false;
 
+#if !defined(PLATFORM_H700)
 	if (c.bg) SDL_DestroyTexture(c.bg);
+#endif
 
 	/* Asked to quit with the menu open. Leaving here without saying anything
 	 * strands the game: it is paused, waiting on this socket, and the wait
@@ -10104,14 +10720,48 @@ static void game_menu(app *a)
 		 * Twice because this process alternates two pages and one present only
 		 * clears the one it lands on. Before RESUME and never after:
 		 * afterwards Diatom is drawing, and this would be a second presenter. */
+#if defined(PLATFORM_H700)
+		/* On the H700 the paused frame, undimmed, not black, and landed
+		 * before RESUME (2026-10-06):
+		 *  - the page flips are the Mali driver's and land after the swap
+		 *    returns: with Diatom back in 33 ms, a late one put the menu (or
+		 *    black) on glass for a frame about every other Continue. So the
+		 *    GPU finishes and its last flip lands first (two refreshes, as
+		 *    Diatom's gl_quiesce);
+		 *  - both buffers must still get a frame unlike the menu: Mali's
+		 *    transaction elimination skips tiles it would write unchanged,
+		 *    so the next pause's identical menu left Diatom's game showing;
+		 *  - the paused frame is what Diatom shows next, so closing the menu
+		 *    reads as the game appearing, with no black between. Diatom
+		 *    wipes the pages it reuses, as the black frames did. */
+		{
+			void (*finish)(void) = (void (*)(void))SDL_GL_GetProcAddress("glFinish");
+			int i;
+
+			for (i = 0; i < 2; i++) {
+				SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_NONE);
+				SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
+				SDL_RenderClear(a->r);
+				draw_paused_frame(a, c.bg);
+				plat_present(a->r);
+				SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
+			}
+			if (finish) finish();
+			usleep(34000);
+		}
+#else
 		present_black(a);
 		present_black(a);
+#endif
 		/* SELECT in this menu opens Muse, so the music may have started or
 		 * stopped while the game was paused. Said before the game moves, not
 		 * a tick after it. */
 		plat_resident_quiet(musec_playing());
 		plat_resident_line("RESUME");
 	}
+#if defined(PLATFORM_H700)
+	if (c.bg) SDL_DestroyTexture(c.bg);   /* drawn above, before RESUME */
+#endif
 	/* Nothing presents from here: the next frame on screen is the game's. */
 }
 
@@ -10262,6 +10912,21 @@ static bool native_tick(void *ctx)
 {
 	(void)ctx;
 	muse_poll();
+#if !defined(PLATFORM_GKD)
+	/* Where PICO-8's sound should be now, which pico8sdl.so follows: nowhere
+	 * while Muse plays, else where Diatom would be sent. plorpos-7ny.35,
+	 * plorpos-cdd. */
+	{
+		aout_state s = aout_now();
+		const char *out = aout_device(&s);
+
+		plat_child_audio(musec_playing() ? NULL : out, g_bt_link);
+		/* And the headset's volume, which the volume keys move only through
+		 * this: without it a press reached the headset when the menu next
+		 * opened (plorpos-ahc). Sent on a change only. */
+		bt_volume_follow(out, false);
+	}
+#endif
 	return musec_playing();
 }
 
@@ -10445,7 +11110,16 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 {
 	char home[CFG_STR * 2], desk[CFG_STR * 2 + 16], root[CFG_STR * 2];
 	char rect[48], preload[CFG_STR * 2 + 16], path[1024];
-	char *argv[18];
+#if defined(PLATFORM_H700)
+	char *argv[19];   /* 19 at most: env, preload, PATH, pad, AUDIODEV, the binary, 12 flags, NULL */
+#else
+	char *argv[18];   /* 18 at most: env, preload, PATH, AUDIODEV, the binary, 12 flags, NULL */
+#endif
+#if !defined(PLATFORM_GKD)
+	char audiodev[160];
+	aout_state as = aout_now();
+	const char *dev = aout_device(&as);
+#endif
 	int n = 0, ow = 0, oh = 0, flags;
 
 	snprintf(home, sizeof home, "%s/Saves/pico-8", P_CARD);
@@ -10474,6 +11148,42 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 		         was ? was : "/usr/bin:/bin");
 		argv[n++] = path;
 	}
+#if defined(PLATFORM_H700)
+	/* The pad as PICO-8 should see it - SDL's own guess crosses Start and R2
+	 * (plorpos-7ny.41). */
+	if (plat_pico8_preload || plat_pico8_path)
+		argv[n++] = (char *)plat_pico8_pad;
+#endif
+#if !defined(PLATFORM_GKD)
+	/* To the headset when that is where the sound goes, by its PCM name in
+	 * .asoundrc (bt-alsa.sh) - SDL opens AUDIODEV as its default device.
+	 * Only the device it starts on: pico8_64 opens one at start and keeps it,
+	 * and pico8sdl.so moves it from there (plat_child_audio). Not while Muse
+	 * plays: a bluealsa PCM takes one opener, Muse holds it, and PICO-8 is
+	 * quiet then anyway (child_quiet). plorpos-7ny.35, plorpos-cdd. */
+	if (dev[0] && !musec_playing() && (plat_pico8_preload || plat_pico8_path)) {
+		snprintf(audiodev, sizeof audiodev, "AUDIODEV=%s", dev);
+		argv[n++] = audiodev;
+		fprintf(stderr, "pico8_64: audio %s\n", dev);
+	}
+#endif
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
+	/* The Brick's Diatom keeps its device open between games - the codec's
+	 * dmix shares, a headset's PCM does not - so it is moved off the headset
+	 * first, or pico8_64's open of it is refused and the game has no sound.
+	 * Kept off until the game is over, the native menu's aout_apply included;
+	 * the shelf's puts it back. plorpos-cdd. */
+	g_pico8_runs = true;
+	if (dev[0]) {
+		unsigned t0 = plat_now_ms();
+
+		plat_resident_audio_drain();
+		aout_apply(false);
+		fprintf(stderr, "pico8_64: Diatom %s the headset in %u ms\n",
+		        plat_resident_audio_wait("", 500) ? "off" : "NOT off",
+		        plat_now_ms() - t0);
+	}
+#endif
 	argv[n++] = (char *)bin;
 	argv[n++] = (char *)"-home";      argv[n++] = home;
 	argv[n++] = (char *)"-root_path"; argv[n++] = root;
@@ -10491,10 +11201,22 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	        n > flags ? argv[flags] : "-", n > flags ? argv[flags + 1] : "");
 	a->pico8_splore = splore;
 	a->to_splore = false;
+#if !defined(PLATFORM_GKD)
+	plat_child_audio_reset();
+#endif
 	if (splore) argv[n++] = (char *)"-splore";
 	else { argv[n++] = (char *)"-run"; argv[n++] = (char *)rom; }
 	argv[n] = NULL;
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
+	{
+		int r = run_alone(a, argv, native_menu, native_tick);
+
+		g_pico8_runs = false;
+		return r;
+	}
+#else
 	return run_alone(a, argv, native_menu, native_tick);
+#endif
 }
 
 /* The firmware file a disc on this shelf boots with. One per shelf, except a
@@ -10692,7 +11414,7 @@ static void launch(app *a)
 	 * ADR-0032. Stated before the RUN goes out, which sends it. */
 	plat_resident_quiet(musec_playing());
 
-	if (!native && plat_resident_ready()) {
+	if (!native && plat_resident_ready_wait()) {
 		/* The emulator is already up, holding its context and every core,
 		 * so this is ~200ms rather than ~1100. Nothing here is torn
 		 * down -- this process keeps its own context through the whole game,
@@ -11090,15 +11812,24 @@ static const char *shelf_key(const sysview *v, int i)
 	return v->jump_by_name ? v->list.items[i].name : v->list.items[i].title;
 }
 
+/* The group card i is in for the jump: its initial, or in Muse's year order
+ * its year, every album with none in one group at the end. */
+static int shelf_group(const sysview *v, int i)
+{
+	if (v->jump_by_year)
+		return g_year && v->album && g_year[v->album[i]] > 0 ? g_year[v->album[i]] : 0;
+	return shelf_initial(shelf_key(v, i));
+}
+
 static int shelf_group_start(sysview *v, int idx)
 {
 	int n = v->list.count, i = idx;
-	char c = shelf_initial(shelf_key(v, idx));
+	int c = shelf_group(v, idx);
 
 	for (;;) {
 		int p = (i - 1 + n) % n;
 		if (p == idx) return idx;             /* one initial, the whole shelf */
-		if (shelf_initial(shelf_key(v, p)) != c) break;
+		if (shelf_group(v, p) != c) break;
 		i = p;
 	}
 	return i;
@@ -11112,13 +11843,13 @@ static int shelf_group_start(sysview *v, int idx)
 static int shelf_letter_jump(sysview *v, int dir)
 {
 	int n = v->list.count, i, cur = v->cursor;
-	char c0 = shelf_initial(shelf_key(v, cur));
+	int c0 = shelf_group(v, cur);
 
 	if (n <= 1) return cur;
 	if (dir > 0) {
 		for (i = 1; i < n; i++) {
 			int k = (cur + i) % n;
-			if (shelf_initial(shelf_key(v, k)) != c0) return k;
+			if (shelf_group(v, k) != c0) return k;
 		}
 		return cur;                           /* every name starts alike */
 	}
@@ -11128,7 +11859,7 @@ static int shelf_letter_jump(sysview *v, int dir)
 	 * then the shelf is one group and there is nowhere to go - the same answer
 	 * down gives, rather than shuffling back by one. */
 	i = (cur - 1 + n) % n;
-	if (shelf_initial(shelf_key(v, i)) == c0) return cur;
+	if (shelf_group(v, i) == c0) return cur;
 	return shelf_group_start(v, i);
 }
 
@@ -11508,7 +12239,7 @@ static void muse_order_view(sysview *v)
 	/* The arrays hold every album; the shelf is the kind it shows. */
 	if (!v->album) return;
 	v->list.count = ml_shelf_order(&g_muse, (ml_order)v->sort, muse_books_shown(),
-	                               v->album);
+	                               g_year, v->album);
 	for (k = 0; k < v->list.count; k++) {
 		game_entry *e = &v->list.items[k];
 		int al = v->album[k];
@@ -11518,6 +12249,240 @@ static void muse_order_view(sysview *v)
 		muse_album_dir(al, e->file, sizeof e->file);
 	}
 	v->jump_by_name = v->sort == ML_BY_ARTIST;
+	v->jump_by_year = v->sort == ML_BY_YEAR;
+}
+
+/* A free name for `name` in `dir`: itself, or with " (2)", " (3)" ... before
+ * its extension. False when none fits. */
+static bool free_name(const char *dir, const char *name, char *out, size_t n)
+{
+	const char *dot = strrchr(name, '.');
+	int stem = dot ? (int)(dot - name) : (int)strlen(name);
+	int k;
+
+	if (snprintf(out, n, "%s/%s", dir, name) >= (int)n) return false;
+	for (k = 2; access(out, F_OK) == 0; k++) {
+		if (k > 99) return false;
+		if (snprintf(out, n, "%s/%.*s (%d)%s", dir, stem, name, k, dot ? dot : "")
+		    >= (int)n) return false;
+	}
+	return true;
+}
+
+/* Songs loose at the top of Music/, in no folder, moved into Music/Singles,
+ * where Muse reads them as an album (ml_album's `singles`): loose, they were
+ * on no shelf. Eric's call, 2026-10-05. A name already taken there gets " (2)"
+ * and on, so nothing is overwritten. And Singles gets its cover, shipped with
+ * TortOS (tools/gensingles.py), at Music/.media/Singles.png, where every
+ * album's is kept, unless it already has one. A rename on the same card, so
+ * it costs a folder read when there is nothing to move. */
+static void muse_tidy_singles(void)
+{
+	char music[LIB_PATH], singles[LIB_PATH + 16];
+	char from[LIB_PATH * 2], to[LIB_PATH * 2 + 16];
+	char (*loose)[256] = NULL;
+	int nloose = 0, cap = 0, moved = 0, i;
+	struct dirent *e;
+	struct stat st;
+	DIR *d;
+
+	snprintf(music, sizeof music, "%s/Music", P_CARD);
+	snprintf(singles, sizeof singles, "%s/%s", music, ML_SINGLES);
+	if (!(d = opendir(music))) return;
+	/* Listed first, moved after: renaming out of a folder being read is
+	 * allowed to show or skip entries. */
+	while ((e = readdir(d))) {
+		if (e->d_name[0] == '.' || !ml_is_audio(e->d_name)) continue;
+		if (snprintf(from, sizeof from, "%s/%s", music, e->d_name) >= (int)sizeof from ||
+		    stat(from, &st) != 0 || !S_ISREG(st.st_mode) ||
+		    strlen(e->d_name) >= sizeof loose[0])
+			continue;
+		if (nloose == cap) {
+			char (*more)[256] = realloc(loose, (size_t)(cap ? cap * 2 : 16) * sizeof *loose);
+
+			if (!more) break;
+			loose = more;
+			cap = cap ? cap * 2 : 16;
+		}
+		snprintf(loose[nloose++], sizeof loose[0], "%s", e->d_name);
+	}
+	closedir(d);
+	for (i = 0; i < nloose; i++) {
+		mkdir(singles, 0755);
+		snprintf(from, sizeof from, "%s/%s", music, loose[i]);
+		if (free_name(singles, loose[i], to, sizeof to) && rename(from, to) == 0) moved++;
+		else fprintf(stderr, "muse: could not move %s into %s\n", loose[i], ML_SINGLES);
+	}
+	free(loose);
+	if (moved)
+		fprintf(stderr, "muse: moved %d loose song%s into Music/%s\n",
+		        moved, moved == 1 ? "" : "s", ML_SINGLES);
+	singles_cover();
+}
+
+/* Singles' cover, the one shipped with TortOS, at Music/.media/Singles.png,
+ * once there is a Singles and unless it has a cover already. At every scan,
+ * and when the transfer screen opens, since a cover taken off the card there
+ * was otherwise back only at the next restart (2026-10-05). */
+static void singles_cover(void)
+{
+	char music[LIB_PATH], singles[LIB_PATH + 16], cover[LIB_PATH * 2], src[LIB_PATH * 2];
+	struct stat st;
+
+	snprintf(music, sizeof music, "%s/Music", P_CARD);
+	snprintf(singles, sizeof singles, "%s/%s", music, ML_SINGLES);
+	if (stat(singles, &st) != 0 || !S_ISDIR(st.st_mode)) return;
+	snprintf(cover, sizeof cover, "%s/.media/%s.jpg", music, ML_SINGLES);
+	if (file_nonempty(cover)) return;
+	snprintf(cover, sizeof cover, "%s/.media/%s.png", music, ML_SINGLES);
+	if (file_nonempty(cover)) return;
+	snprintf(src, sizeof src, "%s/.media", music);
+	mkdir(src, 0755);
+	snprintf(src, sizeof src, "%s/singles.png", P_ROOT);
+	copy_file(src, cover);
+}
+
+/* ---- Muse: albums filed under their artists -----------------------------
+ *
+ * An album folder straight in Music/ is its own artist on the shelf, so
+ * Trompe Le Monde sorted under T rather than with the Pixies. Its tags say who
+ * it is by, and Muse's player reads them (src/muse/tags.h): with a clear
+ * answer it moves to Music/<artist>/<album>, its cover and Album Art's memory
+ * of it with it, and the shelf is read again once. Eric's call, 2026-10-05.
+ *
+ * Left where it is when the tags give no clear answer (a podcast, a mix), when
+ * the answer is its own name, when Music/<artist>/<album> is already there,
+ * and for now when Muse is playing from it. Never Singles, never a book. The
+ * player is not up at the first scan of a boot, so this happens a moment
+ * after, one album at a time, from the main loop. */
+typedef struct { char dir[LIB_PATH]; unsigned asked; bool done; } flat_album;
+static flat_album *g_flat;
+static int         g_nflat;
+static bool        g_muse_moved;            /* something moved: read it again */
+
+/* The albums straight in Music/, after a scan. */
+static void flat_albums_find(void)
+{
+	int i;
+
+	free(g_flat);
+	g_nflat = 0;
+	g_flat = calloc((size_t)(g_muse.nalbums > 0 ? g_muse.nalbums : 1), sizeof *g_flat);
+	if (!g_flat) return;
+	for (i = 0; i < g_muse.nalbums; i++) {
+		const ml_album *al = &g_muse.albums[i];
+		const char *p, *slash;
+
+		if (al->book || al->singles || al->n <= 0) continue;
+		p = g_muse.tracks[al->first].path;            /* Music/<album>/<track> */
+		if (strncmp(p, "Music/", 6) || !(slash = strchr(p + 6, '/')) ||
+		    strchr(slash + 1, '/'))
+			continue;
+		snprintf(g_flat[g_nflat++].dir, sizeof g_flat[0].dir, "%.*s", (int)(slash - p), p);
+	}
+}
+
+/* An artist's name as a folder: what the card cannot store in one becomes -,
+ * and no leading or trailing space or trailing dot. */
+static void folder_name(const char *in, char *out, size_t n)
+{
+	size_t o = 0, len;
+
+	while (*in == ' ') in++;
+	for (; *in && o + 1 < n; in++)
+		out[o++] = strchr("/\\:*?\"<>|", *in) || (unsigned char)*in < 0x20 ? '-' : *in;
+	out[o] = '\0';
+	for (len = o; len && (out[len - 1] == ' ' || out[len - 1] == '.'); len--) out[len - 1] = '\0';
+}
+
+/* Move Music/<album> under its artist. 1 moved, 0 left where it is, -1 not
+ * now (Muse is playing from it). */
+static int file_album(const char *rel, const char *artist)
+{
+	const char *album = strrchr(rel, '/') + 1;
+	char who[256], from[LIB_PATH * 2], dir[LIB_PATH * 2], to[LIB_PATH * 2 + 256];
+	char cfrom[LIB_PATH * 2 + 300], cto[LIB_PATH * 2 + 600], key[LIB_PATH + 300], val[96];
+	static const char *const EXT[] = { "jpg", "png" };
+	size_t rl = strlen(rel);
+	const char *t;
+	int k;
+
+	folder_name(artist, who, sizeof who);
+	if (!who[0] || !strcmp(who, album) || !strcmp(who, ML_SINGLES)) return 0;
+	for (k = 0; (t = musec_track(k)); k++)
+		if (!strncmp(t, rel, rl) && t[rl] == '/') return -1;
+
+	snprintf(from, sizeof from, "%s/%s", P_CARD, rel);
+	snprintf(dir, sizeof dir, "%s/Music/%s", P_CARD, who);
+	snprintf(to, sizeof to, "%s/%s", dir, album);
+	if (access(to, F_OK) == 0) {
+		fprintf(stderr, "muse: Music/%s stays: Music/%s/%s is there already\n",
+		        album, who, album);
+		return 0;
+	}
+	mkdir(dir, 0755);
+	if (rename(from, to) != 0) {
+		fprintf(stderr, "muse: could not move Music/%s under Music/%s\n", album, who);
+		return 0;
+	}
+	/* Its cover, from Music/.media to the artist's. */
+	for (k = 0; k < 2; k++) {
+		snprintf(cfrom, sizeof cfrom, "%s/Music/.media/%s.%s", P_CARD, album, EXT[k]);
+		if (access(cfrom, F_OK) != 0) continue;
+		snprintf(cto, sizeof cto, "%s/.media", dir);
+		mkdir(cto, 0755);
+		snprintf(cto, sizeof cto, "%s/.media/%s.%s", dir, album, EXT[k]);
+		rename(cfrom, cto);
+	}
+	/* And what Album Art remembers of it, so it is not fetched again. */
+	snprintf(key, sizeof key, "museart.%s", rel);
+	if (db_get_str(db_lib(), key, val, sizeof val, "") && val[0]) {
+		db_del(db_lib(), key);
+		snprintf(key, sizeof key, "museart.Music/%s/%s", who, album);
+		db_set_str(db_lib(), key, val);
+	}
+	fprintf(stderr, "muse: filed Music/%s under Music/%s\n", album, who);
+	return 1;
+}
+
+/* Whether any album is still waiting for its answer: the shelf is read again
+ * once they all have one, not once per album moved. */
+static bool flat_albums_waiting(void)
+{
+	int i;
+
+	for (i = 0; i < g_nflat; i++)
+		if (!g_flat[i].done) return true;
+	return false;
+}
+
+/* One step: take what the player has answered, and ask about the next album.
+ * From the main loop and the transfer screen's. */
+static void muse_file_albums(void)
+{
+	char dir[LIB_PATH * 2], name[256];
+	unsigned now = plat_now_ms();
+	int i;
+
+	while (musec_artist_take(dir, sizeof dir, name, sizeof name))
+		for (i = 0; i < g_nflat; i++) {
+			int r;
+
+			if (g_flat[i].done || strcmp(g_flat[i].dir, dir)) continue;
+			r = name[0] ? file_album(dir, name) : 0;
+			if (r < 0) { g_flat[i].asked = 0; break; }   /* playing: ask later */
+			g_flat[i].done = true;
+			if (r > 0) g_muse_moved = true;
+			break;
+		}
+	/* One at a time: the next once this one is answered, or after five
+	 * seconds for an answer lost with the player. */
+	for (i = 0; i < g_nflat; i++) {
+		if (g_flat[i].done) continue;
+		if (g_flat[i].asked && now - g_flat[i].asked < 5000) return;
+		if (musec_artist_ask(g_flat[i].dir)) g_flat[i].asked = now ? now : 1;
+		return;
+	}
 }
 
 /* Muse's card, at the end of the shelf, when there is music to play.
@@ -11531,28 +12496,73 @@ static void muse_order_view(sysview *v)
  *
  * Hidden when the folder is empty or missing, the same rule an empty system
  * and an empty Favorites shelf follow: a card should lead somewhere. */
-static void build_muse_shelf(app *a)
+/* Reading the library is the one slow part: every folder under Music/ and
+ * Audiobooks/, about four seconds cold for 13k tracks on exFAT, which used to
+ * stand between power-on and the first frame (plorpos-18j). At boot it is
+ * walked on a thread instead and Muse's card is on the shelf from the start,
+ * empty until muse_walk_poll puts the library in; muse_open waits for it
+ * behind a panel. The thread only fills g_walk_lib - every g_ global stays the
+ * main thread's. A rescan walks on the main thread as it always has: it is
+ * warm by then, and Rescan Folder is asked from inside Muse, which has to
+ * have a library to come back to. */
+static int muse_walk(void *unused)
 {
-	system_cfg *s;
-	int i;
+	unsigned t0 = plat_now_ms();
 
-	/* Everything indexed by album goes with the albums: a rescan can put a
-	 * different album at every index. */
+	(void)unused;
+	g_walk_ok = ml_scan_card(g_muse_root, &g_walk_lib);
+	g_walk_ms = plat_now_ms() - t0;
+	SDL_AtomicSet(&g_walk_done, 1);
+	return 0;
+}
+
+/* Whether `dir` has anything in it but dot entries: one read, enough to say
+ * whether Muse's card belongs on the shelf before the walk has said so. */
+static bool muse_dir_used(const char *dir)
+{
+	DIR *d = opendir(dir);
+	struct dirent *e;
+	bool used = false;
+
+	if (!d) return false;
+	while (!used && (e = readdir(d))) used = e->d_name[0] != '.';
+	closedir(d);
+	return used;
+}
+
+/* Put what the walk found in place of the empty library, on the main thread:
+ * the per-album arrays, the years and books from the databases, and the
+ * shelf. A walk that found nothing playable takes its card off again. */
+static void muse_install(app *a)
+{
+	int i, m;
+
+	g_muse = g_walk_lib;
+	memset(&g_walk_lib, 0, sizeof g_walk_lib);
 	g_muse_gen++;
-	ml_free(&g_muse);
-	free(g_cov);
-	g_cov = NULL;
-	free(g_book_done);
-	g_book_done = NULL;
-	np_forget();
-	snprintf(g_muse_root, sizeof g_muse_root, "%s", P_CARD);
-	if (!ml_scan_card(g_muse_root, &g_muse) || g_muse.ntracks == 0) {
+	for (m = 0; m < a->sys.count; m++)
+		if (is_muse(&a->sys.systems[m])) break;
+	if (!g_walk_ok || g_muse.ntracks == 0 ||
+	    !(g_book_done = calloc((size_t)g_muse.nalbums, sizeof *g_book_done))) {
 		fprintf(stderr, "scan: %-16s no music or books in %s\n", "Muse", g_muse_root);
+		ml_free(&g_muse);
+		if (m >= a->sys.count) return;
+		/* Always the last card: it is appended after everything else. */
+		texload_bump();
+		if (a->sys_tex[m]) SDL_DestroyTexture(a->sys_tex[m]);
+		a->sys_tex[m] = NULL;
+		a->sys.count--;
+		if (a->sys_cursor >= a->sys.count) {
+			a->sys_cursor = a->sys.count ? a->sys.count - 1 : 0;
+			a->screen = SCREEN_SYSTEMS;
+			cf_reset(&a->cf_sys, a->sys_cursor);
+		}
+		ui_redraw_now();
 		return;
 	}
 	g_cov = calloc((size_t)g_muse.nalbums, sizeof *g_cov);
-	g_book_done = calloc((size_t)g_muse.nalbums, sizeof *g_book_done);
-	if (!g_book_done) { ml_free(&g_muse); return; }
+	year_load();
+	flat_albums_find();
 	for (i = 0; i < g_muse.nalbums; i++) {
 		char key[LIB_PATH + 8], val[16];
 
@@ -11560,6 +12570,62 @@ static void build_muse_shelf(app *a)
 		book_key(i, key, sizeof key);
 		db_get_str(db_dev(), key, val, sizeof val, "");
 		g_book_done[i] = !strcmp(val, "finished");
+	}
+	/* The order sort_load gave the empty view is kept: fill_view uses it. */
+	if (m < a->sys.count) muse_fill_view(&a->view[m]);
+	fprintf(stderr, "scan: %-16s %d artists, %d albums, %d books, %d tracks in %u ms\n",
+	        "Muse", g_muse.nartists, ml_count(&g_muse, false), ml_count(&g_muse, true),
+	        g_muse.ntracks, g_walk_ms);
+	ui_redraw_now();
+}
+
+/* From the main loop and muse_open's wait: the library, once it is read. */
+static void muse_walk_poll(app *a)
+{
+	if (!g_walk_thread || !SDL_AtomicGet(&g_walk_done)) return;
+	SDL_WaitThread(g_walk_thread, NULL);
+	g_walk_thread = NULL;
+	muse_install(a);
+}
+
+/* `bg`: walk on a thread, for boot. Otherwise the library is in on return. */
+static void build_muse_shelf(app *a, bool bg)
+{
+	system_cfg *s;
+	int i;
+
+	/* A boot walk still going when the card is read again is read again
+	 * with it: what it found is about to be replaced anyway. */
+	if (g_walk_thread) {
+		SDL_WaitThread(g_walk_thread, NULL);
+		g_walk_thread = NULL;
+		ml_free(&g_walk_lib);
+	}
+	/* Everything indexed by album goes with the albums: a rescan can put a
+	 * different album at every index. */
+	g_muse_gen++;
+	g_nflat = 0;
+	ml_free(&g_muse);
+	free(g_cov);
+	g_cov = NULL;
+	free(g_year);
+	g_year = NULL;
+	free(g_book_done);
+	g_book_done = NULL;
+	np_forget();
+	snprintf(g_muse_root, sizeof g_muse_root, "%s", P_CARD);
+	muse_tidy_singles();
+	{
+		char dir[sizeof g_muse_root + 16];
+
+		snprintf(dir, sizeof dir, "%s/Music", g_muse_root);
+		bool used = muse_dir_used(dir);
+		snprintf(dir, sizeof dir, "%s/Audiobooks", g_muse_root);
+		if (!used && !muse_dir_used(dir)) {
+			fprintf(stderr, "scan: %-16s no music or books in %s\n", "Muse",
+			        g_muse_root);
+			return;
+		}
 	}
 	{
 		char show[16];
@@ -11576,17 +12642,20 @@ static void build_muse_shelf(app *a)
 	snprintf(s->card, CFG_STR, "%s", "MUSE.png");
 	s->accent = MUSE_ACCENT;
 	memset(&a->view[i], 0, sizeof a->view[i]);
-	muse_fill_view(&a->view[i]);
 	a->sys_tex[i] = NULL;
 	a->sys_w[i] = a->sys_h[i] = 0;
 	a->sys_cb[i] = 0;
 	a->sys.count++;
-	fprintf(stderr, "scan: %-16s %d artists, %d albums, %d books, %d tracks\n", "Muse",
-	        g_muse.nartists, ml_count(&g_muse, false), ml_count(&g_muse, true),
-	        g_muse.ntracks);
+
+	SDL_AtomicSet(&g_walk_done, 0);
+	if (bg && (g_walk_thread = SDL_CreateThread(muse_walk, "tortos-musewalk", NULL)))
+		return;
+	muse_walk(NULL);
+	muse_install(a);
 }
 
-static void scan_all(app *a)
+/* `bg`: Muse's library may still be being read on return - see muse_walk. */
+static void scan_all(app *a, bool bg)
 {
 	for (int i = 0; i < a->sys.count; i++) {
 		sysview *v = &a->view[i];
@@ -11631,7 +12700,7 @@ static void scan_all(app *a)
 	}
 	hide_empty_systems(a);
 	build_favorites_shelf(a);
-	build_muse_shelf(a);
+	build_muse_shelf(a, bg);
 }
 
 /* Read the card again and rebuild every shelf, for when something outside the
@@ -11701,7 +12770,7 @@ static void rescan_all(app *a)
 		return;
 	}
 
-	scan_all(a);
+	scan_all(a, false);
 	display_load(a);     /* indexes by tag, so it is safe to run again */
 	shader_load(a);
 	engine_load(a);
@@ -12071,6 +13140,7 @@ int main(int argc, char *argv[])
 	app a = { 0 };
 	char path[CFG_STR * 2];
 	char startup[CFG_STR];
+	bool loader;                  /* texload's threads are running */
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot_path = argv[++i];
@@ -12482,6 +13552,16 @@ int main(int argc, char *argv[])
 		 * card that lost it or never had one gets a correct one for free. */
 		db_write_boot_env();
 	}
+	t_mark("databases");
+	/* Local time is the card's chosen zone, in this process, from here on: the
+	 * Brick's launch.sh points the system at it too; elsewhere only a zone
+	 * chosen in Date & Time is applied (see TZ_DEFAULT). */
+	{
+		char tz[64];
+
+		tz_get(tz, sizeof tz);
+		if (tz[0]) plat_clock_zone(tz);
+	}
 
 	snprintf(path, sizeof path, "%s/systems.cfg", P_ROOT);
 	if (!cfg_load_systems(path, &a.sys)) {
@@ -12502,6 +13582,7 @@ int main(int argc, char *argv[])
 		chv_earned_load();
 		plat_resident_on_unlock(on_cheevo_unlocked);
 		plat_resident_on_shot(on_shot);
+		plat_resident_on_turbo(on_turbo);
 		plat_resident_on_tick(on_game_tick);
 
 		/* Without this every HTTPS request fails verification, because the
@@ -12536,11 +13617,13 @@ int main(int argc, char *argv[])
 				if (!strcmp(m, MUSE_MODES[k].key)) musec_set_mode((muq_mode)k);
 		}
 	}
+	t_mark("muse+accounts");
 
 	/* Scan every system now, not when one is opened: it is three directory
 	 * reads, it happens behind the boot animation, and it means walking into
 	 * a system is a frame rather than a wait. */
-	scan_all(&a);
+	scan_all(&a, true);
+	t_mark("library scan");
 	/* After the scan, because it indexes by system, and before anything can
 	 * launch, because the mode has to reach Diatom with the first RUN. */
 	display_load(&a);
@@ -12550,47 +13633,10 @@ int main(int argc, char *argv[])
 	sort_all(&a);
 	t_mark("scan");
 
-	/* BEFORE the first frame this process ever draws: if a previous launcher
-	 * died while a game was running, the resident is still presenting through
-	 * fbdev right now, and drawing the shelf over it is the two-presenter
-	 * case that wedges the display engine in-kernel (Diatom's handoff spike;
-	 * it cost a power cycle to prove, twice). plat_resident_ready() connects,
-	 * and on READY state=running it stops the game and drains to EXIT - so by
-	 * the time video comes up, only one presenter exists. The check at launch
-	 * time was too late by definition: this process draws long before the
-	 * player launches anything. */
-	plat_resident_ready();
-
-	if (!plat_video_init()) { fprintf(stderr, "video init failed\n"); return 1; }
-	IMG_Init(IMG_INIT_PNG);
-	/* After IMG_Init: the worker calls IMG_Load.
-	 *
-	 * Not for --shot. A shot draws the shelf exactly once, and with the workers
-	 * running every card on that one frame is only queued - so the PNG came out
-	 * with the title, the count and the rail and not a single card, while the
-	 * log line named the focused game as though it had been drawn. With no
-	 * worker, game_get_tex decodes on the frame the way it always did, which is
-	 * what a tool for checking one frame wants: the right picture, not a fast
-	 * one. */
-	if (!shot_path) texload_start();
-	a.r = plat_renderer();
-	plat_input_init();
-	ctl_bright_keys = plat_bright_keys();
-	/* Nothing is handed in any more. The two-tier lookup this replaces - a
-	 * shipped default and the player's saved level - is one key each in the
-	 * database, seeded once and overwritten by a nudge. That is also the end
-	 * of a bug it kept reintroducing: reapplying the config afterwards put
-	 * the shipped default ahead of the level the player last chose. */
-	plat_settings_init();
-	plat_leds_off();
-	t_mark("video+input");
-
-	/* Before ui_init, which is where the sizes are decided; it persists across
-	 * the ui_quit/ui_init pair the standalone-emulator fallback goes through. */
-	/* The size the player chose beats the shipped default, the same way a
-	 * saved brightness does. Read before ui_init, which is when the scale is
-	 * applied. */
-	if (!ui_init(a.r, P_FONT)) fprintf(stderr, "font init failed\n");
+	/* Where the shelf was and which card set it shows, read here rather than
+	 * after the display is up: both are plain data, and they are what decides
+	 * the cards the first frame shows, which the loader threads start on next.
+	 * The card settings are only read by drawing, which comes long after. */
 	{
 		char set[CFG_STR];
 		db_get_str(db_dev(), "cards", set, sizeof set, CARDS_DEFAULT);
@@ -12598,8 +13644,6 @@ int main(int argc, char *argv[])
 		db_get_str(db_dev(), "cards_dir", set, sizeof set, CARDS_DIR_DEFAULT);
 		g_dir = cards_dir_index(set);
 	}
-	t_mark("font+settings");
-
 	a.sys_cursor = 0;
 	db_get_str(db_lib(), "startup_system", startup, sizeof startup, "");
 	if (startup[0])
@@ -12616,8 +13660,69 @@ int main(int argc, char *argv[])
 	a.resume_menu = playing_restore(&a);
 	cf_reset(&a.cf_sys, a.sys_cursor);
 	a.tint = a.sys.systems[a.sys_cursor].accent;
-	prime_sys_window(&a);
+	t_mark("restore place");
+
+	/* After IMG_Init: the worker calls IMG_Load. Before the display, because
+	 * neither needs it - decoding is CPU work, and making textures of what it
+	 * decodes waits for the renderer, on this thread, in texload_drain - and
+	 * because the threads would otherwise sit idle through video, input and
+	 * settings. So the system cards the first frame shows are asked for now.
+	 *
+	 * Not for --shot. A shot draws the shelf exactly once, and with the workers
+	 * running every card on that one frame is only queued - so the PNG came out
+	 * with the title, the count and the rail and not a single card, while the
+	 * log line named the focused game as though it had been drawn. With no
+	 * worker, game_get_tex decodes on the frame the way it always did, which is
+	 * what a tool for checking one frame wants: the right picture, not a fast
+	 * one. */
+	IMG_Init(IMG_INIT_PNG);
+	loader = !shot_path && texload_start();
+	if (loader && a.screen == SCREEN_SYSTEMS) sys_cards_ask_visible(&a);
+
+	/* BEFORE the first frame this process ever draws: if a previous launcher
+	 * died while a game was running, the resident is still presenting through
+	 * fbdev right now, and drawing the shelf over it is the two-presenter
+	 * case that wedges the display engine in-kernel (Diatom's handoff spike;
+	 * it cost a power cycle to prove, twice). plat_resident_ready() connects,
+	 * and on READY state=running it stops the game and drains to EXIT - so by
+	 * the time video comes up, only one presenter exists. The check at launch
+	 * time was too late by definition: this process draws long before the
+	 * player launches anything. */
+	plat_resident_ready();
+	t_mark("diatom connect");
+
+	if (!plat_video_init()) { fprintf(stderr, "video init failed\n"); return 1; }
+	t_mark("video");
+	a.r = plat_renderer();
+	t_mark("renderer");
+	plat_input_init();
+	t_mark("input");
+	ctl_bright_keys = plat_bright_keys();
+	/* Nothing is handed in any more. The two-tier lookup this replaces - a
+	 * shipped default and the player's saved level - is one key each in the
+	 * database, seeded once and overwritten by a nudge. That is also the end
+	 * of a bug it kept reintroducing: reapplying the config afterwards put
+	 * the shipped default ahead of the level the player last chose. */
+	plat_settings_init();
+	t_mark("settings");
+	plat_leds_off();
+	t_mark("video+input");
+
+	/* Before ui_init, which is where the sizes are decided; it persists across
+	 * the ui_quit/ui_init pair the standalone-emulator fallback goes through. */
+	/* The size the player chose beats the shipped default, the same way a
+	 * saved brightness does. Read before ui_init, which is when the scale is
+	 * applied. */
+	if (!ui_init(a.r, P_FONT)) fprintf(stderr, "font init failed\n");
+	t_mark("font+settings");
+
+	/* The system cards asked for before the display came up, installed so the
+	 * first frame has every one it shows. Then the covers, and the rest of the
+	 * system cards, which draw_shelf keeps asking for until all are in. */
+	if (loader && a.screen == SCREEN_SYSTEMS) sys_cards_wait_visible(&a, 100);
+	t_mark("system cards");
 	prime_window(&a, a.sys_cursor);
+	prime_sys_window(&a);
 	t_mark("card assets");
 
 	a.running = true;
@@ -12726,31 +13831,8 @@ int main(int argc, char *argv[])
 		launch(&a);
 	}
 
-	/* Drawing only when something changed. See g_redraw_at.
-	 *
-	 * The loop still runs every IDLE_POLL_MS when nothing is drawn, so the power
-	 * button, Auto Off, the headphone jack and the Bluetooth sink are all still
-	 * checked at the same rate as before - only the draw and the present are
-	 * skipped. 16ms keeps the worst case from a press to its first frame where
-	 * it was, one refresh.
-	 *
-	 * Why a poll and not a wait on the input devices: input arrives through two
-	 * roads, SDL's own events and three raw evdev descriptors, and a held
-	 * button produces no event at all while it repeats - in_repeat works from
-	 * the clock. A wait that slept until the next event would have stopped key
-	 * repeat dead. Polling costs a handful of syscalls a frame, against a full
-	 * draw and a present. */
-	const Uint32 IDLE_POLL_MS = 16;
-	/* A gap this long between two passes means something else had the screen -
-	 * a menu, a game, the art scraper - and whatever it drew is not the shelf.
-	 * Catching it here covers every one of them without a list to keep. */
-	const Uint32 AWAY_MS = 100;
-	/* Drawn at least this often regardless. A backstop, not a mechanism: if some
-	 * animation is ever added without telling g_redraw_at, it shows as a screen
-	 * updating once a second, which is visibly wrong, rather than one that has
-	 * silently frozen. */
-	const Uint32 HEARTBEAT_MS = 1000;
-	Uint32 last_pass = 0, last_render = 0;
+	ui_pace pace = {0};
+	bool first_frame = false;   /* for the startup log's mark */
 
 	while (a.running) {
 		plat_input_poll(&a.in);
@@ -12773,7 +13855,29 @@ int main(int argc, char *argv[])
 		 * and the covers it was asked for by Muse's shelf, which that shelf
 		 * has to be drawn again to ask the worker for. */
 		muse_poll();
-		if (cover_answers()) redraw_now();
+		muse_walk_poll(&a);
+		if (cover_answers()) ui_redraw_now();
+		year_fill();
+		/* Once, when the years being read are all in: not card by card,
+		 * which would move the shelf under the cursor the whole time. */
+		if (g_year_landed) {
+			g_year_landed = false;
+			for (int i = 0; i < a.sys.count; i++)
+				if (is_muse(&a.sys.systems[i]) && a.view[i].sort == ML_BY_YEAR) {
+					shelf_resort(&a, i);
+					ui_redraw_now();
+				}
+		}
+
+		/* Albums straight in Music/ filed under their artists, from what the
+		 * player says their tags are; the shelf read again once anything
+		 * moved. See file_album. */
+		muse_file_albums();
+		if (g_muse_moved && !flat_albums_waiting()) {
+			g_muse_moved = false;
+			rescan_all(&a);
+			ui_redraw_now();
+		}
 
 		/* Auto Off is the same line as the power button, on every screen
 		 * that draws. Diatom watches it during a game, because it owns the
@@ -12812,27 +13916,12 @@ int main(int argc, char *argv[])
 		else update_games(&a);
 		if (!a.running) break;
 
-		{
-			Uint32 now = plat_now_ms();
-			/* Held counts as touched, not only pressed: a held direction
-			 * repeats from the clock and moves the shelf every 90ms. */
-			bool touched = false, away = now - last_pass > AWAY_MS;
-			int b;
-
-			for (b = 0; b < IN_COUNT && !touched; b++)
-				touched = a.in.pressed[b] || a.in.down[b];
-			last_pass = now;
-
-			/* texload_ready because finished art is installed while drawing:
-			 * a loop that never drew would never find it. */
-			if (touched || away || texload_ready() || now >= g_redraw_at ||
-			    now - last_render >= HEARTBEAT_MS) {
-				tick_tint(&a);
-				render(&a);
-				last_render = plat_now_ms();
-			} else {
-				SDL_Delay(IDLE_POLL_MS);
-			}
+		if (screen_draw_due(&a, &pace, 0)) {
+			tick_tint(&a);
+			render(&a);
+			if (!first_frame) { t_mark("first frame"); first_frame = true; }
+		} else {
+			SDL_Delay(IDLE_POLL_MS);
 		}
 	}
 

@@ -30,7 +30,7 @@ static void ck(int cond, const char *what)
  * D-pad axes are named as pairs because that is how they are pressed, and
  * written with no air around the slash - "L1/R1", not "L1 / R1". */
 static const char *const BUTTONS[] = {
-	"Up/Down", "Left/Right", "A", "B", "X", "Y", "L1/R1", "X/Y/L2/R2",
+	"Up/Down", "Left/Right", "A", "B", "X", "Y", "L1/R1",
 	"MENU", "SELECT", "POWER", "Volume rocker", "F1/F2",
 };
 #define NBUTTONS ((int)(sizeof BUTTONS / sizeof BUTTONS[0]))
@@ -104,8 +104,6 @@ static void every_button_somewhere(void)
 	for (i = 0; i < NBUTTONS; i++) {
 		int seen = pages_naming(BUTTONS[i]);
 
-		/* X / Y is the turbo pair and X and Y are themselves: the game page
-		 * naming the pair does not excuse the shelf page from naming X. */
 		snprintf(msg, sizeof msg, "%s is on no page", BUTTONS[i]);
 		ck(seen >= 1, msg);
 	}

@@ -547,6 +547,19 @@ static void draw_card(SDL_Renderer *r, SDL_Texture *tex, int tw, int th,
 	SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
 
 	int n = lay->strips > 0 ? lay->strips : 16;
+	/* The strips are there for perspective, so a card facing us is one quad:
+	 * the same picture, and SDL's software renderer copies each flat strip
+	 * as a whole-pixel rect, which dropped a column at some seams - black
+	 * lines down the cover in Muse over native PICO-8 (plorpos-7ny.37).
+	 * There every triangle is CPU time too, so a turned card makes do with
+	 * four; it is narrow and dimmed by the time it is turned. */
+	if (fabsf(p.sina) < 1e-4f) n = 1;
+	else {
+		SDL_RendererInfo ri;
+
+		if (SDL_GetRendererInfo(r, &ri) == 0 && (ri.flags & SDL_RENDERER_SOFTWARE) && n > 4)
+			n = 4;
+	}
 	/* The reflection reaches a common baseline (lay->reflect * hh below the
 	 * card center) no matter how tall the fitted art is: short art gets a
 	 * longer reflection so it reflects to the same depth as tall art. The

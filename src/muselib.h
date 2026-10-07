@@ -29,7 +29,13 @@
  * else, so tools/muselib-check.c can hand it a folder and look. */
 
 typedef struct { char name[128]; char path[LIB_PATH]; } ml_track;
-typedef struct { char name[128]; int first, n; bool book; } ml_album;  /* tracks[first..] */
+/* `singles`: Music/Singles, the songs the launcher moved there from the top of
+ * Music/, where they were in no folder and so on no shelf (Eric's call,
+ * 2026-10-05). An ordinary album in every way but one: it is no record, so
+ * Album Art leaves it alone, and its cover is the one the launcher puts at
+ * Music/.media/Singles.png. */
+typedef struct { char name[128]; int first, n; bool book, singles; } ml_album;  /* tracks[first..] */
+#define ML_SINGLES "Singles"
 typedef struct { char name[128]; int first, n; bool book; } ml_artist; /* albums[first..] */
 
 typedef struct {
@@ -87,10 +93,12 @@ bool ml_folder_image(const char *root, const ml_lib *l, int al, char *out, size_
  * artist breaking a tie - two artists can each have a "Greatest Hits". Case
  * does not count and leading articles do, in both, as on a games shelf.
  *
- * Nothing here orders by date or by listening. Muse keeps no record of what
- * was played, and the card knows no release years - the tags that carry them
- * are read by the daemon, not the scan. */
-typedef enum { ML_BY_ARTIST, ML_BY_ALBUM, ML_ORDERS } ml_order;
+ * By year is newest first, by the year each album's tags give it. The scan
+ * knows no years - the tags are read by the daemon, not here - so the caller
+ * hands them in; an album with none, or none known yet, goes after every
+ * dated one, and albums of one year stay in artist order (plorpos-xav).
+ * Nothing orders by listening: Muse keeps no record of what was played. */
+typedef enum { ML_BY_ARTIST, ML_BY_ALBUM, ML_BY_YEAR, ML_ORDERS } ml_order;
 
 /* What the setting stores, and what the menu row shows - which for books is
  * Author and Title, the same two orders under the names a book goes by. */
@@ -100,8 +108,10 @@ const char *ml_order_label(ml_order o, bool books);
 ml_order ml_order_index(const char *name);
 
 /* The shelf of one kind in order `by`: out[k] is the album card k is, for
- * every album that is a book or is not, as `books` says. Returns how many.
- * Out of memory it is the scan's order, which is a shelf and not a wrong one. */
-int ml_shelf_order(const ml_lib *l, ml_order by, bool books, int *out);
+ * every album that is a book or is not, as `books` says. `years` is each
+ * album's year, 0 or less for none, for the year order; NULL is none known.
+ * Returns how many. Out of memory it is the scan's order, which is a shelf and
+ * not a wrong one. */
+int ml_shelf_order(const ml_lib *l, ml_order by, bool books, const int *years, int *out);
 
 #endif

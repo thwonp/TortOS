@@ -139,8 +139,11 @@ static void list_dir(const char *dir, names *dirs, names *files)
 		if (e->d_name[0] == '.') continue;
 		if (snprintf(full, sizeof full, "%s/%s", dir, e->d_name) >= (int)sizeof full)
 			continue;
-		if (stat(full, &st) != 0) continue;
-		if (S_ISDIR(st.st_mode)) { if (dirs) names_add(dirs, e->d_name); }
+		bool isdir;
+		if (e->d_type == DT_DIR) isdir = true;
+		else if (e->d_type != DT_UNKNOWN && e->d_type != DT_LNK) isdir = false;
+		else { if (stat(full, &st) != 0) continue; isdir = S_ISDIR(st.st_mode); }
+		if (isdir) { if (dirs) names_add(dirs, e->d_name); }
 		else if (files && ml_is_audio(e->d_name)) names_add(files, e->d_name);
 	}
 	closedir(d);
@@ -176,6 +179,7 @@ static void add_album(ml_lib *l, int *acap, int *tcap, bool book,
 	al = &l->albums[l->nalbums++];
 	snprintf(al->name, sizeof al->name, "%s", name);
 	al->book = book;
+	al->singles = false;
 	al->first = l->ntracks;
 	al->n = 0;
 	for (i = 0; i < files->n; i++) {
@@ -222,6 +226,8 @@ static bool scan_into(ml_lib *out, caps *c, const char *root, const char *prefix
 
 		/* Music/<name>/<tracks>: its own artist, one album of the same name. */
 		add_album(out, &c->a, &c->t, book, top_rel, top.v[i], &files);
+		if (!book && out->nalbums > before && !strcmp(top.v[i], ML_SINGLES))
+			out->albums[before].singles = true;
 		for (j = 0; j < sub.n; j++) {
 			char adir[LIB_PATH * 2], rel[LIB_PATH];
 			names tracks = { 0 };
@@ -325,6 +331,7 @@ void ml_free(ml_lib *lib)
 static const struct { const char *name, *label, *book; } ORDERS[ML_ORDERS] = {
 	[ML_BY_ARTIST] = { "artist", "Artist", "Author" },
 	[ML_BY_ALBUM]  = { "album",  "Album",  "Title"  },
+	[ML_BY_YEAR]   = { "year",   "Year",   "Year"   },
 };
 
 const char *ml_order_name(ml_order o)
@@ -352,7 +359,7 @@ ml_order ml_order_index(const char *name)
  * the artist one - the scan reads artists in order, so of two albums with the
  * same title the one whose artist comes first has the lower number. It is also
  * what keeps the order a function of the folder rather than of qsort. */
-typedef struct { const char *album; int al; } shelf_key;
+typedef struct { const char *album; int al, year; } shelf_key;
 
 static int by_album(const void *a, const void *b)
 {
@@ -362,21 +369,31 @@ static int by_album(const void *a, const void *b)
 	return c ? c : x->al - y->al;
 }
 
-int ml_shelf_order(const ml_lib *l, ml_order by, bool books, int *out)
+/* Newest first; none after every year; the scan's order within a year. */
+static int by_year(const void *a, const void *b)
+{
+	const shelf_key *x = a, *y = b;
+	int xy = x->year > 0 ? x->year : 0, yy = y->year > 0 ? y->year : 0;
+
+	return xy != yy ? yy - xy : x->al - y->al;
+}
+
+int ml_shelf_order(const ml_lib *l, ml_order by, bool books, const int *years, int *out)
 {
 	shelf_key *k;
 	int i, n = 0;
 
 	for (i = 0; i < l->nalbums; i++)                  /* the scan's, by artist */
 		if (l->albums[i].book == books) out[n++] = i;
-	if (by != ML_BY_ALBUM || n < 2) return n;
+	if (by == ML_BY_ARTIST || n < 2) return n;
 	k = malloc(sizeof *k * (size_t)n);
 	if (!k) return n;
 	for (i = 0; i < n; i++) {
 		k[i].album = l->albums[out[i]].name;
 		k[i].al    = out[i];
+		k[i].year  = years ? years[out[i]] : 0;
 	}
-	qsort(k, (size_t)n, sizeof *k, by_album);
+	qsort(k, (size_t)n, sizeof *k, by == ML_BY_YEAR ? by_year : by_album);
 	for (i = 0; i < n; i++) out[i] = k[i].al;
 	free(k);
 	return n;

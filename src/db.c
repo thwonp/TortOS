@@ -2,6 +2,7 @@
 /* See db.h. No SDL and no platform header, deliberately, so the check can link
  * it without a window - the same reason atomic.c is kept clean. */
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -107,25 +108,9 @@ static const db_default library_defaults[] = {
 	{ "timezone",       "America/New_York" },
 	{ "startup_system", "NES" },
 
-	/* Turbo, per system tag. `x:a~3,y:b~3` says X is a turbo A and Y a turbo
-	 * B, three frames pressed and three released - about ten presses a second
-	 * at 60 Hz.
-	 *
-	 * Listed only where BOTH of those are spare. X is the north button and Y
-	 * is the west one; a two-button console uses south and east and leaves
-	 * them both. A three-button Genesis takes west for its A - measured
-	 * 2026-09-06 with Streets of Rage 2 - so it has one free button where
-	 * turbo needs two, and SNES uses all four. MD and SFC are absent for that
-	 * reason and not by oversight. docs/turbo.md has the table. */
-	{ "turbo.NES",  "x:a~3,y:b~3" },
-	{ "turbo.SMS",  "x:a~3,y:b~3" },
-	{ "turbo.PCE",  "x:a~3,y:b~3" },
-	{ "turbo.GB",   "x:a~3,y:b~3" },
-	{ "turbo.GBC",  "x:a~3,y:b~3" },
-	{ "turbo.NGP",  "x:a~3,y:b~3" },
-	{ "turbo.NGPC", "x:a~3,y:b~3" },
-	{ "turbo.GBA",  "x:a~3,y:b~3" },
-	{ "turbo.GG",   "x:a~3,y:b~3" },
+	/* No turbo.<tag>: X and Y were turbo A and B here until plorpos-tkh.
+	 * Turbo is chosen in the game now (Turbo Assign) and lasts only for it;
+	 * db_open drops the rows a card still carries. */
 
 	/* Core options. The segment after "coreopt." is the system tag and an
 	 * EMPTY one means global, which is why the first key has two dots. A
@@ -201,6 +186,29 @@ static bool run(db *d, const char *sql)
 	return rc == SQ_OK;
 }
 
+/* The retired turbo.<tag> rows (plorpos-tkh): fixed X/Y turbo is gone, so
+ * nothing reads them, and left in place they would only say otherwise in a
+ * dump. Collected first, then deleted - not from inside the walk. */
+static bool turbo_key(const char *key, const char *value, void *ctx)
+{
+	char (*keys)[32] = ctx;
+	int i;
+
+	(void)value;
+	for (i = 0; i < 16 && keys[i][0]; i++) ;
+	if (i < 16) snprintf(keys[i], sizeof keys[i], "%s", key);
+	return i < 15;
+}
+
+static void drop_turbo(db *d)
+{
+	char keys[16][32] = { { 0 } };
+	int i;
+
+	db_each_prefix(d, "turbo.", turbo_key, keys);
+	for (i = 0; i < 16 && keys[i][0]; i++) db_del(d, keys[i]);
+}
+
 db *db_open(const char *path, db_scope scope)
 {
 	db *d;
@@ -253,6 +261,7 @@ db *db_open(const char *path, db_scope scope)
 	for (i = 0; i < n; i++)
 		if (!db_has(d, def[i].key))
 			db_set_str(d, def[i].key, def[i].value);
+	if (scope == DB_LIBRARY) drop_turbo(d);
 
 	return d;
 }
@@ -655,22 +664,48 @@ bool db_write_boot_env(void)
 	 * refusing to create the file: this thing's whole license to be a cache is
 	 * that deleting it costs nothing, and skipping here would make a deleted
 	 * boot.env stay deleted until some unrelated setting moved. */
+	/* And the memo starts as what is ON THE CARD, not as nothing. Empty, it
+	 * made every launcher start rewrite an unchanged file, and a hard reset
+	 * in the ~30 s before that write reached the card - the RG SP's reset
+	 * button is easy to hit - left no boot.env: both radios off for that
+	 * boot (plorpos-7ny.29). A file that is missing, short or different is
+	 * still rewritten, so a lost one still heals at the next start. */
+	if (!last[0] && (f = fopen(g_boot_env, "r"))) {
+		size_t got = fread(last, 1, sizeof last - 1, f);
+		last[got] = '\0';
+		fclose(f);
+	}
 	{
 		struct stat sb;
 		if (!strcmp(body, last) && stat(g_boot_env, &sb) == 0) return true;
 	}
 
-	/* Written to a temporary and renamed, but NOT fsynced. rename is what
-	 * makes it atomic, so launch.sh can never source half a file; the fsync
-	 * would only add durability, and this file is derived - losing it to a
-	 * power cut costs one boot at the shipped defaults and the next settings
-	 * change rewrites it. That is the whole reason it is allowed to be a
-	 * cache. */
+	/* Written to a temporary, synced, renamed, and the directory synced.
+	 * rename is what makes it atomic, so launch.sh can never source half a
+	 * file. The syncs are what make it survive a hard reset: losing it costs
+	 * a boot with the radios off, and on the RG SP that reset is one stray
+	 * press away (plorpos-7ny.29). Only a real change gets here (above). */
 	snprintf(tmp, sizeof tmp, "%s.new", g_boot_env);
 	if (!(f = fopen(tmp, "w"))) return false;
-	if (fputs(body, f) == EOF) { fclose(f); unlink(tmp); return false; }
+	if (fputs(body, f) == EOF || fflush(f) != 0 || fsync(fileno(f)) != 0) {
+		fclose(f);
+		unlink(tmp);
+		return false;
+	}
 	if (fclose(f) != 0) { unlink(tmp); return false; }
 	if (rename(tmp, g_boot_env) != 0) { unlink(tmp); return false; }
+	{
+		char dir[1100];
+		char *sl;
+		int fd;
+
+		snprintf(dir, sizeof dir, "%s", g_boot_env);
+		sl = strrchr(dir, '/');
+		if (sl) {
+			*(sl == dir ? sl + 1 : sl) = '\0';
+			if ((fd = open(dir, O_RDONLY)) >= 0) { fsync(fd); close(fd); }
+		}
+	}
 
 	snprintf(last, sizeof last, "%s", body);
 	return true;

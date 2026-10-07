@@ -21,6 +21,8 @@
  *        SINK    device=                     an ALSA name; "default" is dmix
  *        STATUS
  *        COVER   path=  base=                write path's picture to base.jpg|png
+ *        YEAR    path=                       the year path's tags give it
+ *        ARTIST  dir=                        who a folder of tracks is by
  *   out  READY   proto=2
  *        STATE   state=playing|paused|stopped  path=
  *        META    title= artist= album= len= chapters=
@@ -32,6 +34,9 @@
  *                                              device would not open
  *        ERROR   why=
  *        COVER   base=  file=                  what was written; "" if nothing
+ *        YEAR    path=  year=                  0 for none, -1 unreadable
+ *        ARTIST  dir=  name=                   from the tags; "" if no clear
+ *                                              answer (tags.h)
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -51,6 +56,7 @@
 #include "cover.h"
 #include "dec.h"
 #include "pcm.h"
+#include "tags.h"
 
 #define SOCK_PATH "/tmp/muse.sock"
 #define PATH_MAX_ 1024
@@ -297,17 +303,55 @@ static void handle(const qcmd *q)
 	}
 }
 
+#ifdef MUSE_HANDOVER
+/* THE H700'S CODEC IS HANDED OVER, NOT SHARED (plorpos-7ny.10): BaseOS has no
+ * dmix and its kernel no SysV IPC to build one, so Muse and Diatom take turns
+ * on `default`. Diatom holds it only while a game runs unquieted; Muse opens it
+ * to play - waiting up to a second for Diatom to let go, as for a headset at
+ * SINK - and closes it after IDLE_CLOSE_MS of anything but playing, which
+ * covers PAUSE, STOP and the end of a list alike. Called locked. */
+#define IDLE_CLOSE_MS 500
+
+static bool claim(void)
+{
+	int i;
+
+	for (i = 0; i < 10; i++) {
+		if (pcm_open(g_dev)) return true;
+		if (!pcm_busy()) break;
+		pthread_mutex_unlock(&S.mu);
+		usleep(100000);
+		pthread_mutex_lock(&S.mu);
+	}
+	return false;
+}
+#endif
+
 static void *player(void *arg)
 {
 	static int16_t buf[CHUNK * DEC_CHANNELS];
 
 	(void)arg;
+#ifndef MUSE_HANDOVER
 	if (!pcm_open(g_dev)) say("%s", pcm_error());
+#endif
 	pthread_mutex_lock(&S.mu);
 	while (!g_quit) {
 		int n;
 		bool lost = false;
 
+#ifdef MUSE_HANDOVER
+		while (q_len == 0 && S.state != ST_PLAYING && !g_quit && pcm_is_open()) {
+			struct timespec t;
+
+			clock_gettime(CLOCK_REALTIME, &t);
+			t.tv_nsec += IDLE_CLOSE_MS * 1000000L;
+			if (t.tv_nsec >= 1000000000L) { t.tv_sec++; t.tv_nsec -= 1000000000L; }
+			if (pthread_cond_timedwait(&S.cv, &S.mu, &t) == ETIMEDOUT &&
+			    q_len == 0 && S.state != ST_PLAYING)
+				pcm_close();
+		}
+#endif
 		while (q_len == 0 && S.state != ST_PLAYING && !g_quit)
 			pthread_cond_wait(&S.cv, &S.mu);
 		if (q_len > 0) {
@@ -319,6 +363,17 @@ static void *player(void *arg)
 			continue;
 		}
 		if (S.state != ST_PLAYING || !g_dec) continue;
+#ifdef MUSE_HANDOVER
+		if (!pcm_is_open()) {
+			if (!claim()) {
+				fail(pcm_error());
+				dec_close(g_dec);
+				g_dec = NULL;
+				continue;
+			}
+			continue;
+		}
+#endif
 
 		/* Decode and write WITHOUT the lock: the write blocks for as long as
 		 * the device takes to drain, and a command arriving meanwhile must
@@ -476,6 +531,26 @@ static void command(int fd, const char *line)
 		if (cover_extract(q.path, base, file, sizeof file) < 0)
 			say("no cover from %s", q.path);
 		send_line(fd, "COVER\tbase=%s\tfile=%s", clean(base, a, sizeof a), file);
+		return;
+	}
+	if (!strncmp(line, "YEAR", 4)) {             /* as COVER, and why */
+		char a[PATH_MAX_ + 8];
+
+		arg(line, "path", q.path, sizeof q.path);
+		if (!q.path[0]) return;
+		send_line(fd, "YEAR\tpath=%s\tyear=%d", clean(q.path, a, sizeof a), tag_year(q.path));
+		return;
+	}
+	if (!strncmp(line, "ARTIST", 6)) {
+		/* Here too, for COVER's reason: headers only, a few milliseconds a
+		 * track, nothing to do with what is playing. */
+		char dir[PATH_MAX_], name[256], a[PATH_MAX_ + 8], b[300];
+
+		arg(line, "dir", dir, sizeof dir);
+		if (!dir[0]) return;
+		tags_folder_artist(dir, name, sizeof name);
+		send_line(fd, "ARTIST\tdir=%s\tname=%s", clean(dir, a, sizeof a),
+		          clean(name, b, sizeof b));
 		return;
 	}
 	if (!strncmp(line, "PLAY", 4)) {

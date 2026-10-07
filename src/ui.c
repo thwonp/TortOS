@@ -40,7 +40,7 @@ static const float font_mul[UI_F_COUNT] = {
 	[UI_F_LABEL] = 1.50f,   /* 48 */
 	[UI_F_META]  = 1.00f,   /* 32 */
 	[UI_F_CARD]  = 1.94f,   /* 62, in card pixels - the title IS the card */
-	[UI_F_BADGE] = 0.42f,   /* 13 */
+	[UI_F_BADGE] = 0.63f,   /* 20 */
 };
 
 static TTF_Font *fonts[UI_F_COUNT];
@@ -405,12 +405,49 @@ int ui_text_tabular(SDL_Renderer *r, TTF_Font *f, const char *s, int x, int y,
  * Shared rather than written twice. A long title scrolling sideways on the
  * shelf and a long description scrolling down a card are the same gesture, and
  * two copies of this arithmetic would drift the moment either was retuned. */
+/* See ui.h. */
+static unsigned redraw_at_ms = 0;
+
+void ui_redraw_at(unsigned ms) { if (ms < redraw_at_ms) redraw_at_ms = ms; }
+void ui_redraw_now(void)       { redraw_at_ms = 0; }
+void ui_redraw_reset(void)     { redraw_at_ms = UI_REDRAW_NEVER; }
+bool ui_redraw_due(unsigned now) { return now >= redraw_at_ms; }
+
+/* A gap this long between two passes means something else had the screen -
+ * a menu, a game, the art scraper - and whatever it drew is not this one.
+ * Catching it here covers every one of them without a list to keep. */
+#define AWAY_MS 100
+/* Drawn at least this often regardless. A backstop, not a mechanism: if some
+ * animation is ever added without telling ui_redraw_at, it shows as a screen
+ * updating once a second, which is visibly wrong, rather than one that has
+ * silently frozen. */
+#define HEARTBEAT_MS 1000
+
+bool ui_draw_due(ui_pace *p, bool touched, unsigned shown)
+{
+	unsigned now = plat_now_ms();
+	bool away = now - p->last_pass > AWAY_MS;
+
+	p->last_pass = now;
+	if (!(touched || away || shown != p->shown || ui_redraw_due(now) ||
+	      now - p->last_draw >= HEARTBEAT_MS))
+		return false;
+	p->last_draw = now;
+	p->shown = shown;
+	ui_redraw_reset();
+	return true;
+}
+
 int ui_pingpong(int over, unsigned phase)
 {
 	int travel = over * 1000 / MQ_SPEED_PXPS;
 	unsigned cycle, p;
 
 	if (over <= 0) return 0;
+	/* Whoever asks where it is draws it there, so it asks for the moment
+	 * it next moves - and sleeps through the holds, 1.4s at the start and
+	 * 0.9s at the far end. */
+	ui_redraw_at(plat_now_ms() + ui_pingpong_wait(over, phase));
 	if (travel < 1) travel = 1;
 	cycle = (unsigned)(MQ_HOLD_MS + travel + MQ_END_MS + travel);
 	p     = phase % cycle;
@@ -432,6 +469,9 @@ int ui_scrollthrough(int cycle, unsigned phase)
 	if (travel < 1) travel = 1;
 	lap = (unsigned)(MQ_HOLD_MS + travel);
 	p   = phase % lap;
+	/* Only the hold at the top stands still; after it, it moves until it
+	 * wraps and holds again. */
+	ui_redraw_at(plat_now_ms() + (p < MQ_HOLD_MS ? MQ_HOLD_MS - p : 0));
 	if (p < MQ_HOLD_MS) return 0;
 	return (int)((p - MQ_HOLD_MS) * (unsigned)cycle / (unsigned)travel);
 }
@@ -821,9 +861,28 @@ void ui_rail_v(SDL_Renderer *r, int screen_w, int screen_h, float index, int cou
 
 void ui_round_rect(SDL_Renderer *r, const SDL_Rect *q, int radius, SDL_Color col)
 {
+	SDL_RendererInfo info;
+	float sx = 1.0f, sy = 1.0f;
 	int y;
 
 	if (q->w <= 0 || q->h <= 0) return;
+	/* SDL's software renderer - menus over a frozen child - rounds every
+	 * scaled rect to whole pixels, so at the H700's 0.625 the one-unit rows
+	 * below landed twice on some pixel rows and on none of others: light and
+	 * dark lines across a translucent plate (plorpos-7ny.42). There it is
+	 * drawn once in panel pixels instead. GL rasterises the rows as they are. */
+	SDL_RenderGetScale(r, &sx, &sy);
+	if ((sx != 1.0f || sy != 1.0f) && SDL_GetRendererInfo(r, &info) == 0 &&
+	    (info.flags & SDL_RENDERER_SOFTWARE)) {
+		int x0 = (int)lroundf(q->x * sx), y0 = (int)lroundf(q->y * sy);
+		SDL_Rect p = { x0, y0, (int)lroundf((q->x + q->w) * sx) - x0,
+		               (int)lroundf((q->y + q->h) * sy) - y0 };
+
+		SDL_RenderSetScale(r, 1.0f, 1.0f);
+		ui_round_rect(r, &p, (int)lroundf(radius * sy), col);
+		SDL_RenderSetScale(r, sx, sy);
+		return;
+	}
 	if (radius * 2 > q->w) radius = q->w / 2;
 	if (radius * 2 > q->h) radius = q->h / 2;
 	if (radius < 0) radius = 0;

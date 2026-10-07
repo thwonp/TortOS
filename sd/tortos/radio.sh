@@ -262,6 +262,13 @@ bt_on() {
 	echo $! > "$BT_RECONNECT_PIDFILE"
 }
 
+# The headset links as one word, without a process: bt_reconnect's wait
+# ends when it changes.
+bt_link_set() {
+	set -- /sys/class/bluetooth/hci0:*
+	BT_LINKS="$*"
+}
+
 # Keep a remembered headset connected, so powering it on reconnects it wherever
 # you are rather than only at a screen that happens to be watching.
 #
@@ -407,9 +414,17 @@ bt_reconnect() {
 		n=0
 		wait=20
 		[ $soon -gt 0 ] && [ $soon -le 15 ] && wait=1
+		# Cut short when a link comes or goes: a headset that drops, or that
+		# reconnects by itself out of its case, is published in a second or
+		# two rather than at the next pass up to 20 s on (plorpos-cdd, as the
+		# H700's plorpos-7ny.35).
+		bt_link_set
+		was=$BT_LINKS
 		while [ $n -lt $wait ] && [ ! -e /tmp/tortos_btpass ]; do
 			sleep 1
 			n=$((n + 1))
+			bt_link_set
+			[ "$BT_LINKS" = "$was" ] || break
 		done
 		rm -f /tmp/tortos_btpass
 	done

@@ -4,19 +4,21 @@
 
 #include <SDL.h>
 #include <stdbool.h>
+#include <time.h>
 
 /* Everything that knows it is running on a TrimUI Brick lives here: the
  * display, the buttons that arrive on three different devices, the panel
  * backlight, the codec, the battery, and the pipe to the resident emulator.
  * The rest of TortOS talks to this file and to SDL, and to nothing else. */
 
-/* Layout is in units of a 1024-wide screen on every device; the panel is
- * plat_scale() pixels to the unit. The height in units is whatever the
- * panel's shape leaves - 768 on the Brick, 921 on the GKD's 1600x1440 - so it
- * is a variable, set once by plat_video_init, that reads like a constant. */
-#define TORTOS_SCREEN_W 1024
+/* Layout is in units of a screen at least 1024 wide and 768 tall on every
+ * device; the panel is plat_scale() pixels to the unit. Whichever side the
+ * panel's shape leaves longer grows - 768 tall on the Brick, 921 on the GKD's
+ * 1600x1440, 1152 wide on the RG SP's 720x480 - so both are variables, set
+ * once by plat_video_init, that read like constants. */
+#define TORTOS_SCREEN_W plat_screen_w
 #define TORTOS_SCREEN_H plat_screen_h
-extern int plat_screen_h;
+extern int plat_screen_w, plat_screen_h;
 float plat_scale(void);
 /* For plat_video_init, once the renderer knows its output size: derives the
  * scale and height from it and sets the renderer's scale to match. */
@@ -160,6 +162,21 @@ bool plat_spawn_detached(char *const argv[], const char *const envkv[],
 #define RES_PAUSED 2   /* Diatom only: menu open, the launcher owns the display */
 const char *plat_resident_socket(void);
 bool plat_resident_ready(void);
+/* The same, for a launch: a Diatom that is up but still starting gets up to
+ * 8 s to say READY rather than 400 ms (plorpos-7ny.34). */
+bool plat_resident_ready_wait(void);
+#if !defined(PLATFORM_GKD)
+/* Native PICO-8's sound device, followed by pico8sdl.so: NULL nothing, "" the
+ * default, else a PCM name with the headset's link id (plorpos-7ny.35, the
+ * Brick's plorpos-cdd). */
+void plat_child_audio(const char *dev, const char *link);
+void plat_child_audio_reset(void);
+#endif
+#if defined(PLATFORM_H700)
+/* An SDL game-controller mapping for the pad, as SDL_GAMECONTROLLERCONFIG
+ * wants it, for native PICO-8 (plorpos-7ny.41). */
+extern const char plat_pico8_pad[];
+#endif
 /* One game for the resident. `console` is a RetroAchievements console id and
  * `cheevos` a set file for Diatom to watch; 0 and NULL mean the game has no
  * achievements, which is the ordinary case (Diatom ADR-0026). `save` is the
@@ -188,6 +205,13 @@ void plat_resident_on_unlock(void (*fn)(int id));
 /* The same, when the Screenshot hotkey's file is on the card or failed
  * (Diatom's SHOT, plorpos-gkd.86.2): whether it worked, and the file. */
 void plat_resident_on_shot(void (*fn)(bool ok, const char *path));
+
+/* The same, when the player uses Turbo Assign (Diatom's TURBO, plorpos-tkh):
+ * what happened and, for on/off, the button ("A", "L2"); "" otherwise. The
+ * map is already sent; this is for the notice. */
+typedef enum { PLAT_TURBO_ARMED, PLAT_TURBO_CANCEL, PLAT_TURBO_ON,
+               PLAT_TURBO_OFF, PLAT_TURBO_CLEARED } plat_turbo_event;
+void plat_resident_on_turbo(void (*fn)(plat_turbo_event ev, const char *btn));
 
 /* Called from inside plat_resident_wait roughly ten times a second, which is
  * the rate its socket poll already runs at. For work the launcher wants to do
@@ -230,8 +254,6 @@ const char *plat_resident_last_preview(void);
  * retro_load_game and setting one afterwards does nothing until next launch. */
 int         plat_coreopt_count(const char *tag);
 const char *plat_coreopt(const char *tag, int i);
-/* The turbo map for this system, or NULL. Diatom's ADR-0028, docs/turbo.md. */
-const char *plat_turbo_map(const char *tag);
 
 /* The hotkey submenu's binding for this system - "l2:ff,r2:rewind,..." - or
  * "" for none set. Never NULL: an empty spec is itself a valid SETHOTKEYS
@@ -262,7 +284,11 @@ void plat_draw_paused(SDL_Renderer *r, SDL_Texture *bg);
  * the new rect, and the menu wants it now so its backdrop can redraw where the
  * game is about to be, rather than on the next wait after resuming. A missed
  * reply costs a stale backdrop, never a hang. */
-bool plat_resident_sync_rect(int timeout_ms);   /* false: timed out, or ERROR */
+bool plat_resident_sync_rect(int timeout_ms);
+/* Wait up to timeout_ms for Diatom to say it is on `want`, "" the default
+ * (Brick, plorpos-cdd). */
+bool plat_resident_audio_wait(const char *want, int timeout_ms);
+void plat_resident_audio_drain(void);   /* before that SETAUDIO: old answers out */   /* false: timed out, or ERROR */
 /* Read replies for up to timeout_ms until Diatom confirms the SAVE to path
  * (its SAVED line). False on an ERROR, a timeout, or no Diatom at all. */
 bool plat_resident_saved(const char *path, int timeout_ms);
@@ -299,6 +325,16 @@ bool plat_light_sleep(unsigned waited_ms);
  * flush, no escalation. For main.c's music_dark, the screen-off that lets an
  * album play on where light sleep would pause it (TortOS-a5k). */
 void plat_screen(bool on);
+
+/* Date & Time (src/clock.h). Set the clock to `t`, and the hardware clock with
+ * it, which keeps the time while the device is off. False if the system clock
+ * would not take it. */
+bool plat_clock_set(time_t t);
+
+/* Times read as local time in zone `id` from now on, in this process: a zone
+ * database name such as "America/New_York". The setting itself is the
+ * library database's "timezone". */
+void plat_clock_zone(const char *id);
 /* BEGIN PolyForm-Noncommercial-1.0.0 - NextUI-derived: the sleep interface, NextUI's PWR_sleep (plat_screen above is this project's own). See NOTICE. */
 
 /* A computer has enumerated the device - not merely a charger, which never

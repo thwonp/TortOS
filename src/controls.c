@@ -65,16 +65,9 @@ static int game(menu_row *out)
 
 	out[n++] = (menu_row){ "MENU",   "Pause and menu",     false };
 	out[n++] = (menu_row){ "SELECT", "Muse, in that menu", false };
-	out[n++] = (menu_row){ "X/Y/L2/R2", "Turbo A/B/L1/R1 *", false };
 	out[n++] = (menu_row){ "POWER",  "Tap sleep, hold off", false };
-	/* The exceptions as a note rather than a longer row: X and Y are the pad's
-	 * own buttons on Genesis and SNES, and L2 and R2 are mGBA's own Turbo L
-	 * and R, so only do anything on GBA (found upstream 2026-09-30). Kept
-	 * short - a note runs the width of the panel and is cut at
-	 * about thirty characters. An asterisk on both ends, the row's value and
-	 * this line, so the two read as a footnote and its mark rather than as two
-	 * separate claims. Eric's, 2026-09-20; reworded by him 2026-10-01. */
-	out[n++] = MENU_NOTE("* for some systems");
+	/* No turbo row: X/Y and GBA's L2/R2 turbo were retired for Turbo
+	 * Assign, a hotkey the player binds (plorpos-tkh). */
 	return n;
 }
 

@@ -4,7 +4,7 @@
 BUILD := build
 # One device file per build: src/platform_brick.c or src/platform_gkd.c, never
 # both - they define the same functions. The Makefile passes PLATFORM and, for
-# the GKD, BUILD=build/gkd.
+# the GKD, BUILD=build/gkd (and the H700, build/h700).
 PLATFORM ?= brick
 SRC := $(filter-out src/platform_%.c,$(wildcard src/*.c)) src/platform_$(PLATFORM).c
 CC ?= aarch64-linux-gnu-gcc
@@ -16,6 +16,14 @@ ifeq ($(PLATFORM),gkd)
 # The one use outside the device files: bt.c, wifi.c and btvol.c keep their
 # host stubs on the GKD until it has radio code of its own (gkd.9, gkd.10).
 CFLAGS += -DPLATFORM_GKD
+endif
+ifeq ($(PLATFORM),h700)
+# Anbernic H700 on BaseOS (plorpos-7ny), NOT "on ROCKNIX": bt.c, btvol.c and
+# wifi.c keep their host stubs until it has radio code of its own (.5, v2).
+CFLAGS += -DPLATFORM_H700
+# One opener at a time on its codec, so Muse takes it only to play
+# (src/muse/muse.c, MUSE_HANDOVER).
+MUSE_DEFS := -DMUSE_HANDOVER
 endif
 # --allow-shlib-undefined: the device's SDL2_ttf pulls FT_* out of freetype,
 # and SDL2/SDL2_image reach for more of the firmware besides. Those resolve on
@@ -82,7 +90,7 @@ MUSE_SRC := $(wildcard src/muse/*.c)
 $(BUILD)/muse: $(MUSE_SRC) $(wildcard src/muse/*.h)
 	mkdir -p $(BUILD)
 	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -Wno-unused-parameter -std=gnu11 \
-	      -D_GNU_SOURCE -I$(SYSROOT)/usr/include $(LDFLAGS) -o $@ $(MUSE_SRC) \
+	      -D_GNU_SOURCE $(MUSE_DEFS) -I$(SYSROOT)/usr/include $(LDFLAGS) -o $@ $(MUSE_SRC) \
 	      -lavformat -lavcodec -lavfilter -lswresample -lavutil -lpthread -ldl
 
 # Talks to Muse by hand over ssh; the device's BusyBox nc has no -U.
@@ -96,11 +104,13 @@ $(BUILD)/btplayer: tools/btplayer.c
 	mkdir -p $(BUILD)
 	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -o $@ $< -ldl
 
-# Preloaded into native PICO-8 on the Brick: the firmware SDL has no sensors
-# and PICO-8 asks for them. See the file.
+# Preloaded into native PICO-8 on the Brick (the firmware SDL has no sensors
+# and PICO-8 asks for them) and the H700: quiet while Muse plays, and its
+# sound follows the headset. See the file.
 $(BUILD)/pico8sdl.so: tools/pico8sdl.c
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -shared -fPIC -o $@ $< -ldl
+	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -shared -fPIC -pthread \
+		-o $@ $< -ldl
 
 $(BUILD)/setbright: tools/setbright.c
 	mkdir -p $(BUILD)

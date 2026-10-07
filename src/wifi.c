@@ -69,11 +69,19 @@ static int run(char *const argv[], char *out, size_t cap)
 	return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
-/* The TrimUI radio. */
+/* The TrimUI radio - and the H700's under BaseOS, which is the same
+ * wpa_supplicant and BusyBox udhcpc with nothing around them: BaseOS loads the
+ * driver and leaves the daemon, the credentials and the lease to the frontend
+ * (plorpos-7ny.5). Where the two differ is marked PLATFORM_H700. */
 #if !defined(PLATFORM_GKD)
 
 #define WPA_CLI  "/usr/sbin/wpa_cli"
+#if defined(PLATFORM_H700)
+#include "platform.h"
+#define WPA_SOCK "/run/wpa_supplicant"
+#else
 #define WPA_SOCK "/etc/wifi/sockets"
+#endif
 #define WLAN     "wlan0"
 
 /* wpa_cli with the socket and interface always supplied, because forgetting
@@ -126,6 +134,39 @@ static bool kv(const char *text, const char *key, char *out, int cap)
 	return false;
 }
 
+#if defined(PLATFORM_H700)
+static bool g_dhcp_asked;   /* defined with dhcp_start, below */
+
+/* The lease, once the link is up - as launch_frontend.sh does at boot. Not
+ * left to wifi_status: that asks only when something polls it, and the Wi-Fi
+ * screen reads it once, after its scan, which finishes before the association
+ * does - so turning Wi-Fi on there never fetched an address (2026-10-06).
+ * Detached, like dhcp_start, so nothing waits on the radio. */
+static void dhcp_after_join(void)
+{
+	pid_t pid = fork();
+
+	if (pid < 0) return;
+	if (pid == 0) {
+		if (fork() == 0) {
+			char *argv[] = { (char *)"/bin/sh", (char *)"-c", (char *)
+				"i=0; until " WPA_CLI " -p " WPA_SOCK " -i " WLAN " status 2>/dev/null"
+				" | grep -q '^wpa_state=COMPLETED'; do [ $i -ge 30 ] && exit;"
+				" sleep 1; i=$((i + 1)); done;"
+				" exec /sbin/udhcpc -i " WLAN " -S -t 5 -T 7 -b -q", NULL };
+			int null = open("/dev/null", O_RDWR);
+
+			if (null >= 0) { dup2(null, 1); dup2(null, 2); }
+			execv(argv[0], argv);
+			_exit(127);
+		}
+		_exit(0);
+	}
+	waitpid(pid, NULL, 0);
+	g_dhcp_asked = true;
+}
+#endif
+
 bool wifi_up(void)
 {
 	char out[128];
@@ -134,27 +175,84 @@ bool wifi_up(void)
 	if (wpa(out, sizeof out, "ping", NULL, NULL, NULL) == 0 &&
 	    strstr(out, "PONG")) return true;
 
+#if defined(PLATFORM_H700)
+	/* Our own daemon, on the card's config so saved networks survive a
+	 * BaseOS update. wlan0 can be late - BaseOS loads the driver in the
+	 * background, and a slow radio holds it until ~7 s uptime - so the start
+	 * is retried while waiting, not attempted once. */
+	{
+		char conf[512];
+		FILE *f;
+
+		snprintf(conf, sizeof conf, "%s/wpa_supplicant.conf", P_USERDATA);
+		if (access(conf, F_OK) != 0 && (f = fopen(conf, "w"))) {
+			fputs("update_config=1\n", f);
+			fclose(f);
+		}
+		for (i = 0; i < 20; i++) {
+			char *argv[] = { (char *)"/usr/sbin/wpa_supplicant", (char *)"-B",
+			                 (char *)"-D", (char *)"nl80211,wext",
+			                 (char *)"-i", (char *)WLAN, (char *)"-C",
+			                 (char *)WPA_SOCK, (char *)"-c", conf, NULL };
+			if (access("/sys/class/net/" WLAN, F_OK) == 0 && run(argv, NULL, 0) == 0)
+				break;
+			sleep(1);
+		}
+	}
+#else
 	{
 		char *argv[] = { (char *)"/etc/init.d/wpa_supplicant",
 		                 (char *)"start", NULL };
 		run(argv, NULL, 0);
 	}
+#endif
 	/* The stock start_service retries `ifconfig wlan0 up` five times with
 	 * usleep 500000 between, so the socket is not there the instant this
 	 * returns. Wait for the socket rather than for a guessed duration. */
 	for (i = 0; i < 20; i++) {
 		sleep(1);
 		if (wpa(out, sizeof out, "ping", NULL, NULL, NULL) == 0 &&
-		    strstr(out, "PONG")) return true;
+		    strstr(out, "PONG")) {
+#if defined(PLATFORM_H700)
+			dhcp_after_join();
+#endif
+			return true;
+		}
 	}
 	return false;
 }
 
+#if defined(PLATFORM_H700)
+/* An address left on a dead link would read as connected to everything that
+ * checks one - wifi_status included, the moment any network associates. */
+static void lease_drop(void)
+{
+	char *kill_dhcp[] = { (char *)"/bin/killall", (char *)"udhcpc", NULL };
+	char *flush[] = { (char *)"/sbin/ip", (char *)"addr", (char *)"flush",
+	                  (char *)"dev", (char *)WLAN, NULL };
+
+	run(kill_dhcp, NULL, 0);
+	run(flush, NULL, 0);
+}
+#endif
+
 void wifi_down(void)
 {
+#if defined(PLATFORM_H700)
+	/* The daemon goes, and the lease with it (lease_drop). And the lease is
+	 * forgotten as asked for: wifi_status re-arms only on a state it can
+	 * read, and with no daemon it reads none - so the next association after
+	 * an off/on never asked for an address (measured 2026-10-06). */
+	char out[64];
+
+	g_dhcp_asked = false;
+	wpa(out, sizeof out, "terminate", NULL, NULL, NULL);
+	lease_drop();
+#else
 	char *argv[] = { (char *)"/etc/init.d/wpa_supplicant",
 	                 (char *)"stop", NULL };
 	run(argv, NULL, 0);
+#endif
 }
 
 /* Saved networks, so the list can say which ones are already known. */
@@ -515,6 +613,12 @@ fail:
 	 * INACTIVE and the saved entry marked [DISABLED]. Put them back. */
 	if (!reused) wpa(out, sizeof out, "remove_network", id, NULL, NULL);
 	wpa(out, sizeof out, "enable_network", "all", NULL, NULL);
+#if defined(PLATFORM_H700)
+	/* And stay off: enabled, the saved list would rejoin the previous
+	 * network the moment this returns, and a failed join must not do that
+	 * (user, 2026-10-05). It rejoins at the next Wi-Fi on or boot. */
+	wpa(out, sizeof out, "disconnect", NULL, NULL, NULL);
+#endif
 	return false;
 }
 
@@ -523,6 +627,11 @@ bool wifi_forget(const char *ssid)
 	char out[4096];
 	char *line, *save;
 	bool hit = false;
+#if defined(PLATFORM_H700)
+	char cur[64];
+
+	wifi_status(cur, sizeof cur, NULL, 0);
+#endif
 
 	if (wpa(out, sizeof out, "list_networks", NULL, NULL, NULL) != 0) return false;
 	for (line = strtok_r(out, "\n", &save); line;
@@ -540,6 +649,12 @@ bool wifi_forget(const char *ssid)
 	if (hit) {
 		char tmp[128];
 		wpa(tmp, sizeof tmp, "save_config", NULL, NULL, NULL);
+#if defined(PLATFORM_H700)
+		/* The network in use: its lease stayed on wlan0, and another saved
+		 * network rejoining read as connected on the old address, never
+		 * asking for its own (plorpos-7ny.5, 2026-10-06). */
+		if (!strcmp(cur, ssid)) lease_drop();
+#endif
 	}
 	return hit;
 }

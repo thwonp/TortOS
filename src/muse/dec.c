@@ -22,8 +22,19 @@
  * unknown quality; here it is a 64-tap sinc filter with triangular dither
  * before the drop to 16 bits. Measured on the device: half a percent of a core
  * more than FFmpeg's 32-tap default, which is the cheapest audible gain there
- * is. atempo, when the speed is not 1, goes in front of it. */
+ * is. atempo, when the speed is not 1, goes in front of it.
+ *
+ * And 2 dB of headroom ahead of the resampler, in floating point. Loud masters
+ * decode past full scale, and the drop to 16 bits cut those peaks off flat:
+ * heard as a crackle on the GKD Pixel 2 at the same moments of a song every
+ * time, found 2026-10-02 in a recording of what Muse handed the mixer. Through
+ * this chain, 55 of the 69 tracks on the test card peaked over full scale, the
+ * worst at +1.54 dB (Raphael Saadiq, "Let's Take A Walk"). 2 dB clears them
+ * all, and costs 2 dB at the top of the volume scale and nothing else - a
+ * limiter would keep the loudness, for CPU, latency and a changed sound on
+ * exactly the loud songs this is about. */
 #define GRAPH_TAIL \
+	"volume=-2dB:precision=float," \
 	"aresample=48000:filter_size=64:cutoff=0.97:dither_method=triangular," \
 	"aformat=sample_fmts=s16:channel_layouts=stereo"
 

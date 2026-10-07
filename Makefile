@@ -26,10 +26,12 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
         check check-cheevos check-hare check-httpd check-idle check-rahash \
         check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
         check-db check-stats check-sort check-bt check-backlog check-ss check-hkbind check-shaderlist \
-        check-gbpal check-titles hooks storeprobe deploy restart logs
+        check-gbpal check-titles check-clock hooks storeprobe deploy restart logs
 
 ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl
+else ifeq ($(PLATFORM),h700)
+all: build/h700/tortos.elf build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so
 else
 all: build/tortos.elf
 endif
@@ -42,7 +44,7 @@ CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
          check-db check-stats check-sort check-bt check-backlog check-ss \
          check-muselib check-musequeue check-museart check-controls check-hkbind check-shaderlist check-gbpal \
-         check-gamelist check-logpack check-titles
+         check-gamelist check-logpack check-titles check-clock
 
 check:
 	@fail=0; for c in $(CHECKS); do \
@@ -67,7 +69,7 @@ VERSION ?= 1.4
 # One stamp per build directory (plorpos-gkd.85.4): with one shared stamp, a
 # Brick build at the new VERSION left the GKD's elf at the old one, and the
 # GKD build never passed -B at all - a 1.01 GKD zip would have said 1.0.
-VBUILD := $(if $(filter gkd,$(PLATFORM)),build/gkd,build)
+VBUILD := $(if $(filter gkd h700,$(PLATFORM)),build/$(PLATFORM),build)
 ifneq ($(VERSION),$(shell cat $(VBUILD)/version 2>/dev/null))
 $(shell mkdir -p $(VBUILD) && rm -f $(VBUILD)/tortos.elf && echo '$(VERSION)' > $(VBUILD)/version)
 VERSION_CHANGED := -B
@@ -91,8 +93,9 @@ build/ss_creds.h: FORCE
 
 # Each device's sources: everything but the other device's file, so that editing
 # platform_gkd.c does not make the Brick build look stale (and the reverse).
-SRC_BRICK := $(filter-out src/platform_gkd.c,$(wildcard src/*.c))
-SRC_GKD   := $(filter-out src/platform_brick.c,$(wildcard src/*.c))
+SRC_BRICK := $(filter-out src/platform_gkd.c src/platform_h700.c,$(wildcard src/*.c))
+SRC_GKD   := $(filter-out src/platform_brick.c src/platform_h700.c,$(wildcard src/*.c))
+SRC_H700  := $(filter-out src/platform_brick.c src/platform_gkd.c,$(wildcard src/*.c))
 # And the vendored code both link (mk/third_party.mk), so a change there rebuilds.
 THIRD_PARTY := mk/third_party.mk $(shell find third_party -name '*.[ch]')
 
@@ -187,6 +190,37 @@ build/gkd/tortos.elf build/gkd/muse build/gkd/musectl &: \
 	done
 	@[ tools/musectl.c -nt build/gkd/musectl ] && { \
 		echo "STALE: build/gkd/musectl is older than tools/musectl.c" >&2; exit 1; } || true
+
+# The H700 on BaseOS (plorpos-7ny): the launcher alone, against the SDL2 that
+# mk/fetch-h700-sysroot.sh builds - no device needed. Muse links the FFmpeg
+# that script builds too, BaseOS having none (plorpos-7ny.10).
+build/h700/ss_creds.h: FORCE
+	@$(MAKE) --no-print-directory -f mk/cross.mk BUILD=build/h700 creds
+
+build/h700/tortos.elf: $(SRC_H700) $(wildcard src/*.h) mk/cross.mk $(THIRD_PARTY) build/h700/ss_creds.h
+	@docker image inspect $(IMAGE) > /dev/null 2>&1 || { \
+		echo "toolchain image missing; run: make toolchain" >&2; exit 1; }
+	@[ -d sysroot-h700/usr/include/SDL2 ] || { \
+		echo "no H700 sysroot; run: mk/fetch-h700-sysroot.sh" >&2; exit 1; }
+	docker run --rm -e SS_DEVID -e SS_DEVPASS -v $(CURDIR):/work -w /work $(IMAGE) \
+		make $(VERSION_CHANGED) -f mk/cross.mk PLATFORM=h700 BUILD=build/h700 SYSROOT=/work/sysroot-h700 \
+		VERSION=$(VERSION) creds build/h700/tortos.elf
+	@for src in $(SRC_H700) $(wildcard src/*.h) mk/cross.mk build/h700/ss_creds.h; do \
+		if [ "$$src" -nt build/h700/tortos.elf ]; then \
+			echo "STALE: build/h700/tortos.elf is older than $$src" >&2; \
+			echo "  the container did not rebuild. rm build/h700/tortos.elf and try again." >&2; \
+			exit 1; \
+		fi; \
+	done
+
+# btplayer with them: same container, and it needs nothing from the sysroot.
+build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so &: $(wildcard src/muse/*.c) \
+                                      $(wildcard src/muse/*.h) tools/musectl.c tools/btplayer.c tools/pico8sdl.c mk/cross.mk
+	@[ -f sysroot-h700/usr/include/libavcodec/avcodec.h ] || { \
+		echo "no FFmpeg in the H700 sysroot; run: mk/fetch-h700-sysroot.sh" >&2; exit 1; }
+	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
+		make -f mk/cross.mk PLATFORM=h700 BUILD=build/h700 SYSROOT=/work/sysroot-h700 \
+		build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so
 
 # The check binaries are rebuilt every time, deliberately.
 #
@@ -515,6 +549,16 @@ check-sort: build-native/sort-check
 	if [ $$s -eq 77 ]; then \
 		echo "  install sqlite3 - the launcher needs it, not just this check" >&2; \
 	fi; exit $$s
+
+# Date & Time: each row moving only itself, the 12-hour words, and the zone
+# list running west to east - see tools/clock-check.c.
+check-clock: build-native/clock-check
+	@./build-native/clock-check
+
+build-native/clock-check: tools/clock-check.c src/clock.c src/clock.h FORCE
+	@mkdir -p build-native
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
+	      -o $@ tools/clock-check.c src/clock.c
 
 check-titles: build-native/titles-check
 	@./build-native/titles-check; s=$$?; \

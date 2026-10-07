@@ -7,6 +7,7 @@
 #include "ui.h"   /* the settings line shares the rail's weight and palette */
 #include "platform_dev.h"
 
+#include <ctype.h>
 #include <dlfcn.h>
 #include <glob.h>
 #include <errno.h>
@@ -14,6 +15,8 @@
 #include <signal.h>
 #ifdef __linux__
 #include <linux/input.h>
+#include <linux/rtc.h>
+#include <sys/ioctl.h>
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +26,7 @@
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <sys/wait.h>
@@ -114,61 +118,7 @@ const char *plat_coreopt(const char *tag, int i)
 	return kv;
 }
 
-/* ---- turbo, read once from the library database -------------------------- */
-/* One canonical map per system tag, handed to Diatom after RUN. Its ADR-0028
- * makes a pulse a property of a BINDING, so `x:a~3,y:b~3` is the whole feature:
- * X becomes a turbo A and Y a turbo B, three frames pressed and three released.
- *
- * Per system because it is only safe where those two buttons are SPARE. Seven of
- * the eleven consoles here have two face buttons; a Genesis 6-button pad and a
- * SNES pad use X and Y for real, and turbo would take them away.
- *
- * A file rather than a table in the binary because the rate is exactly the sort
- * of thing a player wants to change, and because a remap screen would one day
- * write this same field over the same protocol. */
-#define TURBO_MAX 16
-static struct { char tag[8]; char map[96]; } turbos[TURBO_MAX];
-static int nturbos = -1;                     /* -1 = not read yet */
-
-static bool turbo_row(const char *key, const char *value, void *ctx)
-{
-	const char *tag = key + strlen("turbo.");
-
-	(void)ctx;
-	if (nturbos >= TURBO_MAX) return false;
-	/* Refused, not stored short. Half a map is a map nobody wrote, and Diatom
-	 * rejects a bad one whole - after the game is already up, where the
-	 * refusal is invisible. */
-	if (strlen(tag) >= sizeof turbos[0].tag ||
-	    strlen(value) >= sizeof turbos[0].map) {
-		fprintf(stderr, "turbo: entry too long, ignoring: %.32s\n", tag);
-		return true;
-	}
-	snprintf(turbos[nturbos].tag, sizeof turbos[0].tag, "%s", tag);
-	snprintf(turbos[nturbos].map, sizeof turbos[0].map, "%s", value);
-	nturbos++;
-	return true;
-}
-
-static void turbos_load(void)
-{
-	nturbos = 0;
-	db_each_prefix(db_lib(), "turbo.", turbo_row, NULL);
-}
-
-/* The map for this system, or NULL for one that wants none. */
-const char *plat_turbo_map(const char *tag)
-{
-	int i;
-
-	if (nturbos < 0) turbos_load();
-	if (!tag) return NULL;
-	for (i = 0; i < nturbos; i++)
-		if (!strcmp(turbos[i].tag, tag)) return turbos[i].map;
-	return NULL;
-}
-
-/* ---- hotkeys, same shape as turbo above but player-editable at runtime --
+/* ---- hotkeys, read once from the library, player-editable at runtime -----
  * One canonical binding string per system tag - "l2:ff,r2:rewind,x:savestate,
  * y:loadstate" - handed to Diatom as SETHOTKEYS after RUN, the same way
  * turbo's map already rides SETMAP. See diatom's ADR-0035.
@@ -429,6 +379,106 @@ static void level_nudge(bool bright, int d)
 	if (bright) plat_brightness_nudge(d);
 	else        plat_volume_nudge(d);
 }
+
+/* A level key held in native PICO-8 repeats at the shelf's pace,
+ * REPEAT_DELAY_MS then REPEAT_RATE_MS (plorpos-xpt.1.1), as it does in a
+ * Diatom game now. One hold at a time, keeping the kind its press had; the
+ * kernel is asked before each step whether the key is still down, and the hold
+ * is dropped when the menu opens or the device sleeps - a key held into the
+ * menu stepping on after Continue was why holds were taken out here before
+ * (plorpos-gkd.50.26). */
+typedef struct { int fd, code, d; bool bright; unsigned next; } lv_hold;
+
+static void lv_hold_start(lv_hold *h, int fd, int code, bool bright, int d)
+{
+	*h = (lv_hold){ fd, code, d, bright, plat_now_ms() + REPEAT_DELAY_MS };
+	if (!h->next) h->next = 1;
+}
+
+/* Due: step again if the key is still held. True when it stepped. */
+static bool lv_hold_tick(lv_hold *h)
+{
+	unsigned char keys[KEY_MAX / 8 + 1];
+
+	if (!h->next || (int)(plat_now_ms() - h->next) < 0) return false;
+	memset(keys, 0, sizeof keys);
+	if (ioctl(h->fd, EVIOCGKEY(sizeof keys), keys) < 0 ||
+	    !(keys[h->code / 8] & (1u << (h->code % 8)))) {
+		h->next = 0;
+		return false;
+	}
+	h->next = plat_now_ms() + REPEAT_RATE_MS;
+	if (!h->next) h->next = 1;
+	level_nudge(h->bright, h->d);
+	return true;
+}
+
+/* How long poll may sleep: the usual 100 ms, or until the hold is due. */
+static int lv_hold_wait(const lv_hold *h)
+{
+	int left;
+
+	if (!h->next) return 100;
+	left = (int)(h->next - plat_now_ms());
+	return left < 0 ? 0 : left > 100 ? 100 : left;
+}
+#endif
+
+#if !defined(PLATFORM_GKD)
+/* Where native PICO-8's sound goes, for pico8sdl.so's watcher to follow
+ * (plorpos-7ny.35): "-" nothing, "" the default device, else the headset's
+ * PCM and its link id - a headset that went and came back reopens. tmpfs. */
+#define PICO8_AUDIO     "/tmp/plorpos-pico8-audio"       /* tools/pico8sdl.c's too */
+#define PICO8_AUDIO_NOW "/tmp/plorpos-pico8-audio-now"   /* what it has open */
+
+static char pa_said[192];
+
+void plat_child_audio(const char *dev, const char *link)
+{
+	char want[192];
+	FILE *f;
+
+	snprintf(want, sizeof want, "%s\t%s\n", dev ? dev : "-",
+	         dev && dev[0] && link ? link : "");
+	if (!strcmp(want, pa_said)) return;
+	if (!(f = fopen(PICO8_AUDIO ".tmp", "w"))) return;
+	fputs(want, f);
+	if (fclose(f) != 0 || rename(PICO8_AUDIO ".tmp", PICO8_AUDIO) != 0) return;
+	snprintf(pa_said, sizeof pa_said, "%s", want);
+}
+
+void plat_child_audio_reset(void)
+{
+	unlink(PICO8_AUDIO);
+	unlink(PICO8_AUDIO_NOW);
+	pa_said[0] = '\0';
+}
+
+/* Before the menu freezes it: a headset PICO-8 holds is let go first, so Muse
+ * started from the menu can have it - a bluealsa PCM takes one opener, and a
+ * frozen process lets go of nothing. Costs the menu one headset close, only
+ * while PICO-8 is on the headset (the user's choice, 2026-10-07). */
+static void child_audio_release(void)
+{
+	char now[192] = "";
+	unsigned t0 = plat_now_ms();
+	FILE *f = fopen(PICO8_AUDIO_NOW, "r");
+
+	if (!f) return;
+	if (!fgets(now, sizeof now, f)) now[0] = '\0';
+	fclose(f);
+	if (!now[0] || now[0] == '-' || now[0] == '\t') return;   /* nothing, or the codec */
+	plat_child_audio(NULL, NULL);
+	while (plat_now_ms() - t0 < 400) {
+		usleep(5000);
+		if (!(f = fopen(PICO8_AUDIO_NOW, "r"))) break;
+		if (!fgets(now, sizeof now, f)) now[0] = '\0';
+		fclose(f);
+		if (now[0] == '-') break;
+	}
+	fprintf(stderr, "run: headset %s in %u ms\n",
+	        now[0] == '-' ? "let go" : "NOT let go", plat_now_ms() - t0);
+}
 #endif
 
 int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
@@ -468,24 +518,54 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 	while (fd_lv >= 0 && read(fd_lv, &ev, sizeof ev) == (ssize_t)sizeof ev)
 		;
 	unsigned term_at = 0;   /* when TERM went, 0: not ending it */
+	lv_hold hold = { 0 };
+#if defined(PLATFORM_H700)
+	/* Menu is the brightness modifier too (Menu+Vol): a tap goes on its
+	 * release, as pad_read and diatom have it, and only if no level key
+	 * went with it. Opened on the press, the menu met the release as a tap
+	 * of its own and closed again at once (plorpos-7ny.14). */
+	bool menu_held = false, menu_spent = false;
+	const int menu_value = 0;
+#else
+	const int menu_value = 1;
+#endif
 	for (;;) {
 		pid_t r = waitpid(pid, &status, WNOHANG);
 		if (r == pid) break;
 		if (r < 0) { free(env); return -1; }
-		poll(pfd, 3, 100);
+		poll(pfd, 3, lv_hold_wait(&hold));
 		bool quit = false, menu = false;
 		if (on_tick && !term_at) child_quiet(pid, on_tick(ctx));
-		/* The volume keys: volume, or brightness with Home held, one step
-		 * per press - no stepping on hold, as in Diatom (plorpos-gkd.50.19,
-		 * .50.26). */
+		/* The volume keys: volume, or brightness with Home held, a step per
+		 * press and, held, the shelf's repeat (lv_hold). */
 		while (fd_lv >= 0 && read(fd_lv, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 			int d = ev.code == KEY_VOLUMEUP ? 1 : ev.code == KEY_VOLUMEDOWN ? -1 : 0;
-			if (ev.type == EV_KEY && d && ev.value == 1)
-				level_nudge(levels_alt(), d);
+
+			if (ev.type != EV_KEY || !d) continue;
+			if (ev.value == 1) {
+				bool bright = levels_alt();
+
+				level_nudge(bright, d);
+				lv_hold_start(&hold, fd_lv, ev.code, bright, d);
+			} else if (ev.value == 0 && hold.fd == fd_lv && hold.code == ev.code) {
+				hold.next = 0;
+			}
 		}
-		while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
+#if defined(PLATFORM_H700)
+		bool lid_tap = false;
+#endif
+		while (fd_power >= 0 && read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 			if (ev.type == EV_KEY && ev.code == KEY_POWER)
 				pwr_down = ev.value != 0;
+#if defined(PLATFORM_H700)
+			if (ev.type == EV_KEY && ev.code == LID_CLOSE_KEY && ev.value == 1)
+				lid_tap = true;
+#endif
+		}
+#if defined(PLATFORM_H700)
+		/* A closed lid is a POWER tap: down, and up on the call below. */
+		if (lid_tap && !term_at && !pwr_down) plat_power_tap_or_hold(true);
+#endif
 		if (!term_at) {
 			pwr_action pa = plat_power_tap_or_hold(pwr_down);
 
@@ -493,6 +573,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				unsigned t0 = plat_now_ms();
 				bool awake;
 
+				hold.next = 0;
 				kill(pid, SIGSTOP);
 				awake = plat_light_sleep(0);
 				kill(pid, SIGCONT);
@@ -510,11 +591,35 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		}
 		while (fd_menu >= 0 && read(fd_menu, &ev, sizeof ev) == (ssize_t)sizeof ev) {
 			bool bright = false;
-			int d = ev.type == EV_KEY && ev.value == 1 ? levels_key(ev.code, &bright) : 0;
+			int d = ev.type == EV_KEY && ev.value != 2 ? levels_key(ev.code, &bright) : 0;
 
 			/* The Brick's level keys share the pad's node (plorpos-reo.10). */
-			if (d) { level_nudge(bright, d); continue; }
+			if (d && ev.value == 0) {
+				if (hold.fd == fd_menu && hold.code == ev.code) hold.next = 0;
+				continue;
+			}
+			if (d) {
+				level_nudge(bright, d);
+				lv_hold_start(&hold, fd_menu, ev.code, bright, d);
+#if defined(PLATFORM_H700)
+				if (bright) menu_spent = true;
+#endif
+				continue;
+			}
+#if defined(PLATFORM_H700)
 			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 1) {
+				menu_held = true;
+				menu_spent = false;
+				continue;
+			}
+			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == 0) {
+				bool tap = menu_held && !menu_spent;
+
+				menu_held = false;
+				if (!tap) continue;
+			}
+#endif
+			if (ev.type == EV_KEY && ev.code == menu_code && ev.value == menu_value) {
 				struct timespec now;
 
 				/* The press's own time, on the clock the kernel stamped it
@@ -527,9 +632,15 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 				menu = true;
 			}
 		}
+		if (!term_at && !menu) lv_hold_tick(&hold);
 		if (menu && !quit && !term_at) {
 			run_choice c = RUN_QUIT;
 
+			hold.next = 0;       /* no hold carries through the menu */
+
+#if !defined(PLATFORM_GKD)
+			child_audio_release();
+#endif
 			kill(pid, SIGSTOP);
 			if (child_hide(pid)) {
 				fprintf(stderr, "run: menu, child %d frozen\n", (int)pid);
@@ -735,11 +846,18 @@ unsigned plat_resident_generation(void) { return d_generation; }
  * means a previous launcher died mid-game and this one just started: the
  * game on screen is real, but this launcher believes it owns the display, so
  * end the session and start clean rather than draw over live output. */
-static bool dconnect(void)
+/* `ready_ms`: how long Diatom has to say READY once the socket is open. An
+ * open socket is a Diatom that is up, and right after a cold boot it opens it
+ * BEFORE premapping its cores - about 3.5 s, from a cold card - and answers
+ * only after. A launch that gave it 400 ms, as every caller once did, lost
+ * that race on every resume at power-on and fell back to a standalone
+ * emulator, where Menu ends the game (plorpos-7ny.34). */
+static bool dconnect_within(unsigned ready_ms)
 {
 	struct sockaddr_un a;
 	const char *path = plat_resident_socket();
 	char *l;
+	unsigned t0;
 
 	if (dsock >= 0) return true;
 	if (!path) return false;
@@ -760,8 +878,13 @@ static bool dconnect(void)
 	snprintf(a.sun_path, sizeof a.sun_path, "%s", path);
 	if (connect(dsock, (struct sockaddr *)&a, sizeof a) != 0) { dclose(); return false; }
 
-	while ((l = dline(400))) {
+	t0 = plat_now_ms();
+	while (dsock >= 0 && plat_now_ms() - t0 < ready_ms &&
+	       (l = dline((int)(ready_ms - (plat_now_ms() - t0))))) {
 		if (strncmp(l, "READY", 5) == 0) {
+			if (plat_now_ms() - t0 >= 400)
+				fprintf(stderr, "diatom: ready after %u ms (still starting)\n",
+				        plat_now_ms() - t0);
 			if (strstr(l, "state=running")) {
 				unsigned t0 = plat_now_ms();
 				fprintf(stderr, "diatom: had a game running; stopping it\n");
@@ -777,9 +900,16 @@ static bool dconnect(void)
 	return false;
 }
 
+static bool dconnect(void) { return dconnect_within(400); }
+
 bool plat_resident_ready(void)
 {
 	return dconnect();
+}
+
+bool plat_resident_ready_wait(void)
+{
+	return dconnect_within(8000);
 }
 
 
@@ -790,6 +920,12 @@ void plat_resident_on_unlock(void (*fn)(int id)) { d_on_unlock = fn; }
 
 static void (*d_on_shot)(bool ok, const char *path);
 void plat_resident_on_shot(void (*fn)(bool ok, const char *path)) { d_on_shot = fn; }
+
+static void (*d_on_turbo)(plat_turbo_event ev, const char *btn);
+void plat_resident_on_turbo(void (*fn)(plat_turbo_event ev, const char *btn)) { d_on_turbo = fn; }
+static uint32_t d_turbo;          /* turbo_names[] bits, this game only */
+static bool d_turbo_gba;
+static void d_turbo_send(void);
 
 static void (*d_on_tick)(void);
 
@@ -890,7 +1026,8 @@ bool plat_resident_send(const plat_game *g)
 		           g->console, g->cheevos ? g->cheevos : "", disc, P_CARD))
 			return false;
 
-		/* AFTER RUN, never before: RUN resets the map to identity (Diatom's
+		/* Turbo Assign's map (plorpos-tkh), empty at every RUN.
+		 * AFTER RUN, never before: RUN resets the map to identity (Diatom's
 		 * ADR-0020, so a table sent for one game cannot silently govern the
 		 * next), and a map sent first would be discarded by the very launch it
 		 * was meant for. The race is benign - no input reaches a core before
@@ -900,17 +1037,14 @@ bool plat_resident_send(const plat_game *g)
 		 * that was never sent, one that was refused, and a test rig that could
 		 * not press the button - which cost an hour on 2026-08-31. Diatom logs
 		 * the receiving half for the same reason. */
-		{
-			const char *tm = plat_turbo_map(tag);
-			fprintf(stderr, "turbo: %s %s\n", tag ? tag : "?",
-			        tm && *tm ? tm : "(none)");
-			if (tm && *tm) dsend("SETMAP\tmap=%s", tm);
-		}
+		d_turbo = 0;
+		d_turbo_gba = tag && !strcmp(tag, "GBA");
+		d_turbo_send();
 
-		/* Same reasoning as turbo's SETMAP above: AFTER RUN, which resets
+		/* Same reasoning as the SETMAP above: AFTER RUN, which resets
 		 * Diatom's bindings to none (its ADR-0035), so a table sent first
 		 * would be discarded by the very launch it was meant for. Sent even
-		 * when empty - unlike turbo, which skips an empty map - so a game
+		 * when empty - unlike the map, which skips identity - so a game
 		 * that HAD bindings last session and had them cleared this one
 		 * actually loses them rather than keeping whatever the previous
 		 * RUN left behind (Diatom resets to none on every RUN regardless,
@@ -1076,6 +1210,63 @@ static void d_note_shot(const char *l)
 	d_on_shot(ok[4] == '1', path);
 }
 
+/* ---- turbo, chosen in the game (plorpos-tkh, Diatom's ADR-0045) ----------
+ * Diatom reports Turbo Assign; this keeps which buttons are turbo for the game
+ * now running and answers each change with the whole map (ADR-0020, ADR-0028:
+ * `b:b~3` is B pressed three frames and released three, about ten a second).
+ * Emptied at RUN, so a game's turbo ends with it; the menu and Muse leave it
+ * alone, and so does Diatom's map across PAUSE.
+ *
+ * Game Boy Advance's L2 and R2 are mGBA's own Turbo L and R. Mapped to none
+ * on GBA, always, so those two are free for hotkeys like everywhere else -
+ * the reason fixed X/Y turbo went too. */
+static const char *const turbo_names[] = { "a", "b", "x", "y", "l1", "r1", "l2", "r2" };
+#define TURBO_N ((int)(sizeof turbo_names / sizeof turbo_names[0]))
+#define TURBO_FRAMES 3
+
+static void d_turbo_send(void)
+{
+	char map[160];
+	int i, n = 0;
+
+	map[0] = '\0';
+	if (d_turbo_gba) n = snprintf(map, sizeof map, "l2:none,r2:none");
+	for (i = 0; i < TURBO_N; i++) {
+		bool gba_none = d_turbo_gba && i >= 6;   /* l2, r2 */
+		if (!(d_turbo & (1u << i)) || gba_none) continue;
+		n += snprintf(map + n, sizeof map - (size_t)n, "%s%s:%s~%d",
+		              n ? "," : "", turbo_names[i], turbo_names[i], TURBO_FRAMES);
+	}
+	fprintf(stderr, "turbo: %s\n", n ? map : "identity");
+	dsend("SETMAP\tmap=%s", n ? map : "identity");
+}
+
+/* "TURBO\tarm=1", "TURBO\tarm=0", "TURBO\tbtn=a", "TURBO\tclear=1" */
+static void d_note_turbo(const char *l)
+{
+	const char *v;
+	char up[4] = "";
+	int i;
+
+	if ((v = strstr(l, "arm="))) {
+		if (d_on_turbo) d_on_turbo(v[4] == '1' ? PLAT_TURBO_ARMED : PLAT_TURBO_CANCEL, "");
+	} else if (strstr(l, "clear=1")) {
+		d_turbo = 0;
+		d_turbo_send();
+		if (d_on_turbo) d_on_turbo(PLAT_TURBO_CLEARED, "");
+	} else if ((v = strstr(l, "btn="))) {
+		for (i = 0; i < TURBO_N; i++)
+			if (!strcmp(v + 4, turbo_names[i])) break;
+		if (i == TURBO_N) return;
+		d_turbo ^= 1u << i;
+		d_turbo_send();
+		for (int k = 0; turbo_names[i][k] && k < 3; k++)
+			up[k] = (char)toupper((unsigned char)turbo_names[i][k]);
+		if (d_on_turbo)
+			d_on_turbo(d_turbo & (1u << i) ? PLAT_TURBO_ON : PLAT_TURBO_OFF, up);
+	}
+}
+
 /* "DISPLAY\tmode=native\tfilter=nearest\trect=256x224+384+272" */
 static void d_note_display(const char *l)
 {
@@ -1097,19 +1288,26 @@ bool plat_resident_rect(SDL_Rect *out)
 
 /* ---- geometry --------------------------------------------------------- */
 
-int plat_screen_h = 768;
+int plat_screen_w = 1024, plat_screen_h = 768;
 static float g_scale = 1.0f;
 
 float plat_scale(void) { return g_scale; }
 
 /* At scale 1 the renderer is left exactly as SDL made it, so the Brick draws
- * the same bytes it did before there was a scale. */
+ * the same bytes it did before there was a scale.
+ *
+ * The scale fits 1024x768 - the Brick's screen, which every layout was tuned
+ * on - inside the panel, and the longer side gets the rest. A panel wider than
+ * 4:3 must not scale by its width: the RG SP's 720x480 would then be 683
+ * units tall, and the shelf's 768-unit stage (CF_STAGE_H) would hang off the
+ * top and bottom. */
 void plat_geometry_init(SDL_Renderer *r)
 {
 	int w = 0, h = 0;
 
 	if (SDL_GetRendererOutputSize(r, &w, &h) != 0 || w <= 0 || h <= 0) return;
-	g_scale = (float)w / TORTOS_SCREEN_W;
+	g_scale = (float)w / 1024 < (float)h / 768 ? (float)w / 1024 : (float)h / 768;
+	plat_screen_w = (int)(w / g_scale);
 	plat_screen_h = (int)(h / g_scale);
 	if (g_scale != 1.0f) SDL_RenderSetScale(r, g_scale, g_scale);
 }
@@ -1150,6 +1348,41 @@ bool plat_resident_sync_rect(int timeout_ms)
 	}
 	return false;
 }
+
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
+/* Diatom's answer to a SETAUDIO, at the shelf where nothing else reads the
+ * socket: true once it says it is on `want` ("" the default). Answers to
+ * earlier SETAUDIOs wait unread here - one saying the same device the boot
+ * left it on matched at once - so they are drained before the SETAUDIO this
+ * waits for. plorpos-cdd. */
+void plat_resident_audio_drain(void)
+{
+	char *l;
+
+	while ((l = dline(0))) {
+		if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
+		else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
+		else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
+	}
+}
+
+bool plat_resident_audio_wait(const char *want, int timeout_ms)
+{
+	unsigned t0 = SDL_GetTicks();
+	char *l;
+
+	if (dsock < 0) return false;
+	while (!(d_audio_known && !strcmp(d_audio_dev, want)) &&
+	       (int)(SDL_GetTicks() - t0) < timeout_ms) {
+		l = dline(timeout_ms - (int)(SDL_GetTicks() - t0));
+		if (!l) break;
+		if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
+		else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
+		else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
+	}
+	return d_audio_known && !strcmp(d_audio_dev, want);
+}
+#endif
 
 bool plat_resident_saved(const char *path, int timeout_ms)
 {
@@ -1278,6 +1511,7 @@ static int diatom_wait(void)
 			else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
 			else if (strncmp(l, "CHEEVO\t", 7) == 0) d_note_cheevo(l);
 			else if (strncmp(l, "SHOT\t", 5) == 0) d_note_shot(l);
+			else if (strncmp(l, "TURBO\t", 6) == 0) d_note_turbo(l);
 			else if (strncmp(l, "EXIT", 4) == 0) {
 				/* A crash and a quit arrive on the SAME line, and only the
 				 * reason tells them apart. This threw the line away and
@@ -1396,6 +1630,14 @@ int plat_resident_wait(void)
 	screen_yield(true);
 	r = diatom_wait();
 	screen_yield(false);
+#if defined(PLATFORM_H700)
+	/* A pause hands the input back too, and with it the level: take the
+	 * game's now, not at EXIT. Otherwise the jack poll below re-applies this
+	 * side's older level the moment the menu opens, and the game resumes at
+	 * it - every in-game menu "reset" the volume (2026-10-06). The Brick has
+	 * the same order; plorpos-7ny bead to check it there. */
+	if (r == RES_PAUSED) d_apply_levels();
+#endif
 
 	/* Input ownership just came back to this process, so anything remembered
 	 * about the jack was formed while something else was driving.
@@ -1459,6 +1701,10 @@ bool power_key_within(int ms, int value)
 	while (read(fd_power, &ev, sizeof ev) == (ssize_t)sizeof ev)
 		if (ev.type == EV_KEY && ev.code == KEY_POWER && ev.value == value)
 			hit = true;
+#if defined(PLATFORM_H700)
+		else if (ev.type == EV_KEY && ev.code == LID_OPEN_KEY && ev.value == value)
+			hit = true;
+#endif
 	return hit;
 }
 #endif
@@ -1650,6 +1896,8 @@ void plat_draw_osd(SDL_Renderer *r)
 {
 	if (!osd_kind) return;
 	if (SDL_GetTicks() - osd_shown_at > OSD_WINDOW_MS) { osd_kind = 0; return; }
+	/* Its going is a change too: one more frame when the window ends. */
+	ui_redraw_at(plat_osd_until());
 
 	float pct = (float)osd_val / osd_max;
 	if (pct < 0) pct = 0; else if (pct > 1) pct = 1;
@@ -1737,4 +1985,47 @@ bool battery_read(const char *dir, int *pct, bool *charging)
 	(void)charging;
 	return false;
 #endif
+}
+
+/* ---- Date & Time ---------------------------------------------------------- */
+
+bool plat_clock_set(time_t t)
+{
+	struct timeval tv = { .tv_sec = t, .tv_usec = 0 };
+
+	if (settimeofday(&tv, NULL) != 0) {
+		fprintf(stderr, "clock: settimeofday: %s\n", strerror(errno));
+		return false;
+	}
+#ifdef __linux__
+	/* The hardware clock keeps UTC, as the kernel reads it back at boot
+	 * (CONFIG_RTC_HCTOSYS). Without this the time set here would last until
+	 * the next power-off - on the Pixel 2, back to whatever the clock held
+	 * before, 2018 on one never set. */
+	{
+		struct tm tm;
+		struct rtc_time rt;
+		int fd = open("/dev/rtc0", O_WRONLY | O_CLOEXEC);
+
+		if (fd < 0) {
+			fprintf(stderr, "clock: no hardware clock: %s\n", strerror(errno));
+			return true;
+		}
+		gmtime_r(&t, &tm);
+		memset(&rt, 0, sizeof rt);
+		rt.tm_year = tm.tm_year; rt.tm_mon = tm.tm_mon; rt.tm_mday = tm.tm_mday;
+		rt.tm_hour = tm.tm_hour; rt.tm_min = tm.tm_min; rt.tm_sec = tm.tm_sec;
+		if (ioctl(fd, RTC_SET_TIME, &rt) != 0)
+			fprintf(stderr, "clock: hardware clock: %s\n", strerror(errno));
+		close(fd);
+	}
+#endif
+	return true;
+}
+
+void plat_clock_zone(const char *id)
+{
+	if (!id || !id[0]) return;
+	setenv("TZ", id, 1);
+	tzset();
 }

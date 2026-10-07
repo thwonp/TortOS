@@ -169,6 +169,9 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	 * back. It and Auto Sleep are mutually exclusive - main.c's
 	 * ST_SLEEP/ST_AUTO_OFF handling - so at most one of those two labels is
 	 * ever a real interval, and why the two sit together, Auto Off on top. */
+	/* Date & Time leads: setup, where the timers are settings (upstream
+	 * b3b4483, which put it in the top menu; ours is regrouped - z0d.1). */
+	out[ST_CLOCK]    = (menu_row){ "Date & Time", u->clock, true };
 	sys_menu_auto_off_label(u->auto_poweroff, b->a, sizeof b->a);
 	out[ST_AUTO_OFF] = (menu_row){ "Auto Off",        b->a, true };
 	sys_menu_auto_off_label(u->auto_off, b->c, sizeof b->c);
@@ -181,7 +184,7 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	/* TortOS-ib9: what the side switch does. Button Lock is an iPod's hold
 	 * switch, and only while music plays with the screen off - music_dark.
 	 * "muse" in the value says so (TortOS-mhw). */
-#if !defined(PLATFORM_GKD)
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)   /* no switch on the H700s */
 	out[ST_MUTESW]   = (menu_row){ "Mute Switch",
 	                               u->mute_lock ? "muse button lock" : "mute", true };
 #endif

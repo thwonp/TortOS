@@ -31,6 +31,15 @@ static int     g_spawned;
 #define COVER_RING 8
 static struct { char base[LIB_PATH * 2], file[LIB_PATH * 2 + 8]; } g_cov[COVER_RING];
 static int     g_cov_head, g_cov_n;
+/* The one year answer not taken yet: they are asked for one at a time. */
+static char    g_year_path[LIB_PATH * 2];
+static int     g_year;
+static bool    g_year_have;
+
+/* Who folders are by, answered and not yet taken, the same way. */
+#define ARTIST_RING 8
+static struct { char dir[LIB_PATH * 2], name[256]; } g_art[ARTIST_RING];
+static int     g_art_head, g_art_n;
 
 static char  **g_q;                 /* the queue, relative paths, ours */
 static int     g_qn;
@@ -309,6 +318,22 @@ static void event(const char *line)
 		field(line, "base", g_cov[k].base, sizeof g_cov[k].base);
 		field(line, "file", g_cov[k].file, sizeof g_cov[k].file);
 		g_cov_n++;
+	} else if (!strncmp(line, "YEAR", 4)) {
+		field(line, "path", g_year_path, sizeof g_year_path);
+		field(line, "year", v, sizeof v);
+		g_year = atoi(v);
+		g_year_have = true;
+	} else if (!strncmp(line, "ARTIST", 6)) {
+		int k = (g_art_head + g_art_n) % ARTIST_RING;
+
+		if (g_art_n == ARTIST_RING) {          /* the oldest makes room */
+			g_art_head = (g_art_head + 1) % ARTIST_RING;
+			g_art_n--;
+			k = (g_art_head + g_art_n) % ARTIST_RING;
+		}
+		field(line, "dir", g_art[k].dir, sizeof g_art[k].dir);
+		field(line, "name", g_art[k].name, sizeof g_art[k].name);
+		g_art_n++;
 	} else if (!strncmp(line, "ERROR", 5)) {
 		field(line, "why", v, sizeof v);
 		fprintf(stderr, "muse: %s\n", v);
@@ -546,6 +571,51 @@ bool musec_cover_take(char *base, size_t bn, char *file, size_t fn)
 	snprintf(file, fn, "%s", g_cov[g_cov_head].file);
 	g_cov_head = (g_cov_head + 1) % COVER_RING;
 	g_cov_n--;
+	return true;
+}
+
+bool musec_year_ask(const char *track)
+{
+	if (strpbrk(track, "\t\n")) return false;
+	if (!connected()) return false;
+	sendf("YEAR\tpath=%s/%s", g_root, track);
+	return g_fd >= 0;
+}
+
+bool musec_year_take(char *track, size_t n, int *year)
+{
+	size_t r = strlen(g_root);
+	const char *p = g_year_path;
+
+	if (!g_year_have) return false;
+	g_year_have = false;
+	if (!strncmp(p, g_root, r) && p[r] == '/') p += r + 1;
+	snprintf(track, n, "%s", p);
+	*year = g_year;
+	return true;
+}
+
+bool musec_artist_ask(const char *dir)
+{
+	if (strpbrk(dir, "\t\n")) return false;
+	if (!connected()) return false;
+	sendf("ARTIST\tdir=%s/%s", g_root, dir);
+	return g_fd >= 0;
+}
+
+bool musec_artist_take(char *dir, size_t dn, char *name, size_t nn)
+{
+	size_t root = strlen(g_root);
+	const char *d;
+
+	if (g_art_n == 0) return false;
+	d = g_art[g_art_head].dir;
+	/* Handed back as it was asked, under the music root. */
+	if (!strncmp(d, g_root, root) && d[root] == '/') d += root + 1;
+	snprintf(dir, dn, "%s", d);
+	snprintf(name, nn, "%s", g_art[g_art_head].name);
+	g_art_head = (g_art_head + 1) % ARTIST_RING;
+	g_art_n--;
 	return true;
 }
 

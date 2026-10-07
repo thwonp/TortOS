@@ -39,6 +39,8 @@ MGBA-MBC2-body.md
 
 sysroot/
 sysroot-gkd/
+sysroot-h700/
+sysroot-rgsp/
 
 # Local ROM/BIOS test set. 889 MB of content that must never enter history.
 /TortOS-Test-Set/

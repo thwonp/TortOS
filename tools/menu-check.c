@@ -248,7 +248,8 @@ static void tortos_menu_offline(void)
 	ck(rows[SC_IMPORT].live, "Import is selectable offline");
 	n = sys_menu_system_build(&u, rows, &b, &heading);
 	ck(n == ST_ROWS && !strcmp(heading, "System Settings"), "System Settings submenu");
-	ck(!strcmp(rows[ST_AUTO_OFF].label, "Auto Off"), "Auto Off leads");
+	ck(!strcmp(rows[ST_CLOCK].label, "Date & Time") && rows[ST_CLOCK].live, "Date & Time leads");
+	ck(!strcmp(rows[ST_AUTO_OFF].label, "Auto Off"), "Auto Off follows it");
 	ck(!strcmp(val(&rows[ST_SLEEP]), "2m"), "120s reads as 2m");
 	ck(!strcmp(val(&rows[ST_SUSPEND]), "90s"), "90s stays in seconds, as NextUI spells it");
 	ck(rows[ST_SUSPEND].live, "Suspend Timeout is reachable offline");

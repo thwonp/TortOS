@@ -96,11 +96,26 @@ static void scan(void)
 	touch("Radiohead/.media/The Bends.jpg");               /* a cover, not an album */
 	touch("Podcast/ep1.mp3");
 	touch("loose.mp3");                                   /* under the root: no album */
+	dir("Singles");                                       /* where the launcher moves it */
+	touch("Singles/A Single.mp3");
 
 	CHECK(ml_scan(root, &l), "a folder that is there scans");
-	CHECK(l.nartists == 2, "two artists with music, not the empty one: %d", l.nartists);
-	CHECK(l.nalbums == 3, "three albums, and .media is not one: %d", l.nalbums);
-	CHECK(l.ntracks == 4, "four tracks, no AppleDouble, no text: %d", l.ntracks);
+	CHECK(l.nartists == 3, "two artists with music and Singles, not the empty one: %d",
+	      l.nartists);
+	CHECK(l.nalbums == 4, "three albums and Singles, and .media is not one: %d", l.nalbums);
+	CHECK(l.ntracks == 5, "five tracks, no AppleDouble, no text, nothing loose: %d",
+	      l.ntracks);
+
+	printf("Singles\n");
+	{
+		int s = album_named(&l, ML_SINGLES);
+
+		CHECK(s >= 0 && l.albums[s].singles && !l.albums[s].book,
+		      "Music/Singles is an album marked as Singles");
+		CHECK(album_named(&l, "The Bends") >= 0 &&
+		      !l.albums[album_named(&l, "The Bends")].singles,
+		      "and no other album is");
+	}
 
 	bends  = album_named(&l, "The Bends");
 	bends2 = album_named(&l, "The Bends 2");
@@ -159,6 +174,9 @@ static void orders(void)
 	CHECK(!strcmp(ml_order_label(ML_BY_ALBUM, true), "Title") &&
 	      !strcmp(ml_order_label(ML_BY_ARTIST, true), "Author"),
 	      "and what it says on the books");
+	CHECK(ml_order_index("year") == ML_BY_YEAR &&
+	      !strcmp(ml_order_label(ML_BY_YEAR, false), "Year") &&
+	      !strcmp(ml_order_label(ML_BY_YEAR, true), "Year"), "year, on music and books");
 	CHECK(!strcmp(ml_order_name((ml_order)ML_ORDERS), "artist"),
 	      "a number out of range reads as the first order, not past the table");
 
@@ -180,18 +198,44 @@ static void orders(void)
 	CHECK(ml_scan(sub, &l) && l.nalbums == 5, "five albums: %d", l.nalbums);
 	if (l.nalbums != 5) { ml_free(&l); return; }
 
-	CHECK(ml_shelf_order(&l, ML_BY_ARTIST, false, out) == 5, "every album is music");
+	CHECK(ml_shelf_order(&l, ML_BY_ARTIST, false, NULL, out) == 5, "every album is music");
 	for (k = 0; k < 5; k++)
 		CHECK(out[k] == k, "by artist is the scan's order: card %d is album %d", k, out[k]);
 
-	ml_shelf_order(&l, ML_BY_ALBUM, false, out);
+	ml_shelf_order(&l, ML_BY_ALBUM, false, NULL, out);
 	for (k = 0; k < 5; k++)
 		CHECK(!strcmp(l.albums[out[k]].name, want[k]),
 		      "by album, card %d: want %s, got %s", k, want[k], l.albums[out[k]].name);
 	CHECK(!strncmp(l.tracks[l.albums[out[1]].first].path, "Blur/", 5) &&
 	      !strncmp(l.tracks[l.albums[out[2]].first].path, "Queen/", 6),
 	      "two of one title go in their artists' order");
-	CHECK(ml_shelf_order(&l, ML_BY_ALBUM, true, out) == 0, "and none is a book");
+	CHECK(ml_shelf_order(&l, ML_BY_ALBUM, true, NULL, out) == 0, "and none is a book");
+
+	/* Scan order: Blur/Greatest Hits, Blur/Parklife, Queen/Greatest Hits,
+	 * Radiohead/amnesiac, Radiohead/The Bends - case does not count
+	 * (plorpos-xav). */
+	{
+		int years[5] = { 1997, 1994, 0, 2001, 1995 };
+		const int want_y[5] = { 3, 0, 4, 1, 2 };
+
+		for (k = 0; k < 5; k++)
+			CHECK(!strcmp(l.albums[k].name, (const char *[]){ "Greatest Hits",
+			      "Parklife", "Greatest Hits", "amnesiac", "The Bends" }[k]),
+			      "scan order as assumed, album %d", k);
+		ml_shelf_order(&l, ML_BY_YEAR, false, years, out);
+		for (k = 0; k < 5; k++)
+			CHECK(out[k] == want_y[k], "by year newest first, none last: card %d is %d, want %d",
+			      k, out[k], want_y[k]);
+		years[4] = 1997;
+		ml_shelf_order(&l, ML_BY_YEAR, false, years, out);
+		CHECK(out[1] == 0 && out[2] == 4, "one year keeps artist order");
+		years[1] = -1;
+		ml_shelf_order(&l, ML_BY_YEAR, false, years, out);
+		CHECK(out[3] == 1 && out[4] == 2, "not known yet goes with none, in artist order");
+		ml_shelf_order(&l, ML_BY_YEAR, false, NULL, out);
+		for (k = 0; k < 5; k++)
+			CHECK(out[k] == k, "no years at all is artist order: card %d is %d", k, out[k]);
+	}
 	ml_free(&l);
 }
 
@@ -239,10 +283,10 @@ static void card(void)
 	      "paths are relative to the card: %s", l.tracks[l.albums[hs].first].path);
 	CHECK(ml_album_of(&l, "Audiobooks/Dungeon Crawler Carl 3/Book 3.m4b") == dcc,
 	      "which book a file is in");
-	n = ml_shelf_order(&l, ML_BY_ARTIST, true, out);
+	n = ml_shelf_order(&l, ML_BY_ARTIST, true, NULL, out);
 	CHECK(n == 2 && out[0] == hs && out[1] == dcc,
 	      "the book shelf is the books alone, by author: %d", n);
-	CHECK(ml_shelf_order(&l, ML_BY_ARTIST, false, out) == 1, "the music shelf the album alone");
+	CHECK(ml_shelf_order(&l, ML_BY_ARTIST, false, NULL, out) == 1, "the music shelf the album alone");
 
 	ml_cover_base(c, &l, dcc, img, sizeof img);
 	snprintf(want, sizeof want, "%s/Audiobooks/.media/Dungeon Crawler Carl 3", c);

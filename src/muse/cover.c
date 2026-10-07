@@ -39,6 +39,26 @@ static AVStream *pick(AVFormatContext *fmt, const char **ext)
 	return first;
 }
 
+int tag_year(const char *path)
+{
+	static const char *const keys[] = { "date", "year" };
+	AVFormatContext *fmt = NULL;
+	int k, i, y = 0;
+
+	if (avformat_open_input(&fmt, path, NULL, NULL) < 0) return -1;
+	for (k = 0; k < 2 && !y; k++) {
+		AVDictionaryEntry *e = av_dict_get(fmt->metadata, keys[k], NULL, 0);
+		/* Ogg and Opus keep their comments on the stream, not the file. */
+		if (!e && fmt->nb_streams) e = av_dict_get(fmt->streams[0]->metadata, keys[k], NULL, 0);
+		if (!e) continue;
+		for (i = 0; i < 4 && e->value[i] >= '0' && e->value[i] <= '9'; i++)
+			y = y * 10 + (e->value[i] - '0');
+		if (i < 4) y = 0;
+	}
+	avformat_close_input(&fmt);
+	return y;
+}
+
 int cover_extract(const char *path, const char *base, char *out, size_t n)
 {
 	AVFormatContext *fmt = NULL;
