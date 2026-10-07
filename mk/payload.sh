@@ -80,6 +80,7 @@ if [ "$PLATFORM" = gkd ]; then
 elif [ "$PLATFORM" = h700 ]; then
 	cp "$B/musectl" "$P/"
 	cp "$B/btplayer" "$P/"                # a headset's volume reports and buttons (tools/btplayer.c)
+	cp "$B/pico8sdl.so" "$P/"             # native PICO-8 quiet while Muse plays (tools/pico8sdl.c)
 	mkdir -p "$OUT/System" "$P/lib" "$P/pico8"
 	cp "$ROOT/sd/h700/launch_frontend.sh" "$OUT/System/"
 	cp "$ROOT/sd/h700/radio.sh" "$P/"     # Bluetooth: sourced by launch_frontend.sh AND by plat_sleep()

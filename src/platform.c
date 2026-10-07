@@ -571,6 +571,9 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		if (menu && !quit && !term_at) {
 			run_choice c = RUN_QUIT;
 
+#if defined(PLATFORM_H700)
+			child_audio_release();
+#endif
 			kill(pid, SIGSTOP);
 			if (child_hide(pid)) {
 				fprintf(stderr, "run: menu, child %d frozen\n", (int)pid);

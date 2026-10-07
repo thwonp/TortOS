@@ -10327,6 +10327,15 @@ static bool native_tick(void *ctx)
 {
 	(void)ctx;
 	muse_poll();
+#if defined(PLATFORM_H700)
+	/* Where PICO-8's sound should be now, which pico8sdl.so follows: nowhere
+	 * while Muse plays, else where Diatom would be sent. plorpos-7ny.35. */
+	{
+		aout_state s = aout_now();
+
+		plat_child_audio(musec_playing() ? NULL : aout_device(&s), g_bt_link);
+	}
+#endif
 	return musec_playing();
 }
 
@@ -10510,7 +10519,12 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 {
 	char home[CFG_STR * 2], desk[CFG_STR * 2 + 16], root[CFG_STR * 2];
 	char rect[48], preload[CFG_STR * 2 + 16], path[1024];
-	char *argv[18];
+	char *argv[18];   /* 18 at most: env, preload, PATH, AUDIODEV, the binary, 12 flags, NULL */
+#if defined(PLATFORM_H700)
+	char audiodev[160];
+	aout_state as = aout_now();
+	const char *dev = aout_device(&as);
+#endif
 	int n = 0, ow = 0, oh = 0, flags;
 
 	snprintf(home, sizeof home, "%s/Saves/pico-8", P_CARD);
@@ -10539,6 +10553,19 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 		         was ? was : "/usr/bin:/bin");
 		argv[n++] = path;
 	}
+#if defined(PLATFORM_H700)
+	/* To the headset when that is where the sound goes, by its PCM name in
+	 * .asoundrc (bt-alsa.sh) - SDL opens AUDIODEV as its default device.
+	 * Chosen once: pico8_64 opens its device at start and keeps it, so a
+	 * headset that comes or goes mid-session is not followed. Not while Muse
+	 * plays: a bluealsa PCM takes one opener, Muse holds it, and PICO-8 is
+	 * quiet then anyway (child_quiet). plorpos-7ny.35. */
+	if (dev[0] && !musec_playing() && (plat_pico8_preload || plat_pico8_path)) {
+		snprintf(audiodev, sizeof audiodev, "AUDIODEV=%s", dev);
+		argv[n++] = audiodev;
+		fprintf(stderr, "pico8_64: audio %s\n", dev);
+	}
+#endif
 	argv[n++] = (char *)bin;
 	argv[n++] = (char *)"-home";      argv[n++] = home;
 	argv[n++] = (char *)"-root_path"; argv[n++] = root;
@@ -10556,6 +10583,9 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	        n > flags ? argv[flags] : "-", n > flags ? argv[flags + 1] : "");
 	a->pico8_splore = splore;
 	a->to_splore = false;
+#if defined(PLATFORM_H700)
+	plat_child_audio_reset();
+#endif
 	if (splore) argv[n++] = (char *)"-splore";
 	else { argv[n++] = (char *)"-run"; argv[n++] = (char *)rom; }
 	argv[n] = NULL;

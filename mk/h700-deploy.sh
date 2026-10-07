@@ -24,7 +24,7 @@ DIATOM=${DIATOM_ELF:-$ROOT/../diatom/build/h700/diatom}
 adb get-state > /dev/null 2>&1 || { echo "no device over adb" >&2; exit 1; }
 [ -f "$ELF" ] || { echo "no $ELF; run: make PLATFORM=h700" >&2; exit 1; }
 case $MODE in muse|all)
-	for f in muse btplayer; do
+	for f in muse btplayer pico8sdl.so; do
 		[ -f "$ROOT/build/h700/$f" ] || { echo "no build/h700/$f; run: make PLATFORM=h700" >&2; exit 1; }
 	done ;;
 esac
@@ -52,7 +52,7 @@ case $MODE in muse|all)
 		adb push "$(readlink -f "$LIB/$l")" "$CARD/TortOS/lib/$l" > /dev/null
 	done
 	adb push "$LIB/COPYING.LGPLv2.1" "$CARD/TortOS/lib/" > /dev/null
-	for f in muse musectl btplayer; do
+	for f in muse musectl btplayer pico8sdl.so; do
 		adb push "$ROOT/build/h700/$f" "$CARD/TortOS/$f.new" > /dev/null
 		adb shell "chmod +x $CARD/TortOS/$f.new && mv -f $CARD/TortOS/$f.new $CARD/TortOS/$f"
 	done

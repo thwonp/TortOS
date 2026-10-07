@@ -164,6 +164,12 @@ bool plat_resident_ready(void);
 /* The same, for a launch: a Diatom that is up but still starting gets up to
  * 8 s to say READY rather than 400 ms (plorpos-7ny.34). */
 bool plat_resident_ready_wait(void);
+#if defined(PLATFORM_H700)
+/* Native PICO-8's sound device, followed by pico8sdl.so: NULL nothing, "" the
+ * default, else a PCM name with the headset's link id (plorpos-7ny.35). */
+void plat_child_audio(const char *dev, const char *link);
+void plat_child_audio_reset(void);
+#endif
 /* One game for the resident. `console` is a RetroAchievements console id and
  * `cheevos` a set file for Diatom to watch; 0 and NULL mean the game has no
  * achievements, which is the ordinary case (Diatom ADR-0026). `save` is the
