@@ -630,6 +630,18 @@ enum { COV_UNKNOWN, COV_ASKED, COV_JPG, COV_PNG, COV_FOLDER, COV_NONE };
 typedef struct { unsigned char st; unsigned asked_ms; } cover_state;
 static cover_state *g_cov;
 
+/* Each album's year, from its first track's tags, which only the daemon reads
+ * (plorpos-xav). Read once and kept in the card's db as "muse.year.<folder>" =
+ * "<folder mtime> <year>", so an album is asked about again only when its
+ * folder changes - never on every start. One per album in g_muse, rebuilt with
+ * it: 0 none in the tags, -1 not known yet. year_fill asks for the unknown
+ * ones one at a time, on the launcher's own screens and never during a game. */
+static int  *g_year;
+static int   g_year_asked = -1;
+static unsigned g_year_asked_ms, g_year_t0;
+static int   g_year_read;
+static void  year_fill(void);
+
 /* ---- Muse: books ------------------------------------------------------------ */
 
 /* Which kind Muse's shelf shows, music or books. Eric's, 2026-09-27: one Muse
@@ -2156,6 +2168,7 @@ static void aout_before_muse(void)
 static void muse_screen_poll(void)
 {
 	muse_poll();
+	year_fill();
 	if (musec_heard()) aout_apply(false);
 }
 
@@ -8221,6 +8234,87 @@ static bool cover_answers(void)
 	return landed;
 }
 
+/* The key album `al`'s year is kept under, and its folder's mtime, -1 when it
+ * cannot be read. */
+static long long year_key(int al, char *key, size_t n)
+{
+	const char *p = g_muse.tracks[g_muse.albums[al].first].path;
+	const char *slash = strrchr(p, '/');
+	char dir[LIB_PATH * 2 + 8];
+	struct stat st;
+	int k = slash ? (int)(slash - p) : 0;
+
+	snprintf(key, n, "muse.year.%.*s", k, p);
+	snprintf(dir, sizeof dir, "%s/%.*s", g_muse_root, k, p);
+	return stat(dir, &st) == 0 ? (long long)st.st_mtime : -1;
+}
+
+/* The years kept from earlier visits, for the albums whose folders have not
+ * changed since; the rest are left to year_fill. */
+static void year_load(void)
+{
+	char key[LIB_PATH + 16], val[48];
+	long long m, was;
+	int i, y;
+
+	free(g_year);
+	g_year = malloc(sizeof *g_year * (size_t)g_muse.nalbums);
+	g_year_asked = -1;
+	g_year_read = 0;
+	if (!g_year) return;
+	for (i = 0; i < g_muse.nalbums; i++) {
+		g_year[i] = -1;
+		if (g_muse.albums[i].n <= 0) { g_year[i] = 0; continue; }
+		m = year_key(i, key, sizeof key);
+		db_get_str(db_lib(), key, val, sizeof val, "");
+		if (m >= 0 && sscanf(val, "%lld %d", &was, &y) == 2 && was == m) g_year[i] = y;
+	}
+}
+
+/* One step of reading the years nobody knows yet: take the daemon's answer,
+ * keep it, ask about the next album. Answers are matched by folder, so one
+ * that lands after a rescan finds its album or none. An answer lost with the
+ * daemon is asked for again after 5 s, as a cover is. */
+static void year_fill(void)
+{
+	char track[LIB_PATH * 2], key[LIB_PATH + 16], val[48];
+	unsigned now = plat_now_ms();
+	int al, y, i;
+
+	if (!g_year) return;
+	if (musec_year_take(track, sizeof track, &y)) {
+		al = ml_album_of(&g_muse, track);
+		if (al >= 0 && g_year[al] < 0) {
+			long long m = year_key(al, key, sizeof key);
+
+			/* Unreadable is none for now and not kept: a card that
+			 * hiccuped is asked again next time, not believed for good. */
+			g_year[al] = y > 0 ? y : 0;
+			if (y >= 0 && m >= 0) {
+				snprintf(val, sizeof val, "%lld %d", m, y);
+				db_set_str(db_lib(), key, val);
+			}
+			g_year_read++;
+		}
+		if (al == g_year_asked) g_year_asked = -1;
+	}
+	if (g_year_asked >= 0 && now - g_year_asked_ms < 5000) return;
+	for (i = 0; i < g_muse.nalbums && g_year[i] >= 0; i++) {}
+	if (i == g_muse.nalbums) {
+		if (g_year_read) {
+			fprintf(stderr, "muse: %d years read in %u ms\n", g_year_read, now - g_year_t0);
+			g_year_read = 0;
+		}
+		g_year_asked = -1;
+		return;
+	}
+	if (!g_year_read && g_year_asked < 0) g_year_t0 = now;
+	if (musec_year_ask(g_muse.tracks[g_muse.albums[i].first].path)) {
+		g_year_asked = i;
+		g_year_asked_ms = now;
+	}
+}
+
 /* A cover's shape, wherever it is drawn: square, and square-cornered - Eric's
  * call, 2026-09-18; a sleeve is a square. An ARGB8888 surface, replaced when
  * it had to be cropped.
@@ -11827,6 +11921,8 @@ static void build_muse_shelf(app *a)
 	ml_free(&g_muse);
 	free(g_cov);
 	g_cov = NULL;
+	free(g_year);
+	g_year = NULL;
 	free(g_book_done);
 	g_book_done = NULL;
 	np_forget();
@@ -11836,6 +11932,7 @@ static void build_muse_shelf(app *a)
 		return;
 	}
 	g_cov = calloc((size_t)g_muse.nalbums, sizeof *g_cov);
+	year_load();
 	g_book_done = calloc((size_t)g_muse.nalbums, sizeof *g_book_done);
 	if (!g_book_done) { ml_free(&g_muse); return; }
 	for (i = 0; i < g_muse.nalbums; i++) {
@@ -13035,6 +13132,7 @@ int main(int argc, char *argv[])
 		 * has to be drawn again to ask the worker for. */
 		muse_poll();
 		if (cover_answers()) ui_redraw_now();
+		year_fill();
 
 		/* Auto Off is the same line as the power button, on every screen
 		 * that draws. Diatom watches it during a game, because it owns the
