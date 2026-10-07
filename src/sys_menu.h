@@ -57,7 +57,7 @@ typedef enum {
 
 /* Settings > UI Settings: how the shelves look, and nothing about what is on
  * them. */
-typedef enum { US_THEME, US_DIR, US_ROWS } us_row;
+typedef enum { US_THEME, US_DIR, US_ORDER, US_ROWS } us_row;
 
 /* Settings > Scraping (TortOS-mh0): everything that puts art and text on a
  * card, in one place - the Box Art job, the ScreenScraper account it signs in
@@ -160,6 +160,7 @@ typedef struct {
 	const char *ss_name;     /* only read when ss_in */
 	const char *cards;       /* the showing card set's name, from CARD_SETS */
 	const char *cards_dir;   /* which way the shelves run, from CARD_DIRS */
+	const char *sys_order;   /* the systems shelf's order, from SYS_ORDERS */
 	int         auto_off;    /* Auto Sleep, seconds, 0 for off */
 	int         auto_poweroff; /* Auto Off, seconds, 0 for off - mutually
 	                             * exclusive with auto_off, see PM_AUTO_OFF */

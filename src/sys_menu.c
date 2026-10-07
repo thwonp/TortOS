@@ -194,11 +194,13 @@ int sys_menu_system_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 int sys_menu_ui_build(const sys_ui *u, menu_row *out, const char **heading)
 {
 	*heading = "UI Settings";
-	/* Both change how the shelf looks and nothing about what is on it. Text
+	/* All three change how the shelf looks and nothing about what is on it
+	 * - System Order moves the cards, it does not add or drop any. Text
 	 * Size stood here until the band it offered turned out to be too narrow
 	 * to matter - src/ui.c. */
 	out[US_THEME] = (menu_row){ "UI Theme",     u->cards,     true };
 	out[US_DIR]   = (menu_row){ "UI Direction", u->cards_dir, true };
+	out[US_ORDER] = (menu_row){ "System Order", u->sys_order, true };
 	return US_ROWS;
 }
 

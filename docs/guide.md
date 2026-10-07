@@ -144,7 +144,7 @@ than any one console:
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget |
 | **Audio Output** | `Auto` or `Speaker`, and where Auto landed - see **Audio** below |
 | **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off**: how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Suspend Timeout**: how long a sleeping device waits for POWER before it suspends. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
-| **UI Settings** | **UI Theme**: `Plain Jane` or `Fancy Pants`, which art the shelves wear. **UI Direction**: `Horizontal` or `Vertical` - see below |
+| **UI Settings** | **UI Theme**: `Plain Jane` or `Fancy Pants`, which art the shelves wear. **UI Direction**: `Horizontal` or `Vertical`. **System Order**: `Year`, `A-Z` or `Maker` - see below |
 | **Scraping** | **Box Art**: fetch what the whole library is missing. **ScreenScraper**: the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build`. **Import gamelist.xml metadata**: see below |
 | **Controls** | every button and what it does, a page per place |
 | **About** | version, address, battery, uptime |
@@ -432,13 +432,19 @@ over from an earlier project by the same author and retuned. The focused card
 sits in a soft glow tinted with its system's color, and the whole background
 carries a wash of that color that eases as you move between systems.
 
-Two things about that are yours to choose, and they are independent.
+Three things about that are yours to choose, and they are independent.
 
 **UI Theme** picks the art. `Plain Jane` is a drawn card per system, with the
 name on it. `Fancy Pants` is a photograph of the console itself, background
 removed, and because a photograph does not name itself the shelf writes the
 name underneath. A theme is a directory under `res/cards/`, so adding one is
 dropping in a folder - no code and no configuration.
+
+**System Order** picks the order of the systems. `Year` is release order, with
+PICO-8 and Arcade first. `A-Z` is by name. `Maker` groups them - Arcade,
+Nintendo, Sega, NEC, SNK, Sony, then PICO-8 - each group in release order.
+Favorites stays first and Muse last whichever you pick, and the shelf reorders
+the moment you change it.
 
 **UI Direction** picks how you move. `Horizontal` is the row above.
 

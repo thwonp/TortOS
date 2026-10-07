@@ -189,6 +189,8 @@ typedef struct {
  * the input loop calls it the moment a favorite changes. */
 static void refresh_favorites_shelf(app *a);
 static void build_muse_shelf(app *a, bool bg);
+static void order_systems(app *a);
+static void refresh_favorites_shelf(app *a);
 static void muse_walk_poll(app *a);
 /* How a Muse screen was left: back one level, Muse closed altogether, or the
  * library rebuilt under it by Rescan Folder, so every album index it held is
@@ -606,6 +608,8 @@ static SDL_Texture *load_image(SDL_Renderer *r, const char *path, int *w, int *h
  * draw itself. */
 static int g_cards;
 static int g_dir;
+/* System Order (plorpos-xpt.9), read at boot like the two above. */
+static sys_order g_order;
 
 /* Muse: what the Music folder holds, read at boot and on every rescan, and
  * the green its card is drawn in - the iPod's own, sampled from the photograph
@@ -4719,6 +4723,7 @@ static void menu_ui(app *a, screen_id screen, int sys, sys_ui *u_,
 		u.ss_name   = u.ss_in ? ss_user() : NULL;
 		u.cards     = CARD_SETS[g_cards].name;
 		u.cards_dir = CARD_DIRS[g_dir].name;
+		u.sys_order = SYS_ORDERS[g_order].name;
 		u.auto_off  = a->auto_off;
 		u.auto_poweroff = a->auto_poweroff;
 		u.suspend_timeout = plat_suspend_timeout_secs();
@@ -7608,6 +7613,16 @@ static menu_result ui_settings_key(app *a, void *ctx, in_button key, int sel)
 	if (sel == US_DIR && (d || key == IN_ACCEPT)) {
 		g_dir = cards_dir_step(g_dir, d ? d : 1);
 		db_set_str(db_dev(), "cards_dir", CARD_DIRS[g_dir].id);
+		return MENU_STAY;
+	}
+
+	/* The systems shelf's order, applied at once: the shelf is reordered in
+	 * place with its cards, and Favorites rebuilt over the new places. */
+	if (sel == US_ORDER && (d || key == IN_ACCEPT)) {
+		g_order = (sys_order)((g_order + (d ? d : 1) + SYS_ORDER_COUNT) % SYS_ORDER_COUNT);
+		db_set_str(db_dev(), "sys_order", SYS_ORDERS[g_order].id);
+		order_systems(a);
+		refresh_favorites_shelf(a);
 		return MENU_STAY;
 	}
 
@@ -12223,6 +12238,46 @@ static void refresh_favorites_shelf(app *a)
 	cf_reset(&a->cf_sys, a->sys_cursor);
 }
 
+/* Two systems trade places, with everything their index keys: the games,
+ * the card, and the shelf cursor if it is on either. */
+static void swap_systems(app *a, int i, int j)
+{
+	system_cfg ts = a->sys.systems[i];
+	sysview tv = a->view[i];
+	SDL_Texture *tt = a->sys_tex[i];
+	int tw = a->sys_w[i], th = a->sys_h[i];
+	float tc = a->sys_cb[i];
+
+	a->sys.systems[i] = a->sys.systems[j]; a->sys.systems[j] = ts;
+	a->view[i] = a->view[j];               a->view[j] = tv;
+	a->sys_tex[i] = a->sys_tex[j];         a->sys_tex[j] = tt;
+	a->sys_w[i] = a->sys_w[j];             a->sys_w[j] = tw;
+	a->sys_h[i] = a->sys_h[j];             a->sys_h[j] = th;
+	a->sys_cb[i] = a->sys_cb[j];           a->sys_cb[j] = tc;
+	if (a->sys_cursor == i) a->sys_cursor = j;
+	else if (a->sys_cursor == j) a->sys_cursor = i;
+}
+
+/* Put the systems shelf in System Order (plorpos-xpt.9).
+ *
+ * Favorites stays first and Muse last in every order: neither is a machine
+ * with a maker or a release date. At boot and on a rescan this runs straight
+ * after the config is read, before anything is indexed by system. Changed
+ * from the menu it runs on a built shelf, and Favorites' owner indices are
+ * then the one thing left pointing at old places - the caller rebuilds that
+ * shelf with refresh_favorites_shelf, which also finds the cursor again by
+ * tag. Seventeen rows, so an insertion sort by swaps is plenty. */
+static void order_systems(app *a)
+{
+	int lo = fav_shelf_present(a) ? 1 : 0, hi = a->sys.count, i, j;
+
+	if (hi > 0 && is_muse(&a->sys.systems[hi - 1])) hi--;
+	for (i = lo + 1; i < hi; i++)
+		for (j = i; j > lo && cfg_order_cmp(&a->sys.systems[j - 1],
+		                                    &a->sys.systems[j], g_order) > 0; j--)
+			swap_systems(a, j - 1, j);
+}
+
 /* Muse's shelf: a card per album, and which album each card is. Built in the
  * folder's own order, by artist; the order chosen for it is put on it by
  * sort_all once the setting has been read, the way every shelf's is. */
@@ -12791,6 +12846,7 @@ static void rescan_all(app *a)
 		a->screen = SCREEN_SYSTEMS;
 		return;
 	}
+	order_systems(a);
 
 	scan_all(a, false);
 	display_load(a);     /* indexes by tag, so it is safe to run again */
@@ -13595,6 +13651,14 @@ int main(int argc, char *argv[])
 	if (!cfg_load_systems(path, &a.sys)) {
 		fprintf(stderr, "no usable %s\n", path);
 		return 1;
+	}
+	/* Ordered before the scan, which indexes every shelf by its place. */
+	{
+		char id[16];
+
+		db_get_str(db_dev(), "sys_order", id, sizeof id, SYS_ORDER_DEFAULT);
+		g_order = cfg_order_index(id);
+		order_systems(&a);
 	}
 
 	/* Before the scan, because the scan builds the Favorites shelf out of

@@ -26,7 +26,7 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
         check check-cheevos check-hare check-httpd check-idle check-rahash \
         check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
         check-db check-stats check-sort check-bt check-backlog check-ss check-hkbind check-shaderlist \
-        check-gbpal check-titles check-clock hooks storeprobe deploy restart logs
+        check-gbpal check-titles check-clock check-sysorder hooks storeprobe deploy restart logs
 
 ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl
@@ -44,7 +44,7 @@ CHECKS = check-cheevos check-hare check-httpd check-idle check-rahash \
          check-raset check-xfer check-menus check-artscrape check-artrun check-audioout \
          check-db check-stats check-sort check-bt check-backlog check-ss \
          check-muselib check-musequeue check-museart check-controls check-hkbind check-shaderlist check-gbpal \
-         check-gamelist check-logpack check-titles check-clock
+         check-gamelist check-logpack check-titles check-clock check-sysorder
 
 check:
 	@fail=0; for c in $(CHECKS); do \
@@ -559,6 +559,15 @@ build-native/clock-check: tools/clock-check.c src/clock.c src/clock.h FORCE
 	@mkdir -p build-native
 	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
 	      -o $@ tools/clock-check.c src/clock.c
+
+# System Order over the shipped systems.cfg (plorpos-xpt.9).
+check-sysorder: build-native/sysorder-check
+	@./build-native/sysorder-check
+
+build-native/sysorder-check: tools/sysorder-check.c src/config.c src/config.h config/systems.cfg FORCE
+	@mkdir -p build-native
+	$(CC) -std=gnu11 -Wall -Wextra -D_GNU_SOURCE -O1 -g \
+	      -o $@ tools/sysorder-check.c src/config.c
 
 check-titles: build-native/titles-check
 	@./build-native/titles-check; s=$$?; \
