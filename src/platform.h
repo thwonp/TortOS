@@ -164,11 +164,14 @@ bool plat_resident_ready(void);
 /* The same, for a launch: a Diatom that is up but still starting gets up to
  * 8 s to say READY rather than 400 ms (plorpos-7ny.34). */
 bool plat_resident_ready_wait(void);
-#if defined(PLATFORM_H700)
+#if !defined(PLATFORM_GKD)
 /* Native PICO-8's sound device, followed by pico8sdl.so: NULL nothing, "" the
- * default, else a PCM name with the headset's link id (plorpos-7ny.35). */
+ * default, else a PCM name with the headset's link id (plorpos-7ny.35, the
+ * Brick's plorpos-cdd). */
 void plat_child_audio(const char *dev, const char *link);
 void plat_child_audio_reset(void);
+#endif
+#if defined(PLATFORM_H700)
 /* An SDL game-controller mapping for the pad, as SDL_GAMECONTROLLERCONFIG
  * wants it, for native PICO-8 (plorpos-7ny.41). */
 extern const char plat_pico8_pad[];
@@ -275,7 +278,11 @@ void plat_draw_paused(SDL_Renderer *r, SDL_Texture *bg);
  * the new rect, and the menu wants it now so its backdrop can redraw where the
  * game is about to be, rather than on the next wait after resuming. A missed
  * reply costs a stale backdrop, never a hang. */
-bool plat_resident_sync_rect(int timeout_ms);   /* false: timed out, or ERROR */
+bool plat_resident_sync_rect(int timeout_ms);
+/* Wait up to timeout_ms for Diatom to say it is on `want`, "" the default
+ * (Brick, plorpos-cdd). */
+bool plat_resident_audio_wait(const char *want, int timeout_ms);
+void plat_resident_audio_drain(void);   /* before that SETAUDIO: old answers out */   /* false: timed out, or ERROR */
 /* Read replies for up to timeout_ms until Diatom confirms the SAVE to path
  * (its SAVED line). False on an ERROR, a timeout, or no Diatom at all. */
 bool plat_resident_saved(const char *path, int timeout_ms);

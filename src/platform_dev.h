@@ -49,8 +49,6 @@ bool power_key_within(int ms, int value);
  * KEY_INSERT, opening KEY_DELETE, each held about a second (measured
  * 2026-10-06). Closing is a POWER tap; opening wakes a light sleep - a deep
  * one only POWER can end, BaseOS's Super Standby leaves the lid out. */
-/* A headset native PICO-8 holds, let go before its menu freezes it. */
-void child_audio_release(void);
 #define LID_CLOSE_KEY 110
 #define LID_OPEN_KEY  111
 #endif

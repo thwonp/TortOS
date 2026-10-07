@@ -11,6 +11,10 @@
  * (plorpos-reo.11): the launcher's child_quiet creates QUIET_FLAG, and the
  * audio callback below writes silence over PICO-8's samples while it exists.
  * The flag is on tmpfs, so checking it once a buffer costs no card I/O.
+ *
+ * And it moves PICO-8's sound to where the launcher says (see `watch`): the
+ * headset, the speaker, or nothing while Muse holds the headset. Also
+ * preloaded on the H700, whose SDL has sensors.
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>
@@ -18,7 +22,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define QUIET_FLAG "/tmp/plorpos-pico8-quiet"   /* platform_brick.c's too */
+#define QUIET_FLAG "/tmp/plorpos-pico8-quiet"   /* platform_brick.c's and platform_h700.c's too */
 
 #define SDL_INIT_SENSOR 0x00008000u
 
@@ -60,9 +64,8 @@ static void quiet_cb(void *userdata, uint8_t *stream, int len)
 	if (access(QUIET_FLAG, F_OK) == 0) memset(stream, silence, (size_t)len);
 }
 
-#ifdef PICO8_FOLLOW
-/* The H700's own: PICO-8's sound follows where the launcher says it should go
- * (plorpos-7ny.35). pico8_64 opens its device once, at start; this reopens it
+/* PICO-8's sound follows where the launcher says it should go (plorpos-7ny.35,
+ * the Brick's plorpos-cdd). pico8_64 opens its device once, at start; this reopens it
  * whenever the target changes - a headset that connects or goes, a cable, Muse
  * starting (then nothing is held at all: PICO-8 is quiet anyway, and the
  * headset takes one opener, which Muse needs) - and when SDL lost the device
@@ -76,7 +79,7 @@ static void quiet_cb(void *userdata, uint8_t *stream, int len)
 #include <stdio.h>
 #include <stdlib.h>
 
-#define AUDIO_TARGET "/tmp/plorpos-pico8-audio"       /* platform_h700.c's too */
+#define AUDIO_TARGET "/tmp/plorpos-pico8-audio"       /* platform.c's too */
 #define AUDIO_NOW    "/tmp/plorpos-pico8-audio-now"   /* and this */
 #define SDL_AUDIO_STOPPED 0                           /* SDL_GetAudioStatus */
 
@@ -202,7 +205,6 @@ void SDL_UnlockAudio(void)
 	real();
 	pthread_mutex_unlock(&mx);
 }
-#endif
 
 /* PICO-8 plays through SDL_OpenAudio's callback: put quiet_cb in front of
  * it. SDL keeps its own copy of the spec, so the caller's is given back as
@@ -219,10 +221,16 @@ int SDL_OpenAudio(audio_spec *desired, audio_spec *obtained)
 	silence = desired->format == AUDIO_U8 ? 0x80 : 0;
 	desired->callback = quiet_cb;
 	r = real(desired, obtained);
+	if (r != 0 && getenv("AUDIODEV")) {
+		/* The headset would not open (another holds it, or it has just gone):
+		 * the default instead, never no sound at all - `watch` moves it to
+		 * the headset once that opens. plorpos-cdd. */
+		unsetenv("AUDIODEV");
+		r = real(desired, obtained);
+	}
 	desired->callback = game_cb;
 	if (r == 0 && obtained)
 		silence = obtained->format == AUDIO_U8 ? 0x80 : 0;
-#ifdef PICO8_FOLLOW
 	if (r == 0) {
 		const char *d = getenv("AUDIODEV");
 		pthread_t th;
@@ -245,6 +253,5 @@ int SDL_OpenAudio(audio_spec *desired, audio_spec *obtained)
 		}
 		pthread_mutex_unlock(&mx);
 	}
-#endif
 	return r;
 }

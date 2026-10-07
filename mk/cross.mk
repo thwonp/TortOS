@@ -105,12 +105,12 @@ $(BUILD)/btplayer: tools/btplayer.c
 	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -o $@ $< -ldl
 
 # Preloaded into native PICO-8 on the Brick (the firmware SDL has no sensors
-# and PICO-8 asks for them) and the H700 (its sound follows the headset,
-# PICO8_FOLLOW). See the file.
+# and PICO-8 asks for them) and the H700: quiet while Muse plays, and its
+# sound follows the headset. See the file.
 $(BUILD)/pico8sdl.so: tools/pico8sdl.c
 	mkdir -p $(BUILD)
-	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -shared -fPIC \
-		$(if $(filter h700,$(PLATFORM)),-DPICO8_FOLLOW -pthread) -o $@ $< -ldl
+	$(CC) -O2 -mcpu=cortex-a53 -Wall -Wextra -std=gnu11 -shared -fPIC -pthread \
+		-o $@ $< -ldl
 
 $(BUILD)/setbright: tools/setbright.c
 	mkdir -p $(BUILD)

@@ -431,6 +431,63 @@ static void level_nudge(bool bright, int d)
 }
 #endif
 
+#if !defined(PLATFORM_GKD)
+/* Where native PICO-8's sound goes, for pico8sdl.so's watcher to follow
+ * (plorpos-7ny.35): "-" nothing, "" the default device, else the headset's
+ * PCM and its link id - a headset that went and came back reopens. tmpfs. */
+#define PICO8_AUDIO     "/tmp/plorpos-pico8-audio"       /* tools/pico8sdl.c's too */
+#define PICO8_AUDIO_NOW "/tmp/plorpos-pico8-audio-now"   /* what it has open */
+
+static char pa_said[192];
+
+void plat_child_audio(const char *dev, const char *link)
+{
+	char want[192];
+	FILE *f;
+
+	snprintf(want, sizeof want, "%s\t%s\n", dev ? dev : "-",
+	         dev && dev[0] && link ? link : "");
+	if (!strcmp(want, pa_said)) return;
+	if (!(f = fopen(PICO8_AUDIO ".tmp", "w"))) return;
+	fputs(want, f);
+	if (fclose(f) != 0 || rename(PICO8_AUDIO ".tmp", PICO8_AUDIO) != 0) return;
+	snprintf(pa_said, sizeof pa_said, "%s", want);
+}
+
+void plat_child_audio_reset(void)
+{
+	unlink(PICO8_AUDIO);
+	unlink(PICO8_AUDIO_NOW);
+	pa_said[0] = '\0';
+}
+
+/* Before the menu freezes it: a headset PICO-8 holds is let go first, so Muse
+ * started from the menu can have it - a bluealsa PCM takes one opener, and a
+ * frozen process lets go of nothing. Costs the menu one headset close, only
+ * while PICO-8 is on the headset (the user's choice, 2026-10-07). */
+static void child_audio_release(void)
+{
+	char now[192] = "";
+	unsigned t0 = plat_now_ms();
+	FILE *f = fopen(PICO8_AUDIO_NOW, "r");
+
+	if (!f) return;
+	if (!fgets(now, sizeof now, f)) now[0] = '\0';
+	fclose(f);
+	if (!now[0] || now[0] == '-' || now[0] == '\t') return;   /* nothing, or the codec */
+	plat_child_audio(NULL, NULL);
+	while (plat_now_ms() - t0 < 400) {
+		usleep(5000);
+		if (!(f = fopen(PICO8_AUDIO_NOW, "r"))) break;
+		if (!fgets(now, sizeof now, f)) now[0] = '\0';
+		fclose(f);
+		if (now[0] == '-') break;
+	}
+	fprintf(stderr, "run: headset %s in %u ms\n",
+	        now[0] == '-' ? "let go" : "NOT let go", plat_now_ms() - t0);
+}
+#endif
+
 int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
              run_menu_fn on_menu, run_tick_fn on_tick, void *ctx)
 {
@@ -571,7 +628,7 @@ int plat_run(char *const argv[], const char *const envkv[], const char *workdir,
 		if (menu && !quit && !term_at) {
 			run_choice c = RUN_QUIT;
 
-#if defined(PLATFORM_H700)
+#if !defined(PLATFORM_GKD)
 			child_audio_release();
 #endif
 			kill(pid, SIGSTOP);
@@ -1220,6 +1277,41 @@ bool plat_resident_sync_rect(int timeout_ms)
 	}
 	return false;
 }
+
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
+/* Diatom's answer to a SETAUDIO, at the shelf where nothing else reads the
+ * socket: true once it says it is on `want` ("" the default). Answers to
+ * earlier SETAUDIOs wait unread here - one saying the same device the boot
+ * left it on matched at once - so they are drained before the SETAUDIO this
+ * waits for. plorpos-cdd. */
+void plat_resident_audio_drain(void)
+{
+	char *l;
+
+	while ((l = dline(0))) {
+		if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
+		else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
+		else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
+	}
+}
+
+bool plat_resident_audio_wait(const char *want, int timeout_ms)
+{
+	unsigned t0 = SDL_GetTicks();
+	char *l;
+
+	if (dsock < 0) return false;
+	while (!(d_audio_known && !strcmp(d_audio_dev, want)) &&
+	       (int)(SDL_GetTicks() - t0) < timeout_ms) {
+		l = dline(timeout_ms - (int)(SDL_GetTicks() - t0));
+		if (!l) break;
+		if (strncmp(l, "AUDIO\t", 6) == 0) d_note_audio(l);
+		else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
+		else if (strncmp(l, "LEVEL\t", 6) == 0) d_note_level(l);
+	}
+	return d_audio_known && !strcmp(d_audio_dev, want);
+}
+#endif
 
 bool plat_resident_saved(const char *path, int timeout_ms)
 {

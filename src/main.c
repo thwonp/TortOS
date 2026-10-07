@@ -1882,6 +1882,9 @@ static void aout_save(aout_policy p)
  * prevent. The shell loop already knows, so it writes and this reads. */
 #if !defined(PLATFORM_GKD)
 static char g_bt_link[32];    /* the published link's ACL handle, see bt_reconnect */
+/* Native PICO-8 is running and may hold the headset: Diatom stays off it, as
+ * for Muse (aout_apply). Set on the Brick only, see run_pico8. plorpos-cdd. */
+static bool g_pico8_runs;
 #endif
 
 static const char *aout_bt_sink(void)
@@ -2149,7 +2152,7 @@ static void aout_apply(bool force)
 		if (muse) musec_sink_again();
 	}
 	snprintf(link_seen, sizeof link_seen, "%s", out[0] ? g_bt_link : "");
-	aout_tell_diatom(&s, muse ? "" : out, force || (fresh && !muse), muse);
+	aout_tell_diatom(&s, muse || g_pico8_runs ? "" : out, force || (fresh && !muse), muse);
 	if (muse) musec_sink(out);
 	bt_volume_follow(out, fresh);
 #endif
@@ -10616,9 +10619,10 @@ static bool native_tick(void *ctx)
 {
 	(void)ctx;
 	muse_poll();
-#if defined(PLATFORM_H700)
+#if !defined(PLATFORM_GKD)
 	/* Where PICO-8's sound should be now, which pico8sdl.so follows: nowhere
-	 * while Muse plays, else where Diatom would be sent. plorpos-7ny.35. */
+	 * while Muse plays, else where Diatom would be sent. plorpos-7ny.35,
+	 * plorpos-cdd. */
 	{
 		aout_state s = aout_now();
 
@@ -10810,11 +10814,13 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	char rect[48], preload[CFG_STR * 2 + 16], path[1024];
 #if defined(PLATFORM_H700)
 	char *argv[19];   /* 19 at most: env, preload, PATH, pad, AUDIODEV, the binary, 12 flags, NULL */
+#else
+	char *argv[18];   /* 18 at most: env, preload, PATH, AUDIODEV, the binary, 12 flags, NULL */
+#endif
+#if !defined(PLATFORM_GKD)
 	char audiodev[160];
 	aout_state as = aout_now();
 	const char *dev = aout_device(&as);
-#else
-	char *argv[18];   /* 18 at most: env, preload, PATH, the binary, 12 flags, NULL */
 #endif
 	int n = 0, ow = 0, oh = 0, flags;
 
@@ -10849,16 +10855,35 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	 * (plorpos-7ny.41). */
 	if (plat_pico8_preload || plat_pico8_path)
 		argv[n++] = (char *)plat_pico8_pad;
+#endif
+#if !defined(PLATFORM_GKD)
 	/* To the headset when that is where the sound goes, by its PCM name in
 	 * .asoundrc (bt-alsa.sh) - SDL opens AUDIODEV as its default device.
-	 * Chosen once: pico8_64 opens its device at start and keeps it, so a
-	 * headset that comes or goes mid-session is not followed. Not while Muse
+	 * Only the device it starts on: pico8_64 opens one at start and keeps it,
+	 * and pico8sdl.so moves it from there (plat_child_audio). Not while Muse
 	 * plays: a bluealsa PCM takes one opener, Muse holds it, and PICO-8 is
-	 * quiet then anyway (child_quiet). plorpos-7ny.35. */
+	 * quiet then anyway (child_quiet). plorpos-7ny.35, plorpos-cdd. */
 	if (dev[0] && !musec_playing() && (plat_pico8_preload || plat_pico8_path)) {
 		snprintf(audiodev, sizeof audiodev, "AUDIODEV=%s", dev);
 		argv[n++] = audiodev;
 		fprintf(stderr, "pico8_64: audio %s\n", dev);
+	}
+#endif
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
+	/* The Brick's Diatom keeps its device open between games - the codec's
+	 * dmix shares, a headset's PCM does not - so it is moved off the headset
+	 * first, or pico8_64's open of it is refused and the game has no sound.
+	 * Kept off until the game is over, the native menu's aout_apply included;
+	 * the shelf's puts it back. plorpos-cdd. */
+	g_pico8_runs = true;
+	if (dev[0]) {
+		unsigned t0 = plat_now_ms();
+
+		plat_resident_audio_drain();
+		aout_apply(false);
+		fprintf(stderr, "pico8_64: Diatom %s the headset in %u ms\n",
+		        plat_resident_audio_wait("", 500) ? "off" : "NOT off",
+		        plat_now_ms() - t0);
 	}
 #endif
 	argv[n++] = (char *)bin;
@@ -10878,13 +10903,22 @@ static int run_pico8(app *a, const char *bin, const char *folder,
 	        n > flags ? argv[flags] : "-", n > flags ? argv[flags + 1] : "");
 	a->pico8_splore = splore;
 	a->to_splore = false;
-#if defined(PLATFORM_H700)
+#if !defined(PLATFORM_GKD)
 	plat_child_audio_reset();
 #endif
 	if (splore) argv[n++] = (char *)"-splore";
 	else { argv[n++] = (char *)"-run"; argv[n++] = (char *)rom; }
 	argv[n] = NULL;
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
+	{
+		int r = run_alone(a, argv, native_menu, native_tick);
+
+		g_pico8_runs = false;
+		return r;
+	}
+#else
 	return run_alone(a, argv, native_menu, native_tick);
+#endif
 }
 
 /* The firmware file a disc on this shelf boots with. One per shelf, except a

@@ -368,61 +368,6 @@ void child_restore(pid_t pid, bool show)
  * flag exists. On tmpfs: no card writes. */
 #define PICO8_QUIET "/tmp/plorpos-pico8-quiet"   /* tools/pico8sdl.c's too */
 
-/* Where native PICO-8's sound goes, for pico8sdl.so's watcher to follow
- * (plorpos-7ny.35): "-" nothing, "" the default device, else the headset's
- * PCM and its link id - a headset that went and came back reopens. tmpfs. */
-#define PICO8_AUDIO     "/tmp/plorpos-pico8-audio"       /* tools/pico8sdl.c's too */
-#define PICO8_AUDIO_NOW "/tmp/plorpos-pico8-audio-now"   /* what it has open */
-
-static char pa_said[192];
-
-void plat_child_audio(const char *dev, const char *link)
-{
-	char want[192];
-	FILE *f;
-
-	snprintf(want, sizeof want, "%s\t%s\n", dev ? dev : "-",
-	         dev && dev[0] && link ? link : "");
-	if (!strcmp(want, pa_said)) return;
-	if (!(f = fopen(PICO8_AUDIO ".tmp", "w"))) return;
-	fputs(want, f);
-	if (fclose(f) != 0 || rename(PICO8_AUDIO ".tmp", PICO8_AUDIO) != 0) return;
-	snprintf(pa_said, sizeof pa_said, "%s", want);
-}
-
-void plat_child_audio_reset(void)
-{
-	unlink(PICO8_AUDIO);
-	unlink(PICO8_AUDIO_NOW);
-	pa_said[0] = '\0';
-}
-
-/* Before the menu freezes it: a headset PICO-8 holds is let go first, so Muse
- * started from the menu can have it - a bluealsa PCM takes one opener, and a
- * frozen process lets go of nothing. Costs the menu one headset close, only
- * while PICO-8 is on the headset (the user's choice, 2026-10-07). */
-void child_audio_release(void)
-{
-	char now[192] = "";
-	unsigned t0 = plat_now_ms();
-	FILE *f = fopen(PICO8_AUDIO_NOW, "r");
-
-	if (!f) return;
-	if (!fgets(now, sizeof now, f)) now[0] = '\0';
-	fclose(f);
-	if (!now[0] || now[0] == '-' || now[0] == '\t') return;   /* nothing, or the codec */
-	plat_child_audio(NULL, NULL);
-	while (plat_now_ms() - t0 < 400) {
-		usleep(5000);
-		if (!(f = fopen(PICO8_AUDIO_NOW, "r"))) break;
-		if (!fgets(now, sizeof now, f)) now[0] = '\0';
-		fclose(f);
-		if (now[0] == '-') break;
-	}
-	fprintf(stderr, "run: headset %s in %u ms\n",
-	        now[0] == '-' ? "let go" : "NOT let go", plat_now_ms() - t0);
-}
-
 void child_quiet(pid_t pid, bool on)
 {
 	static pid_t q_pid;
