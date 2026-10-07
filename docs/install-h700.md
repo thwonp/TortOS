@@ -5,7 +5,7 @@ handhelds by Prashant Vaibhav (<https://github.com/pvaibhav/BaseOS>). BaseOS
 goes on one microSD card and starts whatever frontend it finds on the other;
 plorpOS is that frontend. plorpOS does not include or change BaseOS.
 
-Tested with **BaseOS 1.3.0** on the **RG SP** (RG34XX SP). Other H700 models
+Tested with **BaseOS 1.3.0** on the **RG SP**. Other H700 models
 come later.
 
 You need the RG SP, two microSD cards and a computer.
@@ -13,7 +13,7 @@ You need the RG SP, two microSD cards and a computer.
 ## 1. BaseOS on the first card (TF1)
 
 From [BaseOS's releases](https://github.com/pvaibhav/BaseOS/releases), download
-the image for your model - for the RG SP, `baseos-rg34xxsp-<version>.img.zip` -
+the image for your model - for the RG SP, `baseos-rgsp-<version>.img.zip` -
 and write it to a card as BaseOS's own instructions say. Put it in the slot
 marked **TF1** and turn the device on once: it grows its storage, then says
 there is no frontend on the card. Turn it off.
