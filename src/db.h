@@ -62,7 +62,7 @@ bool db_del(db *d, const char *key);
 /* Every key under a prefix, in key order, until the callback returns false.
  *
  * What replaced six of the config files is a namespace rather than a table per
- * file: "display.NES", "turbo.GB", "coreopt.GBC.mgba_gb_model". One table, one
+ * file: "display.NES", "hotkey.GB", "coreopt.GBC.mgba_gb_model". One table, one
  * enumeration primitive, and row-level writes - which is also how display.cfg's
  * most careful behavior became free. That file was rewritten whole on every
  * change, so it had to read back and preserve the modes of systems whose ROMs

@@ -44,6 +44,16 @@ int main(void)
 	hk_parse("l2:ff", b);
 	ck(b[4] == 0, "unbound by default");
 
+	printf("the Turbo Assign row (plorpos-tkh):\n");
+	hk_parse("l2:ff,r2:rewind,x:savestate,y:loadstate,d.l1:screenshot,d.r1:turbo", b);
+	ck(!strcmp(HK_TRIG_NAME[b[5]], "R1") && !hk_trig_mod(b[5]), "turbo row -> R1, direct");
+	ck(!strcmp(HK_ACTION_LABEL[5], "Turbo Assign"), "labelled Turbo Assign");
+	hk_serialize(b, out, sizeof out);
+	ck(!strcmp(out, "l2:ff,r2:rewind,x:savestate,y:loadstate,d.l1:screenshot,d.r1:turbo"),
+	   "a full set of six round-trips byte for byte");
+	hk_parse("l2:ff", b);
+	ck(b[5] == 0, "unbound by default");
+
 	printf("the L1/R1/A/B buttons (plorpos-gkd.22):\n");
 	hk_parse("l1:ff,r1:rewind,a:savestate,b:loadstate", b);
 	ck(!strcmp(HK_TRIG_NAME[b[0]], "L1"), "ff row -> L1");
@@ -129,12 +139,12 @@ int main(void)
 	ck(!strcmp(HK_TRIG_NAME[b[2]], "X"), "the other, valid fragment still parsed");
 
 	printf("an unknown action name is ignored, not a crash:\n");
-	hk_parse("l2:turbo,x:savestate", b);
+	hk_parse("l2:warp,x:savestate", b);
 	ck(!strcmp(HK_TRIG_NAME[b[2]], "X"), "savestate row still parsed");
 	{
 		int i, any = 0;
 		for (i = 0; i < HK_ROW_COUNT; i++) if (b[i] == 3 /* L2 */) any = 1;
-		ck(!any, "l2:turbo bound nothing - turbo is not a hotkey action");
+		ck(!any, "l2:warp bound nothing - warp is not a hotkey action");
 	}
 
 	printf("serialize skips None rows entirely, no dangling comma:\n");

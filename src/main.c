@@ -2528,6 +2528,26 @@ static void on_shot(bool ok, const char *path)
 		plat_resident_line("OVERLAY\tpath=%s\tms=2000", p);
 }
 
+/* Turbo Assign (plorpos-tkh): Diatom asked, the map is already sent; this is
+ * the notice, mid-game like the screenshot's. Cancelling takes the "press a
+ * button" one down at once rather than leaving it to time out. */
+static void on_turbo(plat_turbo_event ev, const char *btn)
+{
+	char p[CFG_STR * 2], line[32];
+
+	snprintf(p, sizeof p, "%s/notice.dtov", P_USERDATA);
+	switch (ev) {
+	case PLAT_TURBO_CANCEL:  plat_resident_line("OVERLAY\tpath=%s\tms=0", p); return;
+	case PLAT_TURBO_ARMED:   snprintf(line, sizeof line, "Press a button"); break;
+	case PLAT_TURBO_ON:      snprintf(line, sizeof line, "On: %s", btn);   break;
+	case PLAT_TURBO_OFF:     snprintf(line, sizeof line, "Off: %s", btn);  break;
+	case PLAT_TURBO_CLEARED: snprintf(line, sizeof line, "Cleared");       break;
+	}
+	if (notice_render("Turbo", line, p))
+		plat_resident_line("OVERLAY\tpath=%s\tms=%d", p,
+		                   ev == PLAT_TURBO_ARMED ? 4000 : 1500);
+}
+
 /* ---------- where you were ------------------------------------------------ */
 
 /* Coming back to the shelf you left is worth four lines of file handling: the
@@ -13430,6 +13450,7 @@ int main(int argc, char *argv[])
 		chv_earned_load();
 		plat_resident_on_unlock(on_cheevo_unlocked);
 		plat_resident_on_shot(on_shot);
+		plat_resident_on_turbo(on_turbo);
 		plat_resident_on_tick(on_game_tick);
 
 		/* Without this every HTTPS request fails verification, because the

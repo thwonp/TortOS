@@ -212,23 +212,12 @@ Rescan Folder is what makes a ROM that arrived after boot appear without a
 restart. Over The Hare already does it for you on the way out of the transfer
 screen; this is the same thing by hand, for a card written some other way.
 
-**In a game, X and Y are turbo A and turbo B** - hold one down and it presses
-the button repeatedly for you instead of you mashing it. It applies to a whole
-system rather than to one game.
-
-Nine of the eleven have it: **NES, Master System, TurboGrafx-16, Game Boy, Game
-Boy Color, Game Boy Advance, Game Gear, Neo Geo Pocket and Neo Geo Pocket
-Color**. Those consoles had two face buttons,
-so X and Y are spare and turbo can have them. Genesis and SNES are left out
-because their pads use X and Y for real buttons. Which systems get it, and how
-fast, is in [turbo.md](turbo.md).
-
-Diatom does the pulsing, not the emulator core, which is why it works the same
-on all nine rather than only on the one core that happens to implement turbo.
-
-**On Game Boy Advance, L2 and R2 are turbo L and turbo R.** That one is the
-emulator's own turbo rather than TortOS's, so it is only there on Game Boy
-Advance; on Game Boy and Game Boy Color, which have no L and R, they do nothing.
+**Turbo is a hotkey, Turbo Assign,** bound under Hotkeys like the others. In a
+game, press it and then a button, and that button presses itself about ten
+times a second for as long as you hold it; the same again turns it back. Hold
+Turbo Assign three seconds to clear every turbo button. It lasts until the game
+quits. How it works, and why X and Y are no longer turbo by default, is in
+[turbo.md](turbo.md).
 
 Volume and brightness draw the same thin line across the top of the screen in
 the launcher, in a game, and in the in-game menu. One firmware, one piece of

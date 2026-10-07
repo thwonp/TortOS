@@ -7,6 +7,7 @@
 #include "ui.h"   /* the settings line shares the rail's weight and palette */
 #include "platform_dev.h"
 
+#include <ctype.h>
 #include <dlfcn.h>
 #include <glob.h>
 #include <errno.h>
@@ -117,61 +118,7 @@ const char *plat_coreopt(const char *tag, int i)
 	return kv;
 }
 
-/* ---- turbo, read once from the library database -------------------------- */
-/* One canonical map per system tag, handed to Diatom after RUN. Its ADR-0028
- * makes a pulse a property of a BINDING, so `x:a~3,y:b~3` is the whole feature:
- * X becomes a turbo A and Y a turbo B, three frames pressed and three released.
- *
- * Per system because it is only safe where those two buttons are SPARE. Seven of
- * the eleven consoles here have two face buttons; a Genesis 6-button pad and a
- * SNES pad use X and Y for real, and turbo would take them away.
- *
- * A file rather than a table in the binary because the rate is exactly the sort
- * of thing a player wants to change, and because a remap screen would one day
- * write this same field over the same protocol. */
-#define TURBO_MAX 16
-static struct { char tag[8]; char map[96]; } turbos[TURBO_MAX];
-static int nturbos = -1;                     /* -1 = not read yet */
-
-static bool turbo_row(const char *key, const char *value, void *ctx)
-{
-	const char *tag = key + strlen("turbo.");
-
-	(void)ctx;
-	if (nturbos >= TURBO_MAX) return false;
-	/* Refused, not stored short. Half a map is a map nobody wrote, and Diatom
-	 * rejects a bad one whole - after the game is already up, where the
-	 * refusal is invisible. */
-	if (strlen(tag) >= sizeof turbos[0].tag ||
-	    strlen(value) >= sizeof turbos[0].map) {
-		fprintf(stderr, "turbo: entry too long, ignoring: %.32s\n", tag);
-		return true;
-	}
-	snprintf(turbos[nturbos].tag, sizeof turbos[0].tag, "%s", tag);
-	snprintf(turbos[nturbos].map, sizeof turbos[0].map, "%s", value);
-	nturbos++;
-	return true;
-}
-
-static void turbos_load(void)
-{
-	nturbos = 0;
-	db_each_prefix(db_lib(), "turbo.", turbo_row, NULL);
-}
-
-/* The map for this system, or NULL for one that wants none. */
-const char *plat_turbo_map(const char *tag)
-{
-	int i;
-
-	if (nturbos < 0) turbos_load();
-	if (!tag) return NULL;
-	for (i = 0; i < nturbos; i++)
-		if (!strcmp(turbos[i].tag, tag)) return turbos[i].map;
-	return NULL;
-}
-
-/* ---- hotkeys, same shape as turbo above but player-editable at runtime --
+/* ---- hotkeys, read once from the library, player-editable at runtime -----
  * One canonical binding string per system tag - "l2:ff,r2:rewind,x:savestate,
  * y:loadstate" - handed to Diatom as SETHOTKEYS after RUN, the same way
  * turbo's map already rides SETMAP. See diatom's ADR-0035.
@@ -974,6 +921,12 @@ void plat_resident_on_unlock(void (*fn)(int id)) { d_on_unlock = fn; }
 static void (*d_on_shot)(bool ok, const char *path);
 void plat_resident_on_shot(void (*fn)(bool ok, const char *path)) { d_on_shot = fn; }
 
+static void (*d_on_turbo)(plat_turbo_event ev, const char *btn);
+void plat_resident_on_turbo(void (*fn)(plat_turbo_event ev, const char *btn)) { d_on_turbo = fn; }
+static uint32_t d_turbo;          /* turbo_names[] bits, this game only */
+static bool d_turbo_gba;
+static void d_turbo_send(void);
+
 static void (*d_on_tick)(void);
 
 void plat_resident_on_tick(void (*fn)(void)) { d_on_tick = fn; }
@@ -1073,7 +1026,8 @@ bool plat_resident_send(const plat_game *g)
 		           g->console, g->cheevos ? g->cheevos : "", disc, P_CARD))
 			return false;
 
-		/* AFTER RUN, never before: RUN resets the map to identity (Diatom's
+		/* Turbo Assign's map (plorpos-tkh), empty at every RUN.
+		 * AFTER RUN, never before: RUN resets the map to identity (Diatom's
 		 * ADR-0020, so a table sent for one game cannot silently govern the
 		 * next), and a map sent first would be discarded by the very launch it
 		 * was meant for. The race is benign - no input reaches a core before
@@ -1083,17 +1037,14 @@ bool plat_resident_send(const plat_game *g)
 		 * that was never sent, one that was refused, and a test rig that could
 		 * not press the button - which cost an hour on 2026-08-31. Diatom logs
 		 * the receiving half for the same reason. */
-		{
-			const char *tm = plat_turbo_map(tag);
-			fprintf(stderr, "turbo: %s %s\n", tag ? tag : "?",
-			        tm && *tm ? tm : "(none)");
-			if (tm && *tm) dsend("SETMAP\tmap=%s", tm);
-		}
+		d_turbo = 0;
+		d_turbo_gba = tag && !strcmp(tag, "GBA");
+		d_turbo_send();
 
-		/* Same reasoning as turbo's SETMAP above: AFTER RUN, which resets
+		/* Same reasoning as the SETMAP above: AFTER RUN, which resets
 		 * Diatom's bindings to none (its ADR-0035), so a table sent first
 		 * would be discarded by the very launch it was meant for. Sent even
-		 * when empty - unlike turbo, which skips an empty map - so a game
+		 * when empty - unlike the map, which skips identity - so a game
 		 * that HAD bindings last session and had them cleared this one
 		 * actually loses them rather than keeping whatever the previous
 		 * RUN left behind (Diatom resets to none on every RUN regardless,
@@ -1257,6 +1208,63 @@ static void d_note_shot(const char *l)
 	if (!p || !ok || ok < p || !d_on_shot) return;
 	snprintf(path, sizeof path, "%.*s", (int)(ok - (p + 5)), p + 5);
 	d_on_shot(ok[4] == '1', path);
+}
+
+/* ---- turbo, chosen in the game (plorpos-tkh, Diatom's ADR-0045) ----------
+ * Diatom reports Turbo Assign; this keeps which buttons are turbo for the game
+ * now running and answers each change with the whole map (ADR-0020, ADR-0028:
+ * `b:b~3` is B pressed three frames and released three, about ten a second).
+ * Emptied at RUN, so a game's turbo ends with it; the menu and Muse leave it
+ * alone, and so does Diatom's map across PAUSE.
+ *
+ * Game Boy Advance's L2 and R2 are mGBA's own Turbo L and R. Mapped to none
+ * on GBA, always, so those two are free for hotkeys like everywhere else -
+ * the reason fixed X/Y turbo went too. */
+static const char *const turbo_names[] = { "a", "b", "x", "y", "l1", "r1", "l2", "r2" };
+#define TURBO_N ((int)(sizeof turbo_names / sizeof turbo_names[0]))
+#define TURBO_FRAMES 3
+
+static void d_turbo_send(void)
+{
+	char map[160];
+	int i, n = 0;
+
+	map[0] = '\0';
+	if (d_turbo_gba) n = snprintf(map, sizeof map, "l2:none,r2:none");
+	for (i = 0; i < TURBO_N; i++) {
+		bool gba_none = d_turbo_gba && i >= 6;   /* l2, r2 */
+		if (!(d_turbo & (1u << i)) || gba_none) continue;
+		n += snprintf(map + n, sizeof map - (size_t)n, "%s%s:%s~%d",
+		              n ? "," : "", turbo_names[i], turbo_names[i], TURBO_FRAMES);
+	}
+	fprintf(stderr, "turbo: %s\n", n ? map : "identity");
+	dsend("SETMAP\tmap=%s", n ? map : "identity");
+}
+
+/* "TURBO\tarm=1", "TURBO\tarm=0", "TURBO\tbtn=a", "TURBO\tclear=1" */
+static void d_note_turbo(const char *l)
+{
+	const char *v;
+	char up[4] = "";
+	int i;
+
+	if ((v = strstr(l, "arm="))) {
+		if (d_on_turbo) d_on_turbo(v[4] == '1' ? PLAT_TURBO_ARMED : PLAT_TURBO_CANCEL, "");
+	} else if (strstr(l, "clear=1")) {
+		d_turbo = 0;
+		d_turbo_send();
+		if (d_on_turbo) d_on_turbo(PLAT_TURBO_CLEARED, "");
+	} else if ((v = strstr(l, "btn="))) {
+		for (i = 0; i < TURBO_N; i++)
+			if (!strcmp(v + 4, turbo_names[i])) break;
+		if (i == TURBO_N) return;
+		d_turbo ^= 1u << i;
+		d_turbo_send();
+		for (int k = 0; turbo_names[i][k] && k < 3; k++)
+			up[k] = (char)toupper((unsigned char)turbo_names[i][k]);
+		if (d_on_turbo)
+			d_on_turbo(d_turbo & (1u << i) ? PLAT_TURBO_ON : PLAT_TURBO_OFF, up);
+	}
 }
 
 /* "DISPLAY\tmode=native\tfilter=nearest\trect=256x224+384+272" */
@@ -1503,6 +1511,7 @@ static int diatom_wait(void)
 			else if (strncmp(l, "DISPLAY\t", 8) == 0) d_note_display(l);
 			else if (strncmp(l, "CHEEVO\t", 7) == 0) d_note_cheevo(l);
 			else if (strncmp(l, "SHOT\t", 5) == 0) d_note_shot(l);
+			else if (strncmp(l, "TURBO\t", 6) == 0) d_note_turbo(l);
 			else if (strncmp(l, "EXIT", 4) == 0) {
 				/* A crash and a quit arrive on the SAME line, and only the
 				 * reason tells them apart. This threw the line away and

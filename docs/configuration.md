@@ -6,7 +6,7 @@ deliberate:
 | | holds | why it is separate |
 |---|---|---|
 | `.userdata/<platform>/tortos.db` | volume, brightness, Auto Sleep, Suspend Timeout, Auto Off, audio output, Wi-Fi, Bluetooth, display mode per system, and the RetroAchievements and ScreenScraper accounts | per handheld. A card moved to another device should not carry the first one's screen and speaker settings, or its account token |
-| `.userdata/shared/.tortos/library.db` | timezone, startup system, turbo maps, core options | per card. It travels with the library, the same way favorites and earned achievements do |
+| `.userdata/shared/.tortos/library.db` | timezone, startup system, core options | per card. It travels with the library, the same way favorites and earned achievements do |
 
 The shipped defaults are **compiled into the launcher** and seed whichever
 database is missing them, so there is no config file to ship, none to drift from
@@ -55,9 +55,9 @@ are named after the ROM, in `Saves/<folder>/`. `system_cfg` declares `tag[8]`, s
 to seven characters, and changing a tag orphans that system's display mode and
 favorites.
 
-## Core options and turbo
+## Core options
 
-Both are entries in the library database rather than files, seeded from the
+They are entries in the library database rather than files, seeded from the
 values compiled into the launcher.
 
 **Core options** are keyed `coreopt.<tag>.<option>`, with an empty tag for a
@@ -91,9 +91,8 @@ the machine it was made on, so changing an option that selects hardware will not
 appear to work on a game you have already played. Test on a game that has never
 been launched, or delete its `.auto.state`.
 
-**Turbo** is keyed `turbo.<tag>`, and [turbo.md](turbo.md) carries the
-reasoning: which nine systems get it, why MD and SFC do not, and why PC Engine
-is on the list despite its core having a turbo of its own.
+**Turbo** has no entries any more: it is chosen in the game and lasts for that
+game only. See [turbo.md](turbo.md).
 
 ## What the launcher still writes as files
 

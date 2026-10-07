@@ -429,11 +429,17 @@ static void prefix_scan(void)
 	ck(!strcmp(got, "yy..global=g;yy.GB.local=l;"),
 	   "an empty tag segment scans like any other");
 
-	/* And the real namespaces carry what the defaults declared. */
+	/* Fixed turbo is retired (plorpos-tkh): nothing seeds turbo.<tag>, and a
+	 * card that still has the rows loses them at the next open. */
 	got[0] = '\0';
 	db_each_prefix(d, "turbo.", collect, got);
-	ck(strstr(got, "turbo.NGPC=x:a~3,y:b~3;") != NULL,
-	   "the seeded turbo maps are readable through the same scan");
+	ck(!got[0], "nothing seeds turbo.<tag> any more");
+	db_set_str(d, "turbo.NES", "x:a~3,y:b~3");
+	db_set_str(d, "turbo.GBA", "x:a~3,y:b~3");
+	db_close(d);
+	d = db_open(LIB, DB_LIBRARY);
+	db_each_prefix(d, "turbo.", collect, got);
+	ck(!got[0], "a card's old turbo.<tag> rows are dropped at open");
 
 	got[0] = '\0';
 	db_each_prefix(d, "nothing.", collect, got);

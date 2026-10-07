@@ -135,7 +135,7 @@ https://github.com/user-attachments/assets/09b52bf2-bdb6-4a93-8613-27059d825ebf
 - **Box art the device finds itself,** from libretro's collection with no account, or from ScreenScraper with a free one, which brings each game's year, genre and synopsis too. Or add your own.
 - **Over The Hare:** move games, music, audiobooks, saves and covers on and off the card from any browser on your Wi-Fi, behind a PIN.
 - **Autosave and resume,** plus six save slots for when you want a checkpoint.
-- **Turbo buttons:** X and Y press A and B for you, on the nine consoles whose controllers had two face buttons. On Game Boy Advance, L2 and R2 do the same for L and R.
+- **Turbo Assign:** a hotkey that turns any face or shoulder button into a turbo button for the rest of the game, on every console.
 - **Bluetooth headphones,** paired on the device, with its volume buttons reaching them and their own buttons playing and skipping in Muse. Plug in wired ones and they take over.
 - **Muse, a music and audiobook player:** your albums and books on a shelf of their own covers, and every book picks up where you left it. SELECT opens Muse from anywhere, even the in-game menu, and it keeps playing when you close it. While it plays, the game is silent.
 - **Play Time:** how long you've played each game or console, today, this week, this month, this year or ever.
@@ -241,7 +241,7 @@ None of them is a driver, and none replaces anything the system needs to run.
 | **SELECT** | Muse, the music and audiobook player. Press it again to close |
 | **POWER** | Tap to sleep, hold to turn off |
 
-**In a game,** MENU opens the in-game menu (its rows are listed below), and SELECT in that menu opens Muse. While music plays the game is silent, and pausing the music brings its sound back. X and Y are turbo A and B on the nine consoles with two face buttons (NES, Master System, TurboGrafx-16, Game Boy, Game Boy Color, Game Gear, Neo Geo Pocket and Pocket Color, Game Boy Advance), and on Game Boy Advance L2 and R2 are turbo L and R. A tap of POWER saves the game and sleeps; holding it saves the game and turns the device off.
+**In a game,** MENU opens the in-game menu (its rows are listed below), and SELECT in that menu opens Muse. While music plays the game is silent, and pausing the music brings its sound back. A tap of POWER saves the game and sleeps; holding it saves the game and turns the device off.
 
 **In Muse,** A opens an album, plays a track or pauses it, L1 and R1 change track, left and right skip ten seconds (hold them to go faster: a minute a step after a second, five after three), and B goes back. A on a book carries on where you left it, and in a book with chapters L1 and R1 move by chapter. On Now Playing, Y changes the play mode for music: in order, repeat all, repeat one or shuffle. On a book, which always plays in order, Y changes the speed instead: 1x up to 2x, and 0.75x, kept for each book.
 
@@ -296,7 +296,7 @@ Sign in to your RetroAchievements account under **MENU > Wi-Fi Services > Cheevo
 <details>
 <summary><b>How do hotkeys work?</b></summary>
 
-Open **Hotkeys** in the in-game menu. There are five actions: **Fast-Forward** and **Rewind** (both work while held), **Quick Save**, **Quick Load** and **Screenshot**. Pick one, press **A**, then press its trigger. **X** clears an action, and **MENU** cancels while it waits for a press. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** is on the same screen.
+Open **Hotkeys** in the in-game menu. There are six actions: **Fast-Forward** and **Rewind** (both work while held), **Quick Save**, **Quick Load**, **Screenshot** and **Turbo Assign** (see the next question). Pick one, press **A**, then press its trigger. **X** clears an action, and **MENU** cancels while it waits for a press. Each console keeps its own bindings, and none are set until you set them. **Rewind Speed** is on the same screen.
 
 **The modifier** is one button you hold for a chord, like MENU + X. It's the first row, the same for every console, and **MENU** by default:
 - **Brick:** Menu or Select.
@@ -311,6 +311,20 @@ With MENU as the modifier, a tap of MENU still opens the in-game menu when you l
 - **The Brick Pro's right stick:** its four directions, with the modifier held or alone. Games never see it, so binding it alone costs nothing.
 
 One button can hold two actions, one alone and one with the modifier. On the Brick Pro the left stick's triggers read "L Stick".
+
+</details>
+
+<details>
+<summary><b>How does turbo work?</b></summary>
+
+Bind **Turbo Assign** under **Hotkeys** in the in-game menu, like any other hotkey. Then, in a game:
+
+- **Press Turbo Assign, then a button.** That button is turbo now: hold it and it presses itself about ten times a second. The press that picks it isn't sent to the game.
+- **Do the same again** to make that button normal again. Several buttons can be turbo at once.
+- **Press Turbo Assign twice** to change your mind before picking a button.
+- **Hold Turbo Assign for 3 seconds** to make every button normal again.
+
+A short notice says what happened each time. A, B, X, Y, L1, R1, L2 and R2 can be turbo; the d-pad, START and SELECT can't. Turbo lasts until you quit the game: the in-game menu and Muse don't touch it, and the next game starts with none. A button the console doesn't use, like X on the NES, does nothing as turbo either.
 
 </details>
 
@@ -371,7 +385,7 @@ Open **MENU > Wi-Fi Services > Over The Hare**, open its address in a browser, a
 plorpOS is C and SDL2, built on Eric Reinsmidt's TortOS. Games run in [diatom](https://github.com/thwonp/diatom), plorpOS's fork of his small libretro frontend, which starts once at boot and stays running.
 
 - [How it works](docs/how-it-works.md): the resident emulator, the boot, and card art off the render thread
-- [Configuration](docs/configuration.md): the two settings databases, `systems.cfg`, core options and turbo
+- [Configuration](docs/configuration.md): the two settings databases, `systems.cfg` and core options
 - [Building](docs/building.md): the toolchain, the card, the checks, and deploying to a device
 - [Design decisions](docs/decisions/) and [how menus behave](docs/menus.md)
 

@@ -206,6 +206,13 @@ void plat_resident_on_unlock(void (*fn)(int id));
  * (Diatom's SHOT, plorpos-gkd.86.2): whether it worked, and the file. */
 void plat_resident_on_shot(void (*fn)(bool ok, const char *path));
 
+/* The same, when the player uses Turbo Assign (Diatom's TURBO, plorpos-tkh):
+ * what happened and, for on/off, the button ("A", "L2"); "" otherwise. The
+ * map is already sent; this is for the notice. */
+typedef enum { PLAT_TURBO_ARMED, PLAT_TURBO_CANCEL, PLAT_TURBO_ON,
+               PLAT_TURBO_OFF, PLAT_TURBO_CLEARED } plat_turbo_event;
+void plat_resident_on_turbo(void (*fn)(plat_turbo_event ev, const char *btn));
+
 /* Called from inside plat_resident_wait roughly ten times a second, which is
  * the rate its socket poll already runs at. For work the launcher wants to do
  * WHILE a game is running and cannot do anywhere else, because this process is
@@ -247,8 +254,6 @@ const char *plat_resident_last_preview(void);
  * retro_load_game and setting one afterwards does nothing until next launch. */
 int         plat_coreopt_count(const char *tag);
 const char *plat_coreopt(const char *tag, int i);
-/* The turbo map for this system, or NULL. Diatom's ADR-0028, docs/turbo.md. */
-const char *plat_turbo_map(const char *tag);
 
 /* The hotkey submenu's binding for this system - "l2:ff,r2:rewind,..." - or
  * "" for none set. Never NULL: an empty spec is itself a valid SETHOTKEYS
