@@ -21,4 +21,11 @@
  * the picture could not be written. */
 int cover_extract(const char *path, const char *base, char *out, size_t n);
 
+/* The year a file's tags give it, from the same header: FFmpeg files MP4's
+ * (c)day, ID3's TYER and TDRC and Vorbis's DATE all as "date", which can be a
+ * whole day ("2019-11-16"); a tagger's non-standard YEAR comes through as
+ * "year" and is the fallback. The first four characters, when they are digits.
+ * 0 when there is none, -1 when the file could not be read (plorpos-xav). */
+int tag_year(const char *path);
+
 #endif

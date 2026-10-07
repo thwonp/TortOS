@@ -148,4 +148,11 @@ bool musec_cover_ask(const char *track, const char *base);
  * waiting. */
 bool musec_cover_take(char *base, size_t bn, char *file, size_t fn);
 
+/* The year `track` (relative to the music root) is tagged with, asked the same
+ * way and lost the same way; one at a time - an answer not taken is replaced
+ * by the next. Taken as the track asked about and the year: 0 none in the
+ * tags, -1 the file would not open (plorpos-xav). */
+bool musec_year_ask(const char *track);
+bool musec_year_take(char *track, size_t n, int *year);
+
 #endif

@@ -21,6 +21,7 @@
  *        SINK    device=                     an ALSA name; "default" is dmix
  *        STATUS
  *        COVER   path=  base=                write path's picture to base.jpg|png
+ *        YEAR    path=                       the year path's tags give it
  *   out  READY   proto=2
  *        STATE   state=playing|paused|stopped  path=
  *        META    title= artist= album= len= chapters=
@@ -32,6 +33,7 @@
  *                                              device would not open
  *        ERROR   why=
  *        COVER   base=  file=                  what was written; "" if nothing
+ *        YEAR    path=  year=                  0 for none, -1 unreadable
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -525,6 +527,14 @@ static void command(int fd, const char *line)
 		if (cover_extract(q.path, base, file, sizeof file) < 0)
 			say("no cover from %s", q.path);
 		send_line(fd, "COVER\tbase=%s\tfile=%s", clean(base, a, sizeof a), file);
+		return;
+	}
+	if (!strncmp(line, "YEAR", 4)) {             /* as COVER, and why */
+		char a[PATH_MAX_ + 8];
+
+		arg(line, "path", q.path, sizeof q.path);
+		if (!q.path[0]) return;
+		send_line(fd, "YEAR\tpath=%s\tyear=%d", clean(q.path, a, sizeof a), tag_year(q.path));
 		return;
 	}
 	if (!strncmp(line, "PLAY", 4)) {
