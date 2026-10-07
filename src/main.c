@@ -3379,48 +3379,26 @@ static void draw_shelf(app *a)
  * the clock. A wait that slept until the next event would have stopped key
  * repeat dead. Polling costs a handful of syscalls a frame, against a full
  * draw and a present. */
-#define IDLE_POLL_MS 16
-/* A gap this long between two passes means something else had the screen -
- * a menu, a game, the art scraper - and whatever it drew is not this one.
- * Catching it here covers every one of them without a list to keep. */
-#define AWAY_MS 100
-/* Drawn at least this often regardless. A backstop, not a mechanism: if some
- * animation is ever added without telling ui_redraw_at, it shows as a screen
- * updating once a second, which is visibly wrong, rather than one that has
- * silently frozen. */
-#define HEARTBEAT_MS 1000
+#define IDLE_POLL_MS UI_IDLE_POLL_MS
 
-/* Where one screen loop is in that rule. Zeroed, its first pass draws. */
-typedef struct { Uint32 last_pass, last_draw; } screen_pace;
-
-/* Whether a screen loop draws this pass, by the rule above. Every loop that
- * can sit idle asks this and, on false, sleeps IDLE_POLL_MS instead of
- * drawing (plorpos-7ny.38/.39: the loops that did not drew and presented every
- * pass - 88% of a core for Muse's shelf under native PICO-8's menu).
- *
- * On true the schedule is reset here, BEFORE anything is drawn, because what
- * animates re-arms it while drawing - tick_tint included, which a loop calls
- * ahead of the frame. */
-static bool screen_draw_due(app *a, screen_pace *p)
+/* Whether a screen loop draws this pass: ui_draw_due's rule, with this app's
+ * input and art. Every loop that can sit idle asks this and, on false, sleeps
+ * IDLE_POLL_MS instead of drawing (plorpos-7ny.38/.39: the loops that did not
+ * drew and presented every pass - 88% of a core for Muse's shelf under native
+ * PICO-8's menu). `shown` is menu_fingerprint for a screen whose rows are
+ * rebuilt from live state, 0 for one that only changes with input. */
+static bool screen_draw_due(app *a, ui_pace *p, Uint32 shown)
 {
-	Uint32 now = plat_now_ms();
 	/* Held counts as touched, not only pressed: a held direction
 	 * repeats from the clock and moves the shelf every 90ms. */
-	bool touched = false, away = now - p->last_pass > AWAY_MS;
+	bool touched = false;
 	int b;
 
 	for (b = 0; b < IN_COUNT && !touched; b++)
 		touched = a->in.pressed[b] || a->in.down[b];
-	p->last_pass = now;
-
 	/* texload_ready because finished art is installed while drawing:
 	 * a loop that never drew would never find it. */
-	if (!(touched || away || texload_ready() || ui_redraw_due(now) ||
-	      now - p->last_draw >= HEARTBEAT_MS))
-		return false;
-	p->last_draw = now;
-	ui_redraw_reset();
-	return true;
+	return ui_draw_due(p, touched || texload_ready(), shown);
 }
 
 static void render(app *a)
@@ -4700,7 +4678,7 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 	rows[1 + n] = (menu_row){ "Cancel", NULL, true };
 	sel = 1 + n;
 
-	screen_pace pace = {0};
+	ui_pace pace = {0};
 
 	for (;;) {
 		plat_input_poll(&a->in);
@@ -4716,7 +4694,7 @@ static int pick_panel(app *a, const char *heading, const char *msg,
 		if (in_repeat(&a->in, IN_DOWN)) sel = sel < 1 + n ? sel + 1 : 1;
 		if (a->in.pressed[IN_ACCEPT]) return sel <= n ? sel - 1 : -1;
 
-		if (!screen_draw_due(a, &pace)) { SDL_Delay(IDLE_POLL_MS); continue; }
+		if (!screen_draw_due(a, &pace, 0)) { SDL_Delay(IDLE_POLL_MS); continue; }
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -4737,7 +4715,7 @@ static bool confirm_panel(app *a, const char *heading, const char *msg,
 /* Rows to read and nothing to choose, until A or B: a job's result. */
 static void note_panel(app *a, const char *heading, const menu_row *rows, int n)
 {
-	screen_pace pace = {0};
+	ui_pace pace = {0};
 
 	for (;;) {
 		plat_input_poll(&a->in);
@@ -4748,7 +4726,7 @@ static void note_panel(app *a, const char *heading, const menu_row *rows, int n)
 		}
 		if (menu_leaving(a) || a->in.pressed[IN_ACCEPT]) return;
 
-		if (!screen_draw_due(a, &pace)) { SDL_Delay(IDLE_POLL_MS); continue; }
+		if (!screen_draw_due(a, &pace, 0)) { SDL_Delay(IDLE_POLL_MS); continue; }
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -4881,8 +4859,7 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 	menu_row rows[MENU_RUN_ROWS];
 	const char *heading = NULL;
 	int sel = st->start, n = 0, b;
-	screen_pace pace = {0};
-	Uint32 drawn = 0;
+	ui_pace pace = {0};
 
 	while (a->running && !want_quit) {
 		n = build(ctx, rows, MENU_RUN_ROWS, &heading);
@@ -4976,12 +4953,9 @@ static menu_exit menu_run_body(app *a, const menu_style *st,
 		 * a scan finding networks, a headset connecting, Muse moving to the
 		 * next track - and none of that is input. So what was built is
 		 * compared with what was last drawn, and a difference is a frame. */
-		{
-			Uint32 fp = menu_fingerprint(heading, rows, n, sel);
-
-			if (fp != drawn) ui_redraw_now();
-			if (!screen_draw_due(a, &pace)) { SDL_Delay(IDLE_POLL_MS); continue; }
-			drawn = fp;
+		if (!screen_draw_due(a, &pace, menu_fingerprint(heading, rows, n, sel))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
 		}
 		tick_tint(a);
 		if (st->backdrop) {
@@ -6270,6 +6244,8 @@ static void bt_screen(app *a)
 	int sel = 0;                  /* ROW space: 0 is the toggle, then devices */
 	bool done = false;
 
+	ui_pace pace = {0};
+
 	while (!done && !want_quit && a->running) {
 		unsigned now = plat_now_ms();
 		int nrows, i;
@@ -6434,6 +6410,10 @@ static void bt_screen(app *a)
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
+		if (!screen_draw_due(a, &pace, menu_fingerprint("Bluetooth", rows, nrows, sel))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -6442,7 +6422,6 @@ static void bt_screen(app *a)
 		menu_draw(a, "Bluetooth", rows, nrows, sel, menu_std_width(a), MENU_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 
 	/* On the way out, not while the list is up: `bluetoothctl devices` reads
@@ -6504,6 +6483,8 @@ static bool stats_screen(app *a)
 	bool done = false;
 
 	stats_format(stats_total_seconds(), total, sizeof total);
+
+	ui_pace pace = {0};
 
 	while (!done && !want_quit && a->running) {
 		int shown = 0, i;
@@ -6692,6 +6673,10 @@ static bool stats_screen(app *a)
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
+		if (!screen_draw_due(a, &pace, menu_fingerprint("Play Time", rows, shown, ngames ? cursor - top + 1 : -1))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -6703,7 +6688,6 @@ static bool stats_screen(app *a)
 		          MENU_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 	return false;
 }
@@ -6719,6 +6703,8 @@ static void about_screen(app *a)
 	bool done = false;
 
 	snprintf(ver, sizeof ver, "%s", TORTOS_VERSION);
+
+	ui_pace pace = {0};
 
 	while (!done && !want_quit && a->running) {
 		static unsigned next_check;
@@ -6763,6 +6749,10 @@ static void about_screen(app *a)
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
+		if (!screen_draw_due(a, &pace, menu_fingerprint("About", rows, 4, -1))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -6771,7 +6761,6 @@ static void about_screen(app *a)
 		menu_draw(a, "About", rows, 4, -1, menu_std_width(a), MENU_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 }
 
@@ -6790,6 +6779,8 @@ static void controls_screen(app *a)
 {
 	ctl_page page = CTL_SHELF;
 	bool done = false;
+
+	ui_pace pace = {0};
 
 	while (!done && !want_quit && a->running) {
 		menu_row rows[CTL_MAX_ROWS];
@@ -6817,6 +6808,10 @@ static void controls_screen(app *a)
 		if (in_repeat(&a->in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(&a->in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
+		if (!screen_draw_due(a, &pace, menu_fingerprint(head, rows, n, -1))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		tick_tint(a);
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
@@ -6825,7 +6820,6 @@ static void controls_screen(app *a)
 		menu_draw(a, head, rows, n, -1, menu_std_width(a), MENU_ACCENT);
 		draw_chrome(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 }
 
@@ -7814,6 +7808,8 @@ static int slot_strip(app *a, SDL_Texture *bg, int saving)
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
+	ui_pace pace = {0};
+
 	while (!done && !want_quit) {
 		plat_input_poll(&a->in);
 
@@ -7844,6 +7840,10 @@ static int slot_strip(app *a, SDL_Texture *bg, int saving)
 			}
 		}
 
+		if (!screen_draw_due(a, &pace, 0)) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 255);
 		SDL_RenderClear(a->r);
 		draw_paused_frame(a, bg);
@@ -7854,7 +7854,6 @@ static int slot_strip(app *a, SDL_Texture *bg, int saving)
 		slot_draw(a, &sv, sel);
 		draw_battery(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 
 	for (i = 0; i <= GM_SLOTS; i++)
@@ -8040,6 +8039,8 @@ static bool cheevo_detail_screen(app *a, SDL_Texture *bg, bool over_shelf,
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
+	ui_pace pace = {0};
+
 	while (!done && !want_quit) {
 		plat_input_poll(&a->in);
 
@@ -8064,11 +8065,14 @@ static bool cheevo_detail_screen(app *a, SDL_Texture *bg, bool over_shelf,
 			}
 		}
 
+		if (!screen_draw_due(a, &pace, 0)) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		chv_backdrop(a, bg, over_shelf);
 		menu_draw_ex(a, c->title, rows, n, -1, fixed, a->tint, vcols, false, 0);
 		draw_battery(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 
 	plat_input_flush();
@@ -8782,8 +8786,7 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
-	screen_pace pace = {0};
-	Uint32 drawn = 0;
+	ui_pace pace = {0};
 
 	while (!done && !want_quit && a->running) {
 		const mu_now *mn;
@@ -8885,12 +8888,9 @@ static muse_exit muse_tracks(app *a, int album, bool now)
 
 		/* The rows carry the playing track and its time, so a track
 		 * playing is a frame a second and a paused one is none. */
-		{
-			Uint32 fp = menu_fingerprint(heading, rows, n, sel);
-
-			if (fp != drawn) ui_redraw_now();
-			if (!screen_draw_due(a, &pace)) { SDL_Delay(IDLE_POLL_MS); continue; }
-			drawn = fp;
+		if (!screen_draw_due(a, &pace, menu_fingerprint(heading, rows, n, sel))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
 		}
 		muse_backdrop(a);
 		menu_draw(a, heading, rows, n, sel, menu_std_width(a), MUSE_ACCENT);
@@ -9047,7 +9047,7 @@ static void muse_shelf_screen(app *a, bool now)
 	}
 
 	/* 0: the first pass draws (away). */
-	screen_pace pace = {0};
+	ui_pace pace = {0};
 
 	while (!done && !want_quit && a->running) {
 		int n = v->list.count, dir = 0;
@@ -9100,7 +9100,7 @@ static void muse_shelf_screen(app *a, bool now)
 			v = nv;
 		}
 
-		if (screen_draw_due(a, &pace)) {
+		if (screen_draw_due(a, &pace, 0)) {
 			tick_tint(a);
 			render(a);
 		} else {
@@ -9238,8 +9238,7 @@ static void album_art_screen(app *a)
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
-	screen_pace pace = {0};
-	Uint32 drawn = 0;
+	ui_pace pace = {0};
 
 	while (!done && !want_quit && a->running) {
 		if (working && museart_step(plat_now_ms()) == 0) {
@@ -9293,12 +9292,9 @@ static void album_art_screen(app *a)
 		if (working) a->idle.since_ms = plat_now_ms();
 
 		/* Progress is the rows changing: drawn when they do. */
-		{
-			Uint32 fp = menu_fingerprint(head, rows, 3, -1);
-
-			if (fp != drawn) ui_redraw_now();
-			if (!screen_draw_due(a, &pace)) { SDL_Delay(IDLE_POLL_MS); continue; }
-			drawn = fp;
+		if (!screen_draw_due(a, &pace, menu_fingerprint(head, rows, 3, -1))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
 		}
 		tick_tint(a);
 		draw_shelf(a);
@@ -9337,6 +9333,8 @@ static void synopsis_screen(app *a, const char *title, const char *text,
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
+	ui_pace pace = {0};
+
 	while (!done && !want_quit && a->running) {
 		plat_input_poll(&a->in);
 		if (a->in.quit_requested) break;
@@ -9349,6 +9347,10 @@ static void synopsis_screen(app *a, const char *title, const char *text,
 			if (pa == PWR_POWEROFF) { power_off(a); break; }
 		}
 
+		if (!screen_draw_due(a, &pace, 0)) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		draw_shelf(a);
 		SDL_SetRenderDrawBlendMode(a->r, SDL_BLENDMODE_BLEND);
 		SDL_SetRenderDrawColor(a->r, 0, 0, 0, 120);
@@ -9356,7 +9358,6 @@ static void synopsis_screen(app *a, const char *title, const char *text,
 		menu_draw_ex(a, title, rows, n, -1, fixed, accent, NULL, false, loop_at);
 		draw_battery(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 
 	plat_input_flush();
@@ -9405,6 +9406,8 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
 
+	ui_pace pace = {0};
+
 	while (!done && !want_quit) {
 		plat_input_poll(&a->in);
 
@@ -9442,6 +9445,10 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 			}
 		}
 
+		if (!screen_draw_due(a, &pace, menu_fingerprint(heading, rows, n, sel))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		chv_backdrop(a, bg, over_shelf);
 		/* visits_all: every achievement can be opened, earned or not, so
 		 * `live` here is about color and not about reach. */
@@ -9449,7 +9456,6 @@ static void cheevos_screen(app *a, SDL_Texture *bg, bool over_shelf)
 		             vcols, true, 0);
 		draw_battery(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 
 	free(rows);
@@ -9545,6 +9551,8 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 
 	plat_input_flush();
 	memset(&a->in, 0, sizeof a->in);
+
+	ui_pace pace = {0};
 
 	while (!done && !want_quit) {
 		plat_input_poll(&a->in);
@@ -9647,11 +9655,14 @@ static void hotkeys_screen(app *a, SDL_Texture *bg, const char *tag)
 		rows[ROWS + 1] = MENU_NOTE(capturing ? "Press a button    Menu: cancel"
 		                                     : "A: set    X: clear");
 
+		if (!screen_draw_due(a, &pace, menu_fingerprint("Hotkeys", rows, ROWS + 2, sel))) {
+			SDL_Delay(IDLE_POLL_MS);
+			continue;
+		}
 		chv_backdrop(a, bg, false);
 		menu_draw(a, "Hotkeys", rows, ROWS + 2, sel, 0, MENU_ACCENT);
 		draw_battery(a->r);
 		plat_present(a->r);
-		SDL_Delay(8);
 	}
 
 	plat_input_flush();
@@ -12994,7 +13005,7 @@ int main(int argc, char *argv[])
 		launch(&a);
 	}
 
-	screen_pace pace = {0};
+	ui_pace pace = {0};
 
 	while (a.running) {
 		plat_input_poll(&a.in);
@@ -13056,7 +13067,7 @@ int main(int argc, char *argv[])
 		else update_games(&a);
 		if (!a.running) break;
 
-		if (screen_draw_due(&a, &pace)) {
+		if (screen_draw_due(&a, &pace, 0)) {
 			tick_tint(&a);
 			render(&a);
 		} else {

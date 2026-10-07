@@ -147,6 +147,22 @@ void ui_redraw_now(void);
 void ui_redraw_reset(void);
 bool ui_redraw_due(unsigned now);
 
+/* One screen loop's place in that rule. Zeroed, its first pass draws. */
+typedef struct { unsigned last_pass, last_draw, shown; } ui_pace;
+
+/* How long a loop sleeps on a pass it does not draw. See main.c's
+ * IDLE_POLL_MS for why it polls rather than waits. */
+#define UI_IDLE_POLL_MS 16
+
+/* Whether a screen loop draws this pass: when `touched` (input, or anything
+ * else the caller knows changed), on its first pass or the first after
+ * something else had the screen, when ui_redraw_at has come due, when
+ * `shown` - a fingerprint of what the screen would draw, 0 if it has none -
+ * differs from the last frame's, and once a second regardless. On true the
+ * schedule is reset, BEFORE anything is drawn, because what animates re-arms
+ * it while drawing. On false the caller sleeps UI_IDLE_POLL_MS. */
+bool ui_draw_due(ui_pace *p, bool touched, unsigned shown);
+
 /* The ping-pong offset a marquee is at, in pixels, for `phase` ms into it.
  * Exposed so a panel that scrolls itself vertically keeps the same timing as
  * a title that scrolls sideways. */

@@ -413,6 +413,31 @@ void ui_redraw_now(void)       { redraw_at_ms = 0; }
 void ui_redraw_reset(void)     { redraw_at_ms = UI_REDRAW_NEVER; }
 bool ui_redraw_due(unsigned now) { return now >= redraw_at_ms; }
 
+/* A gap this long between two passes means something else had the screen -
+ * a menu, a game, the art scraper - and whatever it drew is not this one.
+ * Catching it here covers every one of them without a list to keep. */
+#define AWAY_MS 100
+/* Drawn at least this often regardless. A backstop, not a mechanism: if some
+ * animation is ever added without telling ui_redraw_at, it shows as a screen
+ * updating once a second, which is visibly wrong, rather than one that has
+ * silently frozen. */
+#define HEARTBEAT_MS 1000
+
+bool ui_draw_due(ui_pace *p, bool touched, unsigned shown)
+{
+	unsigned now = plat_now_ms();
+	bool away = now - p->last_pass > AWAY_MS;
+
+	p->last_pass = now;
+	if (!(touched || away || shown != p->shown || ui_redraw_due(now) ||
+	      now - p->last_draw >= HEARTBEAT_MS))
+		return false;
+	p->last_draw = now;
+	p->shown = shown;
+	ui_redraw_reset();
+	return true;
+}
+
 int ui_pingpong(int over, unsigned phase)
 {
 	int travel = over * 1000 / MQ_SPEED_PXPS;

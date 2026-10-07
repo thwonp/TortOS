@@ -276,6 +276,8 @@ kb_result kb_prompt(SDL_Renderer *r, in_state *in, const char *title,
 	k.cur = k.len;
 	k.row = 1;              /* open on the letters, not the digits */
 
+	ui_pace pace = {0};
+
 	for (;;) {
 		plat_input_poll(in);
 		if (in->quit_requested) return KB_CANCEL;
@@ -324,10 +326,22 @@ kb_result kb_prompt(SDL_Renderer *r, in_state *in, const char *title,
 		if (in_repeat(in, IN_BRIGHTUP)) plat_brightness_nudge(+1);
 		if (in_repeat(in, IN_BRIGHTDN)) plat_brightness_nudge(-1);
 
+		/* Drawn only when something changed (ui_draw_due): nothing on a
+		 * keyboard moves by itself, so a press or a hold is a frame. */
+		{
+			bool touched = false;
+			int i;
+
+			for (i = 0; i < IN_COUNT && !touched; i++)
+				touched = in->pressed[i] || in->down[i];
+			if (!ui_draw_due(&pace, touched, 0)) {
+				SDL_Delay(UI_IDLE_POLL_MS);
+				continue;
+			}
+		}
 		if (backdrop) backdrop(ctx);
 		kb_draw(r, &k, title, accent);
 		plat_draw_osd(r);
 		plat_present(r);
-		SDL_Delay(8);
 	}
 }
