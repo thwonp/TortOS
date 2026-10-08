@@ -5,6 +5,7 @@
 #include <SDL.h>
 #include <stdbool.h>
 #include <time.h>
+#include "platproc.h"
 
 /* Everything that knows it is running on a TrimUI Brick lives here: the
  * display, the buttons that arrive on three different devices, the panel
@@ -95,7 +96,6 @@ SDL_Renderer *plat_renderer(void);
  * compositor, so no window either (plorpos-reo.8). */
 bool plat_video_init_over_child(void);
 void plat_present(SDL_Renderer *r);
-unsigned plat_now_ms(void);
 
 bool plat_input_init(void);
 void plat_input_quit(void);
@@ -140,11 +140,6 @@ unsigned plat_run_menu_age_ms(void);
  * reading the power key. Auto Off expiring in the in-game menu is exactly
  * that. Cleared with the flag, at the start of the next game. */
 void plat_note_power_pressed(void);
-
-/* Start a child and forget it: it outlives this process and leaves no zombie
- * behind. This is how a resident emulator that has died gets started again. */
-bool plat_spawn_detached(char *const argv[], const char *const envkv[],
-                         const char *workdir);
 
 /* The resident emulator. plat_resident_send() hands over a game and returns
  * at once - the launcher draws nothing over the load, because it and the

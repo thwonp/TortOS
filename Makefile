@@ -226,13 +226,14 @@ build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so &:
 
 # The RG Nano (plorpos-ggv): FunKey's SDK and FFmpeg from mk/fetch-nano-sdk.sh,
 # no device needed. Its own makefile, mk/nano.mk - nothing of cross.mk applies.
-NANO_BIN := build/nano/muse build/nano/musectl build/nano/nanokey
+NANO_VERSION ?= 0.1
+NANO_BIN := build/nano/nanoshelf build/nano/muse build/nano/musectl build/nano/nanokey
 .PHONY: nano
 nano:
 	@[ -x sdk-nano/sdk/bin/arm-funkey-linux-musleabihf-gcc ] || { \
 		echo "no Nano SDK; run: mk/fetch-nano-sdk.sh" >&2; exit 1; }
 	docker run --rm -v $(CURDIR):/work -v $(CURDIR)/sdk-nano/sdk:/sdk:ro -w /work $(IMAGE) \
-		make -f mk/nano.mk $(NANO_BIN)
+		make -f mk/nano.mk NANO_VERSION=$(NANO_VERSION) $(NANO_BIN)
 
 # The check binaries are rebuilt every time, deliberately.
 #

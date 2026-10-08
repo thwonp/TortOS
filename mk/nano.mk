@@ -19,6 +19,16 @@ $(BUILD)/muse: $(MUSE_SRC) $(wildcard src/muse/*.h)
 	      -Wl,-rpath-link,$(FF)/lib -Wl,-rpath,'$$ORIGIN/../lib' -o $@ $(MUSE_SRC) \
 	      -lavformat -lavcodec -lavfilter -lswresample -lavutil -lpthread -ldl
 
+# The frontend: SDL 1.2 and SDL_ttf from the SDK's sysroot (the device's own),
+# with the launcher's Muse client and library walk, which need no SDL.
+SYSROOT := /sdk/arm-funkey-linux-musleabihf/sysroot
+NANO_VERSION ?= 0.0
+SHELF_SRC := src/nano/nanoshelf.c src/nano/plat_nano.c src/musec.c src/muselib.c src/musequeue.c
+$(BUILD)/nanoshelf: $(SHELF_SRC) src/musec.h src/muselib.h src/musequeue.h src/library.h src/platproc.h
+	mkdir -p $(BUILD)
+	$(CC) $(OPT) $(WARN) -DTORTOS_VERSION='"$(NANO_VERSION)"' -I$(SYSROOT)/usr/include/SDL \
+	      -o $@ $(SHELF_SRC) -lSDL_ttf -lSDL -lpthread
+
 $(BUILD)/musectl: tools/musectl.c
 	mkdir -p $(BUILD)
 	$(CC) $(OPT) $(WARN) -o $@ $<

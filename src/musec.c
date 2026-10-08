@@ -14,7 +14,7 @@
 
 #include "muselib.h"
 #include "musequeue.h"
-#include "platform.h"
+#include "platproc.h"
 
 #define MUSE_SOCK "/tmp/muse.sock"
 
