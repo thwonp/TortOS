@@ -30,6 +30,8 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
 
 ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl
+else ifeq ($(PLATFORM),nano)
+all: nano
 else ifeq ($(PLATFORM),h700)
 all: build/h700/tortos.elf build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so
 else
@@ -221,6 +223,16 @@ build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so &:
 	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
 		make -f mk/cross.mk PLATFORM=h700 BUILD=build/h700 SYSROOT=/work/sysroot-h700 \
 		build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so
+
+# The RG Nano (plorpos-ggv): FunKey's SDK and FFmpeg from mk/fetch-nano-sdk.sh,
+# no device needed. Its own makefile, mk/nano.mk - nothing of cross.mk applies.
+NANO_BIN := build/nano/muse build/nano/musectl build/nano/nanokey
+.PHONY: nano
+nano:
+	@[ -x sdk-nano/sdk/bin/arm-funkey-linux-musleabihf-gcc ] || { \
+		echo "no Nano SDK; run: mk/fetch-nano-sdk.sh" >&2; exit 1; }
+	docker run --rm -v $(CURDIR):/work -v $(CURDIR)/sdk-nano/sdk:/sdk:ro -w /work $(IMAGE) \
+		make -f mk/nano.mk $(NANO_BIN)
 
 # The check binaries are rebuilt every time, deliberately.
 #
