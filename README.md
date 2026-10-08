@@ -23,17 +23,17 @@ TortOS does, it still does. On top of that:
 
 **More handhelds**
 
-- **The GKD 350H Ultra.** plorpOS runs on top of the GKD's own system,
+- **GKD 350H Ultra.** plorpOS runs on top of the GKD's own system,
   ROCKNIX, and changes nothing in it: take the card out and it starts
   EmulationStation again. The shelf is drawn at the screen's own resolution,
   not stretched, and its game cards are bigger. Wi-Fi, SSH, Samba and
   **Syncthing** are switches in the menu. See
   [Installing on the GKD](docs/install-gkd.md).
-- **The Brick Pro.** One card works in both the Brick and the Brick Pro: set
+- **TrimUI Brick Pro.** One card works in both the Brick and the Brick Pro: set
   it up once and move it between them, saves and all. plorpOS tells the two
   apart when it starts. The left stick is a second d-pad, and the
   right stick and both stick clicks can be hotkeys.
-- **The Anbernic RG SP.** plorpOS is the frontend for
+- **Anbernic RG SP.** plorpOS is a frontend for
   [BaseOS](https://github.com/pvaibhav/BaseOS), a small system for Anbernic's
   H700 handhelds: BaseOS on the first card, plorpOS on the second. Wi-Fi,
   Bluetooth headphones, shaders, native PICO-8 and Muse all work, and closing
@@ -55,8 +55,8 @@ TortOS does, it still does. On top of that:
 **In a game**
 
 - **Rewind:** about thirty seconds of it, on every console, at the speed you pick, from 1x to 10x. A PlayStation game on the Brick holds less, 6 to 15 seconds.
-- **Configurable hotkeys** for Fast-forward, rewind, quick save, quick load and
-  screenshots. Hotkeys can be set with or without a modifier button and persist per console. See [How do hotkeys work?](#faq)
+- **Configurable hotkeys** for Fast-forward, rewind, quick save, quick load
+  screenshots, and **Turbo Mode**. Hotkeys can be set with or without a modifier button and persist per console. See [How do hotkeys work?](#faq)
 - **Shaders:** fifteen of them, scanlines to LCD grids and Pixel
   Transparency, on the in-game menu's Shader row, on every device. Each console remembers its own.
 - **Screenshots:** a hotkey saves a PNG of the screen, shader included, to
@@ -77,24 +77,20 @@ TortOS does, it still does. On top of that:
 
 **Music**
 
-- **Muse keeps the Music folder tidy.** Songs left loose in `Music/` move
-  into `Music/Singles/`, an album with its own cover, and an album folder put
-  straight in `Music/` is filed under its artist when its tags say clearly who
-  that is. Nothing is overwritten, and an album with no clear artist stays put.
-- **Sort by Year** on Muse's shelf: newest first, and up and down jump a year
-  at a time.
-- **Music keeps playing through sleep.** A tap of POWER, or the configurable idle timer,
+- **Music plays over gameplay** and can be accessed with the tap of the select button from any menu. This is one of the things that makes TortOS great, and plorpOS extends this through all its added systems. 
+- **USB DAC Support** on all supported devices (as of v1.5.1).
+- **Music keeps playing through sleep.** A tap of POWER, lid close (on the RG SP), or the configurable idle timer
   while Muse plays turns only the screen off, and the album plays on.
-  Now Playing's buttons work in the dark, iPod-style, and the volume keys work
+  - Now Playing's buttons work in the dark, iPod-style, and the volume keys work
   without lighting the screen.
   - When the play queue is finished, the suspend  or auto-off timer will start.
-- **Muse Settings → Wake Screen On Press.** `Yes`: a playback button in the
+  - **Muse Settings → Wake Screen On Press.** `Yes`: a playback button in the
   dark acts and wakes the screen. `No`: it acts and the screen stays dark,
   other buttons are ignored, and only POWER wakes.
-- **Muse Settings → Screen Off.** How long music plays untouched before the
+  - **Muse Settings → Screen Off.** How long music plays untouched before the
   screen goes off: `5s / 10s / 15s / 30s / 1m / Never`, default `10s`, like
   an iPod's backlight timer. 
-- **System Settings → Mute Switch** (Brick) **/ Muse Settings → Sleep Button Lock** (GKD) - iPod style
+  - **System Settings → Mute Switch** (Brick) **/ Muse Settings → Sleep Button Lock** (GKD) - iPod style
   hold switch: while it is on and music plays with the screen dark, all
   buttons and the volume keys are ignored. POWER and headset buttons still
   work, and Now Playing shows a padlock. 
