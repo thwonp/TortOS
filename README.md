@@ -5,39 +5,26 @@
 </p>
 
 <p align="center">
-  <b>A <ins>fast</ins>, focused custom firmware for the GKD 350H Ultra, the TrimUI Brick, Brick Hammer and Brick Pro, and the Anbernic RG SP.</b><br>
-  Plays fifteen classic consoles, and gets out of your way.
-</p>
-
-<p align="center">
   <a href="#install">Install</a> &nbsp;·&nbsp;
   <a href="#supported-systems">Systems</a> &nbsp;·&nbsp;
   <a href="#controls">Controls</a> &nbsp;·&nbsp;
   <a href="#faq">FAQ</a>
 </p>
 
-## What plorpOS adds
-
-**plorpOS** is a fork of TortOS that grew into its own project. Everything
-TortOS does, it still does. On top of that:
+**plorpOS** is a fork of TortOS that grew into its own project. It has a slew of extra/different features, and runs on a handful of different devices. If you want a more focused experience with different device support, check out upstream [TortOS](https://tortos.games/). 
 
 **More handhelds**
 
-- **GKD 350H Ultra.** plorpOS runs on top of the GKD's own system,
-  ROCKNIX, and changes nothing in it: take the card out and it starts
-  EmulationStation again. The shelf is drawn at the screen's own resolution,
-  not stretched, and its game cards are bigger. Wi-Fi, SSH, Samba and
-  **Syncthing** are switches in the menu. See
-  [Installing on the GKD](docs/install-gkd.md).
-- **TrimUI Brick Pro.** One card works in both the Brick and the Brick Pro: set
-  it up once and move it between them, saves and all. plorpOS tells the two
+- **GKD 350H Ultra.** [Installing on the GKD](docs/install-gkd.md) - 
+  plorpOS runs on top of the GKD's stock
+  ROCKNIX OS at the screen's full resolution.
+- **TrimUI Brick Pro.** [Installing on Brick/Pro](docs/install-brick.md) - 
+  One card works in both the Brick and the Brick Pro, plorpOS tells the two
   apart when it starts. The left stick is a second d-pad, and the
   right stick and both stick clicks can be hotkeys.
-- **Anbernic RG SP.** plorpOS is a frontend for
-  [BaseOS](https://github.com/pvaibhav/BaseOS), a small system for Anbernic's
-  H700 handhelds: BaseOS on the first card, plorpOS on the second. Wi-Fi,
-  Bluetooth headphones, shaders, native PICO-8 and Muse all work, and closing
-  the lid sleeps. See [Installing on the RG SP](docs/install-h700.md).
+- **Anbernic RG SP.** [Installing on the RG SP](docs/install-h700.md) - 
+  plorpOS is a frontend for
+  [BaseOS](https://github.com/pvaibhav/BaseOS), which lives on TF1. plorpOS goes on a second card in TF2. Lid sleep even works.
 
 **More to play**
 - **See updated "Supported Systems" table below for details**
@@ -212,8 +199,7 @@ The PIN is new every time you open Over The Hare.
 
 <br clear="right">
 
-### Removing plorpOS from the Brick
-
+### Removing plorpOS
 Take the card out. The Brick boots its own system again. (On the GKD, see [Removing plorpOS](docs/install-gkd.md#removing-plorpos), and on the RG SP, [Removing plorpOS](docs/install-h700.md#removing-plorpos).)
 
 Before you reformat the card or give the Brick away:
