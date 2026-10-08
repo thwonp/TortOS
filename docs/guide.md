@@ -142,7 +142,7 @@ than any one console:
 | **Play Time** | per game or per system, by day, week, month, year or all time |
 | **Wi-Fi Services** | the network's name when connected, or why it is not. Inside: **Wi-Fi**, the radio and the networks it hears; **Cheevos**, the RetroAchievements account, or `sign in`; on the GKD, **SSH** and **Samba** switches; **Over The Hare**, the file server, which needs Wi-Fi and says so when there is none. The footer names the network and the device's address while connected |
 | **Bluetooth** | the connected headset, or `not connected` - pair, connect and forget |
-| **Audio Output** | `Auto` or `Speaker`, and where Auto landed - see **Audio** below |
+| **Audio Output** | `Auto` or `Speaker`, and where Auto landed (`speaker`, `wired`, `bluetooth`, `USB DAC`) - see **Audio** below |
 | **System Settings** | **Date & Time**: the clock and the time zone - see below. **Auto Off**: how long without a button before the device powers itself down instead of sleeping; setting it turns Auto Sleep to `never`, and the other way round. **Auto Sleep**: how long without a button before the device sleeps, the same as a tap of POWER - not during play, only on the shelf and in the menus, the in-game menu included. **Suspend Timeout**: how long a sleeping device waits for POWER before it suspends. **Battery Percentage**: the charge in a gray disc in the top-right corner, ringed green while charging and red when low; off, only a red dot when low. **Mute Switch** (Brick): what the side switch does, `mute` or `muse button lock`, an iPod-style hold switch for music with the screen dark (see Muse) |
 | **UI Settings** | **UI Theme**: `Plain Jane` or `Fancy Pants`, which art the shelves wear. **UI Direction**: `Horizontal` or `Vertical`. **System Order**: `Year`, `A-Z` or `Maker` - see below |
 | **Scraping** | **Box Art**: fetch what the whole library is missing. **ScreenScraper**: the account that brings covers with each game's year, genre and synopsis, `sign in`, or `not in this build`. **Import gamelist.xml metadata**: see below |
@@ -232,17 +232,18 @@ volume, so the line says what it is without a glyph or a number on it.
 
 ## Audio
 
-Sound can come out of three places, and TortOS picks in a fixed order:
+Sound can come out of four places, and TortOS picks in a fixed order:
 
-**wired headphones, then Bluetooth, then the speaker.**
+**a USB DAC, then wired headphones, then Bluetooth, then the speaker.**
 
-A cable wins outright, in every setting. Someone who physically plugged
+A cable wins outright over a headset. Someone who physically plugged
 something in has said what they want more plainly than any menu can, and a
 headset that merely happens to be connected has not said anything at all.
+A USB DAC is a cable too, and the more deliberate one, so it comes first.
 
 The **Audio Output** row has two positions rather than three. `Auto` follows
-the rule above; `Speaker` refuses Bluetooth and nothing else - a cable still
-works through it. There is no third "Headset" position because it would do
+the rule above; `Speaker` refuses a DAC and Bluetooth - the jack still works
+through it, because the jack is switched in hardware. There is no third "Headset" position because it would do
 nothing `Auto` does not already do: `Auto` takes a headset whenever one is
 connected, and neither setting can route to one that is not there. The row
 shows where the sound actually went - `auto (wired)` - because `Auto` on its
@@ -251,6 +252,22 @@ own names a rule, not a place you can hear.
 The wired jack has its own volume range, not the speaker's. The two are about
 9 dB apart, and the level is re-mapped the moment a cable goes in or out, so
 plugging in mid-game does not arrive at nine decibels louder than you left it.
+
+### USB DAC
+
+Any USB audio device the kernel recognises works: a USB-C dongle DAC, a
+USB headset, a desktop DAC. Plug it in and game sound, Muse and native
+PICO-8 move to it within about a second; the row reads `auto (USB DAC)`.
+The volume buttons set the DAC's own volume. Pull it out and sound falls
+back to the jack or the speaker - Muse pauses first, so an album does not
+carry on out loud.
+
+**On the Brick and Brick Pro, use the USB-C port on top.** The bottom port
+is for charging and a computer, and a DAC plugged in there gets no power.
+The GKD and the RG SP have one port, and it works for either.
+
+A DAC with no volume control of its own plays at full volume; the device's
+buttons can't turn it down.
 
 ### Bluetooth
 
