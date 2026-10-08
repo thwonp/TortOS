@@ -26,13 +26,21 @@ const char *aout_device(const aout_state *s)
 	switch (aout_resolve(s)) {
 	case AOUT_USB: return s->usb_sink;
 	case AOUT_BT:  return s->bt_sink;
-	default:       return "";
+	default:       return s->codec ? s->codec : "";
 	}
+}
+
+bool aout_named(const aout_state *s)
+{
+	aout_dest d = aout_resolve(s);
+
+	return d == AOUT_USB || d == AOUT_BT;
 }
 
 aout_dest aout_dest_of(const aout_state *s, const char *dev)
 {
-	if (!dev || !dev[0]) return s->wired ? AOUT_WIRED : AOUT_SPK;
+	if (!dev || !dev[0] || (s->codec && s->codec[0] && !strcmp(dev, s->codec)))
+		return s->wired ? AOUT_WIRED : AOUT_SPK;
 	if (s->usb_sink && s->usb_sink[0] && !strcmp(dev, s->usb_sink)) return AOUT_USB;
 	return AOUT_BT;
 }

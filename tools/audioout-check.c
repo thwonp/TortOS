@@ -25,7 +25,7 @@ static void ck(int cond, const char *what)
 static aout_state st(aout_policy p, bool wired, const char *bt)
 {
 	aout_state s;
-	s.policy = p; s.wired = wired; s.bt_sink = bt; s.usb_sink = NULL;
+	s.policy = p; s.wired = wired; s.bt_sink = bt; s.usb_sink = NULL; s.codec = NULL;
 	return s;
 }
 
@@ -148,6 +148,26 @@ static void usb_dac(void)
 	s = su(AOUT_AUTO, false, BT, USB);
 	ck(aout_dest_of(&s, BT) == AOUT_BT, "a player on the headset reads as bluetooth");
 	ck(aout_dest_of(&s, "") == AOUT_SPK, "and one on the codec as the speaker");
+}
+
+/* The Bricks: with a DAC in, "default" IS the DAC, so the codec is named. */
+static void named_codec(void)
+{
+	aout_state s;
+
+	printf("the codec, named:\n");
+	s = su(AOUT_SPEAKER, false, BT, USB);
+	s.codec = "Playback";
+	ck(!strcmp(aout_device(&s), "Playback"), "Speaker with a DAC in sends the codec by name");
+	ck(aout_dest_of(&s, "Playback") == AOUT_SPK, "which reads back as the speaker");
+	ck(!aout_named(&s), "and is not a sink to hand over");
+	s.wired = true;
+	ck(aout_dest_of(&s, "Playback") == AOUT_WIRED, "or the jack, with a cable in");
+	s = su(AOUT_AUTO, false, BT, USB);
+	s.codec = "Playback";
+	ck(aout_named(&s) && !strcmp(aout_device(&s), USB), "Auto still sends the DAC");
+	s = st(AOUT_AUTO, false, NULL);
+	ck(!strcmp(aout_device(&s), "") && !aout_named(&s), "no name, no DAC: the default, as before");
 }
 
 /* /proc/asound/cards as each device printed it, 2026-10-07, plus DACs that
@@ -313,6 +333,7 @@ int main(void)
 	empty_sink();
 	every_case();
 	usb_dac();
+	named_codec();
 	cards();
 	names();
 	reapply_rule();

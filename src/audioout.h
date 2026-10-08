@@ -43,6 +43,11 @@ typedef struct {
 	bool        wired;     /* a jack is inserted, from SW_HEADPHONE_INSERT */
 	const char *bt_sink;   /* ALSA device for a connected sink, else NULL/"" */
 	const char *usb_sink;  /* ALSA device for a USB DAC, else NULL/"" */
+	/* The codec by name, for when "" will not do: NULL/"" normally. The
+	 * Bricks' alsa-lib sends "default" to a USB card whenever one exists
+	 * (measured 2026-10-07: Diatom asked for default and held the DAC), so
+	 * there, with a DAC in, the codec has to be named to be reached. */
+	const char *codec;
 } aout_state;
 
 /* USB DAC > wired > bluetooth > speaker. A cable is the clearest statement of
@@ -51,9 +56,15 @@ typedef struct {
  * into the port the device charges from, so it outranks the jack. */
 aout_dest   aout_resolve(const aout_state *s);
 
-/* The device string to hand Diatom: the sink's own name, or "" for the codec.
- * Never NULL, so a caller can always print or compare it. */
+/* The device string to hand Diatom: the sink's own name, or the codec's -
+ * "" unless `codec` names it. Never NULL, so a caller can always print or
+ * compare it. */
 const char *aout_device(const aout_state *s);
+
+/* A headset or a DAC: a sink one process holds at a time, handed between
+ * Diatom and Muse - unlike the codec, which is shared (dmix) or handed over
+ * by the port itself. */
+bool        aout_named(const aout_state *s);
 
 /* Which destination a device string is, for reading back where a player
  * actually is: "" is the codec (wired or speaker, by the jack), the DAC's own
