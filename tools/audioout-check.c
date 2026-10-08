@@ -25,7 +25,16 @@ static void ck(int cond, const char *what)
 static aout_state st(aout_policy p, bool wired, const char *bt)
 {
 	aout_state s;
-	s.policy = p; s.wired = wired; s.bt_sink = bt;
+	s.policy = p; s.wired = wired; s.bt_sink = bt; s.usb_sink = NULL;
+	return s;
+}
+
+#define USB "plughw:CARD=KA13,DEV=0"
+
+static aout_state su(aout_policy p, bool wired, const char *bt, const char *usb)
+{
+	aout_state s = st(p, wired, bt);
+	s.usb_sink = usb;
 	return s;
 }
 
@@ -96,23 +105,99 @@ static void empty_sink(void)
 /* Every combination, so nothing is left to a case nobody thought of. */
 static void every_case(void)
 {
-	int p, w, b, n = 0;
+	int p, w, b, u, n = 0;
 
-	printf("all eight combinations resolve, and only wired outranks a sink:\n");
+	printf("all sixteen combinations resolve, in the order usb > wired > bt > speaker:\n");
 	for (p = 0; p < AOUT_POLICY_COUNT; p++)
 		for (w = 0; w < 2; w++)
-			for (b = 0; b < 2; b++) {
-				aout_state s = st((aout_policy)p, w != 0, b ? BT : NULL);
-				aout_dest  d = aout_resolve(&s);
+			for (b = 0; b < 2; b++)
+				for (u = 0; u < 2; u++) {
+					aout_state s = su((aout_policy)p, w != 0, b ? BT : NULL,
+					                  u ? USB : NULL);
+					aout_dest  d = aout_resolve(&s);
 
-				n++;
-				ck(d == AOUT_SPK || d == AOUT_WIRED || d == AOUT_BT,
-				   "resolves to a real destination");
-				if (w) ck(d == AOUT_WIRED, "wired always wins");
-				if (d == AOUT_BT) ck(!w && b && p == AOUT_AUTO,
-				                     "bluetooth only unplugged, connected, on Auto");
-			}
-	ck(n == 8, "eight combinations were actually tried");
+					n++;
+					ck(d == AOUT_SPK || d == AOUT_WIRED || d == AOUT_BT ||
+					   d == AOUT_USB, "resolves to a real destination");
+					if (u && p == AOUT_AUTO) ck(d == AOUT_USB, "a DAC on Auto always wins");
+					else if (w) ck(d == AOUT_WIRED, "otherwise wired wins");
+					if (d == AOUT_BT) ck(!w && !u && b && p == AOUT_AUTO,
+					                     "bluetooth only with no cable or DAC, on Auto");
+					if (d == AOUT_USB) ck(u && p == AOUT_AUTO, "a DAC only on Auto");
+					ck(aout_dest_of(&s, aout_device(&s)) == d,
+					   "the device string reads back as the same destination");
+				}
+	ck(n == 16, "sixteen combinations were actually tried");
+}
+
+/* The DAC: above the jack and the headset, refused by Speaker like a headset. */
+static void usb_dac(void)
+{
+	aout_state s;
+
+	printf("a USB DAC:\n");
+	s = su(AOUT_AUTO, true, BT, USB);
+	ck(aout_resolve(&s) == AOUT_USB, "beats a cable and a headset together");
+	ck(!strcmp(aout_device(&s), USB), "and sends its own device string");
+	s = su(AOUT_SPEAKER, false, BT, USB);
+	ck(aout_resolve(&s) == AOUT_SPK, "Speaker refuses it");
+	s = su(AOUT_SPEAKER, true, NULL, USB);
+	ck(aout_resolve(&s) == AOUT_WIRED, "but Speaker still hears the jack");
+	s = su(AOUT_AUTO, false, BT, "");
+	ck(aout_resolve(&s) == AOUT_BT, "an unplugged DAC (\"\") is not a destination");
+	s = su(AOUT_AUTO, false, BT, USB);
+	ck(aout_dest_of(&s, BT) == AOUT_BT, "a player on the headset reads as bluetooth");
+	ck(aout_dest_of(&s, "") == AOUT_SPK, "and one on the codec as the speaker");
+}
+
+/* /proc/asound/cards as each device printed it, 2026-10-07, plus DACs that
+ * are not the KA13 - the parse must not know any one DAC. */
+static void cards(void)
+{
+	const char *sp =
+		" 0 [audiocodec     ]: audiocodec - audiocodec\n"
+		"                      audiocodec\n"
+		" 1 [ahubdam        ]: ahubdam - ahubdam\n"
+		"                      ahubdam\n"
+		" 2 [ahubhdmi       ]: ahubhdmi - ahubhdmi\n"
+		"                      ahubhdmi\n"
+		" 3 [KA13           ]: USB-Audio - FIIO KA13\n"
+		"                      FIIO FIIO KA13 at usb-sunxi-ehci-1, high speed\n";
+	const char *brick =
+		" 0 [audiocodec     ]: audiocodec - audiocodec\n"
+		"                      audiocodec\n";
+	const char *other =
+		" 0 [rockchipes9018 ]: rockchip-es9018 - rockchip-es9018\n"
+		"                      rockchip-es9018\n"
+		" 1 [Dongle_X2      ]: USB-Audio - Some Dongle X2\n"
+		"                      Vendor Some Dongle X2 at usb-xhci-hcd.5.auto-1, full speed\n"
+		" 2 [KA13           ]: USB-Audio - FIIO KA13\n"
+		"                      FIIO FIIO KA13 at usb-xhci-hcd.5.auto-2, high speed\n";
+	/* A description line that happens to mention USB-Audio is not a card. */
+	const char *tricky =
+		" 0 [audiocodec     ]: audiocodec - audiocodec\n"
+		"                      1 [x]: USB-Audio lookalike\n";
+	const char *longid =
+		" 4 [ABCDEFGHIJKLMNOP]: USB-Audio - Long\n"
+		"                      Long\n";
+	char dev[64];
+	int  card = -1;
+
+	printf("finding the DAC in /proc/asound/cards:\n");
+	ck(aout_usb_card(sp, dev, sizeof dev, &card) && !strcmp(dev, USB) && card == 3,
+	   "the RG SP's, as card 3 by its id");
+	ck(!aout_usb_card(brick, dev, sizeof dev, &card) && dev[0] == '\0',
+	   "a Brick with nothing plugged in has none");
+	ck(aout_usb_card(other, dev, sizeof dev, &card) &&
+	   !strcmp(dev, "plughw:CARD=Dongle_X2,DEV=0") && card == 1,
+	   "any DAC, by whatever id the kernel gave it - the first one");
+	ck(!aout_usb_card(tricky, dev, sizeof dev, &card), "a description line is not a card");
+	ck(aout_usb_card(longid, dev, sizeof dev, &card) &&
+	   !strcmp(dev, "plughw:CARD=ABCDEFGHIJKLMNOP,DEV=0") && card == 4,
+	   "an id that fills the whole column");
+	ck(!aout_usb_card(sp, dev, 10, &card) && dev[0] == '\0',
+	   "a buffer too small refuses rather than truncating");
+	ck(!aout_usb_card("", dev, sizeof dev, NULL), "empty text has none");
 }
 
 static void names(void)
@@ -124,6 +209,7 @@ static void names(void)
 	   "wired and speaker read differently");
 	ck(strcmp(aout_dest_name(AOUT_BT), aout_dest_name(AOUT_SPK)) != 0,
 	   "so do bluetooth and speaker");
+	ck(!strcmp(aout_dest_name(AOUT_USB), "USB DAC"), "a DAC reads as USB DAC");
 }
 
 
@@ -226,6 +312,8 @@ int main(void)
 	device_strings();
 	empty_sink();
 	every_case();
+	usb_dac();
+	cards();
 	names();
 	reapply_rule();
 	the_measured_case();

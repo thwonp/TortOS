@@ -2029,3 +2029,70 @@ void plat_clock_zone(const char *id)
 	setenv("TZ", id, 1);
 	tzset();
 }
+
+/* ---- USB host mode for a DAC (plorpos-8wc), see platform.h --------------- */
+
+#if defined(__linux__) && !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
+/* The sunxi USB manager's role switch: 1 host, 0 none (it then goes back to
+ * watching for a charger or a computer). Written, never read beside: reading
+ * its usb_host / usb_device / usb_null nodes SWITCHES the role, and on the
+ * H700 one such read hung in D state until a reboot. otg_role itself is safe
+ * both ways. Measured 2026-10-07 on the Brick and the Brick Pro: the write
+ * returns at once and a DAC is a sound card about 1.5 s later. */
+#define OTG_ROLE "/sys/devices/platform/soc/usbc0/otg_role"
+#define USB_HOST_WAIT_MS 5000   /* asked, and no DAC showed: give the port back */
+
+static int      usb_host_held;      /* 0 no, 1 asked, 2 a DAC came */
+static unsigned usb_host_since;
+
+static int otg_write(void *arg)
+{
+	FILE *f = fopen(OTG_ROLE, "w");
+
+	if (f) { fputs((const char *)arg, f); fclose(f); }
+	return 0;
+}
+
+/* Off the thread that draws: a sysfs write into a USB stack is not something
+ * to have the menu wait on, however quick it measured. */
+static void otg_set(bool host)
+{
+	SDL_Thread *t = SDL_CreateThread(otg_write, "otg", (void *)(host ? "1" : "0"));
+
+	if (t) SDL_DetachThread(t);
+	else   otg_write((void *)(host ? "1" : "0"));
+	fprintf(stderr, "audio: USB port %s\n", host ? "to host, for a DAC" : "given back");
+}
+
+bool plat_usb_host_manual(void) { return true; }
+bool plat_usb_host_on(void) { return usb_host_held != 0; }
+
+void plat_usb_host_request(void)
+{
+	if (usb_host_held) return;
+	usb_host_held = 1;
+	usb_host_since = plat_now_ms();
+	otg_set(true);
+}
+
+void plat_usb_host_poll(bool dac_present)
+{
+	/* A DAC with nobody holding the port is one the launcher before this one
+	 * asked for - it restarted with the port still in host mode, the only
+	 * way a USB card exists here. Adopted, or it would never be given back. */
+	if (dac_present) { usb_host_held = 2; return; }
+	if (!usb_host_held) return;
+	/* Gone after it came, or never came at all. Either way the port goes back
+	 * to charging: host mode drives VBUS out, and nothing is drawing it. */
+	if (usb_host_held == 2 || plat_now_ms() - usb_host_since > USB_HOST_WAIT_MS) {
+		if (usb_host_held == 1) fprintf(stderr, "audio: no USB DAC after %d ms\n", USB_HOST_WAIT_MS);
+		usb_host_held = 0;
+		otg_set(false);
+	}
+}
+#else
+bool plat_usb_host_manual(void) { return false; }
+bool plat_usb_host_on(void) { return false; }
+void plat_usb_host_request(void) { }
+void plat_usb_host_poll(bool dac_present) { (void)dac_present; }
+#endif

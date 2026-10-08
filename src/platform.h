@@ -165,6 +165,22 @@ bool plat_resident_ready(void);
 /* The same, for a launch: a Diatom that is up but still starting gets up to
  * 8 s to say READY rather than 400 ms (plorpos-7ny.34). */
 bool plat_resident_ready_wait(void);
+/* USB host mode for a DAC (plorpos-8wc). The GKD and the H700 switch their
+ * port themselves when a DAC goes in; the Brick and Brick Pro cannot see one -
+ * their port watches an ID pin a USB-C device never pulls - so there it has to
+ * be asked for, and given back once the DAC is gone so the port charges again.
+ *
+ * plat_usb_host_manual: this port needs asking (true on the Bricks only).
+ * plat_usb_host_request: ask; returns at once, the switch happens off-thread.
+ * plat_usb_host_poll: called with whether a USB audio card exists now, on the
+ *   launcher's half-second look; drops host mode when nothing turned up within
+ *   a few seconds of asking, or when the DAC that did has gone.
+ * plat_usb_host_on: host mode is held now, for the menu to say so. */
+bool plat_usb_host_manual(void);
+void plat_usb_host_request(void);
+void plat_usb_host_poll(bool dac_present);
+bool plat_usb_host_on(void);
+
 #if !defined(PLATFORM_GKD)
 /* Native PICO-8's sound device, followed by pico8sdl.so: NULL nothing, "" the
  * default, else a PCM name with the headset's link id (plorpos-7ny.35, the
@@ -422,6 +438,7 @@ bool plat_headphones_present(void);
  * out. Nothing is sent to Diatom or Muse; both stay on "default". */
 void plat_audio_speaker_only(bool on);
 bool plat_bt_audio(void);
+bool plat_usb_audio(void);          /* a USB DAC's sink exists */
 void plat_sink_follow(bool game);   /* a headset's own volume -> the level */
 #endif
 /* kind: 1 = brightness, 2 = volume */

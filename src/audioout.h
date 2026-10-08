@@ -22,33 +22,51 @@
  * over everything, a pinned Headset does nothing Auto does not already do -
  * Auto takes Bluetooth whenever it is connected, and neither position can route
  * to a headset that is not there. The only override worth having is REFUSING
- * Bluetooth, so that is the only one offered. */
+ * Bluetooth, so that is the only one offered. A USB DAC is refused along with
+ * it: Speaker means the speaker, except for the jack, which is not software's
+ * to refuse. */
 typedef enum {
-	AOUT_AUTO = 0,   /* wired, then Bluetooth, then the speaker */
-	AOUT_SPEAKER,    /* never Bluetooth; a cable still works */
+	AOUT_AUTO = 0,   /* a USB DAC, then wired, then Bluetooth, then the speaker */
+	AOUT_SPEAKER,    /* never a DAC or Bluetooth; a cable still works */
 	AOUT_POLICY_COUNT
 } aout_policy;
 
-/* Where the sound actually ends up. Three destinations, but only TWO device
+/* Where the sound actually ends up. Four destinations, but only THREE device
  * strings: wired and speaker are the same ALSA device, because the jack switch
  * that separates them lives in the codec, below ALSA, and is the port's job
  * (plat_audio_jack_poll). The distinction survives here only because the menu
  * has to be able to say which one you are hearing. */
-typedef enum { AOUT_SPK = 0, AOUT_WIRED, AOUT_BT } aout_dest;
+typedef enum { AOUT_SPK = 0, AOUT_WIRED, AOUT_BT, AOUT_USB } aout_dest;
 
 typedef struct {
 	aout_policy policy;
 	bool        wired;     /* a jack is inserted, from SW_HEADPHONE_INSERT */
 	const char *bt_sink;   /* ALSA device for a connected sink, else NULL/"" */
+	const char *usb_sink;  /* ALSA device for a USB DAC, else NULL/"" */
 } aout_state;
 
-/* wired > bluetooth > speaker. A cable is the clearest statement of intent a
- * player can make, and it beats a headset that merely happens to be connected. */
+/* USB DAC > wired > bluetooth > speaker. A cable is the clearest statement of
+ * intent a player can make, and it beats a headset that merely happens to be
+ * connected. A DAC is a cable too, and the more deliberate one: it is plugged
+ * into the port the device charges from, so it outranks the jack. */
 aout_dest   aout_resolve(const aout_state *s);
 
 /* The device string to hand Diatom: the sink's own name, or "" for the codec.
  * Never NULL, so a caller can always print or compare it. */
 const char *aout_device(const aout_state *s);
+
+/* Which destination a device string is, for reading back where a player
+ * actually is: "" is the codec (wired or speaker, by the jack), the DAC's own
+ * string is the DAC, and any other name is a headset. */
+aout_dest   aout_dest_of(const aout_state *s, const char *dev);
+
+/* The first USB audio card in the text of /proc/asound/cards, as the device
+ * string to open it by: `plughw:CARD=<id>,DEV=0`. By the id the kernel gave
+ * it, never by index - the index moves with whatever else has a card, and the
+ * id is whatever the DAC calls itself, so nothing here knows any one DAC.
+ * `card` gets the index, for /proc/asound/card<N>/usbbus. False when there is
+ * no USB card; `dev` is then "". */
+bool        aout_usb_card(const char *cards, char *dev, int cap, int *card);
 
 /* For the menu: "Auto" / "Speaker", and what Auto currently resolves to. */
 const char *aout_policy_name(aout_policy p);
