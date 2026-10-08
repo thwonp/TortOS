@@ -3,14 +3,15 @@
 #
 # FunKey-OS starts its menu with `frontend init &` from /root/.profile, after
 # `instant_play load` has resumed any game a power-off saved. This answers the
-# same commands with one menu, plorpOS: init keeps /mnt/plorpOS/start.sh
-# running, the way FunKey's loop kept RetroFE or GMenu2X running.
+# same commands with one menu, plorpOS: init keeps its start.sh running - the
+# copy install-root.sh put on the system partition - the way FunKey's loop
+# kept RetroFE or GMenu2X running.
 #   /mnt/disable_frontend   holds it, as before (`frontend set none`)
 #   /run/rebooting          ends it, as before
 LOCK=/var/lock/frontend.lock
 DISABLE=/mnt/disable_frontend
 REBOOTING=/run/rebooting
-START=/mnt/plorpOS/start.sh
+START=/usr/local/plorpos/start.sh
 
 case "$1" in
 init)

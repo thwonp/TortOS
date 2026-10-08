@@ -59,15 +59,32 @@
 #define ROWS  ((H - TOP - BOT) / ROW)
 
 #define CARD     "/mnt"
-#define BASE     CARD "/plorpOS"
-#define PICOARCH BASE "/bin/picoarch"
-#define MUSE     BASE "/bin/muse"
-#define FONT     BASE "/res/menu.ttf"
-#define RECENT   BASE "/recent.txt"
+#define DATA     CARD "/plorpOS"      /* what plorpOS keeps on the card */
+#define RECENT   DATA "/recent.txt"
 #define STATE    "/tmp/plorpos"
 #define NOW      STATE "/now"
 #define CMD      STATE "/cmd"
 #define GAME_HOME "/mnt/FunKey"     /* where FunKey keeps .picoarch */
+
+/* Where the programs are: the folder above this one's bin/. Installed, that
+ * is /usr/local/plorpos on the system partition (install-root.sh), so that
+ * nothing runs from the card while it is lent to a computer as a USB drive;
+ * tried out without installing, it is the card's /mnt/plorpOS. */
+static char picoarch_bin[PATH_MAX], muse_bin[PATH_MAX], font_path[PATH_MAX];
+
+static void app_paths(void)
+{
+	char exe[PATH_MAX], *slash;
+	ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+	int i;
+
+	if (n <= 0) n = (ssize_t)strlen(strcpy(exe, DATA "/bin/nanoshelf"));
+	exe[n] = '\0';
+	for (i = 0; i < 2 && (slash = strrchr(exe, '/')); i++) *slash = '\0';
+	snprintf(picoarch_bin, sizeof picoarch_bin, "%s/bin/picoarch", exe);
+	snprintf(muse_bin, sizeof muse_bin, "%s/bin/muse", exe);
+	snprintf(font_path, sizeof font_path, "%s/res/menu.ttf", exe);
+}
 
 /* ---------------------------------------------------------------- systems */
 
@@ -319,7 +336,7 @@ static void music_init(void)
 	 * empty FIFO reads as "nothing yet" rather than end of file. */
 	cmd_fd = open(CMD, O_RDONLY | O_NONBLOCK);
 	cmd_keep = open(CMD, O_WRONLY | O_NONBLOCK);
-	musec_init(MUSE, CARD);
+	musec_init(muse_bin, CARD);
 	if (pthread_create(&th, NULL, lib_walk, NULL) == 0) pthread_detach(th);
 	else lib_walk(NULL);
 }
@@ -459,6 +476,50 @@ static void text(TTF_Font *f, int x, int y, int maxw, const char *s, SDL_Color c
 	SDL_FreeSurface(t);
 }
 
+/* ---------------------------------------------------------------- settings */
+
+/* What FunKey's own menus offered that plorpOS needs, done with FunKey's own
+ * tools: lending the card to a computer (share), the USB mode for the next
+ * start (its flag files), restart and power off. Volume and brightness stay
+ * on FN + A/Y and FN + X/B, which fkgpiod handles everywhere. */
+enum { S_OUTPUT, S_LIBRARY, S_USB_DRIVE, S_USB_MODE, S_RESTART, S_POWEROFF, S_KEYS, S_VERSION, S_COUNT };
+static int confirm = -1;           /* the row whose A asks to be pressed again */
+static char note[96];              /* a line over the footer for a few seconds */
+static unsigned note_until;
+
+static void set_note(const char *msg)
+{
+	snprintf(note, sizeof note, "%s", msg);
+	note_until = plat_now_ms() + 3000;
+}
+
+static bool run_ok(const char *cmd)
+{
+	int r = system(cmd);
+
+	return r != -1 && WIFEXITED(r) && WEXITSTATUS(r) == 0;
+}
+
+/* FunKey's /mnt flag files, read at start (/usr/local/sbin/usb_gadget): adb
+ * wins over usbnet, and neither is a USB drive. */
+static int usb_mode(void)
+{
+	return access(CARD "/adb", F_OK) == 0 ? 2 : access(CARD "/usbnet", F_OK) == 0 ? 1 : 0;
+}
+
+static void usb_mode_set(int m)
+{
+	unlink(CARD "/adb");
+	unlink(CARD "/usbnet");
+	if (m) close(open(m == 2 ? CARD "/adb" : CARD "/usbnet", O_WRONLY | O_CREAT, 0644));
+	sync();
+}
+
+static const char *usb_mode_name(int m)
+{
+	return m == 2 ? "adb" : m == 1 ? "Network (ssh)" : "USB drive";
+}
+
 /* ------------------------------------------------------------------- views */
 
 enum { V_HOME, V_GAMES, V_RECENT, V_SETTINGS, V_NOW, V_ARTISTS, V_ALBUMS, V_TRACKS, V_QUEUE };
@@ -493,7 +554,7 @@ static int view_len(const view *v)
 	case V_HOME:     return nhome;
 	case V_GAMES:    return ngames;
 	case V_RECENT:   return nrecent;
-	case V_SETTINGS: return 4;
+	case V_SETTINGS: return S_COUNT;
 	case V_ARTISTS:  return lib_ready ? lib.nartists : 0;
 	case V_ALBUMS:   return lib_ready ? lib.artists[v->arg].n : 0;
 	case V_TRACKS:   return lib_ready ? lib.albums[v->arg].n : 0;
@@ -537,10 +598,14 @@ static void row_label(const view *v, int i, char *buf, size_t n)
 	}
 	case V_SETTINGS:
 		switch (i) {
-		case 0: snprintf(buf, n, "Output: %s", output_name()); break;
-		case 1: snprintf(buf, n, "Library: %d tracks", lib_ready ? lib.ntracks : 0); break;
-		case 2: snprintf(buf, n, "Volume and brightness: FN + A/Y, X/B"); break;
-		case 3: snprintf(buf, n, "plorpOS-Nano %s", TORTOS_VERSION); break;
+		case S_OUTPUT:    snprintf(buf, n, "Output: %s", output_name()); break;
+		case S_LIBRARY:   snprintf(buf, n, "Library: %d tracks", lib_ready ? lib.ntracks : 0); break;
+		case S_USB_DRIVE: snprintf(buf, n, "Share the card with a computer"); break;
+		case S_USB_MODE:  snprintf(buf, n, "USB at start: %s", usb_mode_name(usb_mode())); break;
+		case S_RESTART:   snprintf(buf, n, confirm == i ? "Restart? Press A again" : "Restart"); break;
+		case S_POWEROFF:  snprintf(buf, n, confirm == i ? "Power off? Press A again" : "Power off"); break;
+		case S_KEYS:      snprintf(buf, n, "Volume FN + A/Y, brightness FN + X/B"); break;
+		case S_VERSION:   snprintf(buf, n, "plorpOS-Nano %s", TORTOS_VERSION); break;
 		}
 		break;
 	case V_ARTISTS:
@@ -685,7 +750,10 @@ static void draw(void)
 	if (v->v == V_NOW) draw_now();
 	else draw_list(v);
 	fill(0, H - BOT, W, BOT, c_bar);
-	text(font, 6, H - BOT + 1, W - 12, view_hint(v), C_DIM, 0);
+	if ((int)(note_until - plat_now_ms()) > 0)
+		text(font, 6, H - BOT + 1, W - 12, note, C_ACC, 0);
+	else
+		text(font, 6, H - BOT + 1, W - 12, view_hint(v), C_DIM, 0);
 	SDL_Flip(screen);
 }
 
@@ -700,6 +768,7 @@ static unsigned music_sig(void)
 
 	for (p = m->title; *p; p++) h = h * 31u + (unsigned char)*p;
 	h += (unsigned)lib_ready * 977u;
+	h += ((int)(note_until - plat_now_ms()) > 0) * 4099u;
 	if (CUR.v == V_NOW) h += (unsigned)m->at * 1009u + (unsigned)musec_mode() * 17u;
 	return h;
 }
@@ -770,7 +839,7 @@ static void launch(int s, const char *file_in)
 
 		for (fd = 3; fd < 256; fd++) close(fd);
 		signal(SIGUSR1, SIG_DFL);
-		execl(PICOARCH, "picoarch", core, rom, (char *)NULL);
+		execl(picoarch_bin, "picoarch", core, rom, (char *)NULL);
 		_exit(127);
 	}
 	if (pid > 0) {
@@ -791,6 +860,76 @@ static void launch(int s, const char *file_in)
 		fprintf(stderr, "nanoshelf: video after the game: %s\n", SDL_GetError());
 		want_quit = 1;
 	}
+}
+
+/* ---------------------------------------------------------------- USB drive */
+
+static void message(const char *l1, const char *l2)
+{
+	fill(0, 0, W, H, c_bg);
+	fill(0, 0, W, TOP, c_bar);
+	text(font, 6, 3, W - 12, "USB drive", C_TEXT, 0);
+	text(font, 8, 90, W - 16, l1, C_TEXT, 1);
+	text(font, 8, 112, W - 16, l2, C_DIM, 1);
+	SDL_Flip(screen);
+}
+
+/* What is on the card, read again after the computer had it. */
+static void rescan_card(void)
+{
+	pthread_t th;
+	int s;
+
+	for (s = 0; s < NSYS; s++) sys_shown[s] = sys_has_games(&SYS[s]);
+	recent_load();
+	games_sys = -1;
+	ngames = 0;
+	lib_ready = 0;
+	__sync_synchronize();
+	ml_free(&lib);
+	if (pthread_create(&th, NULL, lib_walk, NULL) == 0) pthread_detach(th);
+	else lib_walk(NULL);
+}
+
+/* Lend the card's partition to a computer: FunKey's `share start` unmounts
+ * /mnt and offers it over USB, which only works with nothing open on it - so
+ * the music stops first, and an install that runs from the card itself (not
+ * install-root.sh's /usr/local/plorpos) cannot do it at all. B takes it back
+ * once the computer has let go. */
+static void usb_drive(void)
+{
+	SDL_Event e;
+
+	if (!lib_ready) { set_note("Still reading the music library"); return; }
+	if (!run_ok("share is_usb_data_connected >/dev/null 2>&1")) {
+		set_note("Connect a computer by USB first");
+		return;
+	}
+	/* The mass-storage function exists only when the Nano started as a USB
+	 * drive; started for adb or the network, it is not there to lend. */
+	if (access("/sys/kernel/config/usb_gadget/FunKey/functions/mass_storage.mmcblk0p4/lun.0/file", F_OK)) {
+		set_note("Set USB at start: USB drive, restart");
+		return;
+	}
+	musec_stop();
+	music_tick();
+	message("Lending the card...", "");
+	usleep(300000);
+	if (!run_ok("share start >/tmp/plorpos/share.log 2>&1")) {
+		set_note(access("/usr/local/plorpos/bin/nanoshelf", X_OK) ? "Needs install-root.sh first"
+		                                                          : "The card is in use");
+		return;
+	}
+	fprintf(stderr, "nanoshelf: card lent to a computer\n");
+	message("The computer has the card.", "Eject it there, then press B.");
+	while (!want_quit) {
+		if (!SDL_WaitEvent(&e)) break;
+		if (e.type != SDL_KEYDOWN || e.key.keysym.sym != SDLK_b) continue;
+		if (run_ok("share stop >>/tmp/plorpos/share.log 2>&1")) break;
+		message("The computer still has it.", "Eject it there, then press B.");
+	}
+	fprintf(stderr, "nanoshelf: card back\n");
+	rescan_card();
 }
 
 /* ------------------------------------------------------------------- input */
@@ -858,6 +997,25 @@ static void activate(void)
 	case V_NOW:
 		musec_toggle();
 		break;
+	case V_SETTINGS:
+		switch (v->sel) {
+		case S_USB_DRIVE: usb_drive(); break;
+		case S_USB_MODE:
+			usb_mode_set((usb_mode() + 1) % 3);
+			set_note("Used from the next start");
+			break;
+		case S_RESTART:
+		case S_POWEROFF:
+			if (confirm != v->sel) { confirm = v->sel; break; }
+			musec_stop();
+			music_tick();
+			sync();
+			if (v->sel == S_RESTART) system("touch /run/rebooting; sync; reboot");
+			else system("powerdown now");
+			want_quit = 1;
+			break;
+		}
+		return;
 	}
 }
 
@@ -865,6 +1023,8 @@ static void key(SDLKey k)
 {
 	view *v = &CUR;
 	int n = view_len(v);
+
+	if (k != SDLK_a) confirm = -1;
 
 	switch (k) {
 	case SDLK_u: if (n) v->sel = (v->sel + n - 1) % n; break;
@@ -910,6 +1070,8 @@ int main(void)
 	signal(SIGUSR1, SIG_IGN);    /* the power key: powerdown does the rest */
 	signal(SIGPIPE, SIG_IGN);
 	setenv("HOME", GAME_HOME, 1);
+	app_paths();
+	mkdir(DATA, 0777);
 	/* Muse's speaker by name. FunKey's USB-audio watcher points ALSA's
 	 * "default" at a DAC while one is in (its ~/.asoundrc, which is also
 	 * what moves the volume keys to the DAC), so "default" is not always
@@ -922,10 +1084,10 @@ int main(void)
 		fprintf(stderr, "nanoshelf: %s\n", SDL_GetError());
 		return 1;
 	}
-	font = TTF_OpenFont(FONT, 13);
-	font_big = TTF_OpenFont(FONT, 17);
+	font = TTF_OpenFont(font_path, 13);
+	font_big = TTF_OpenFont(font_path, 17);
 	if (!font || !font_big) {
-		fprintf(stderr, "nanoshelf: %s: %s\n", FONT, TTF_GetError());
+		fprintf(stderr, "nanoshelf: %s: %s\n", font_path, TTF_GetError());
 		return 1;
 	}
 	for (s = 0; s < NSYS; s++) sys_shown[s] = sys_has_games(&SYS[s]);

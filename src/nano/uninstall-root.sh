@@ -9,6 +9,7 @@ B=/mnt/plorpOS/backup
 # that fails, and the root stays writable until the restart, which mounts it
 # read-only.
 trap 'sync; /usr/local/sbin/ro 2>/dev/null || echo "(system partition read-only again after the restart)"' EXIT
+rm -rf /usr/local/plorpos
 for t in "$B"/root-*.tar; do
 	tar -xf "$t" -C /
 	echo "restored $(basename "$t")"

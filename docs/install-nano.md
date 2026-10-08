@@ -27,9 +27,10 @@ Put music in `Music/`, one folder per artist and one per album inside it
 
 ## 2. Make plorpOS the Nano's menu
 
-This replaces FunKey's menu (RetroFE or GMenu2X) with plorpOS at every start.
-It changes two files in the Nano's system and keeps copies of them first
-(`plorpOS/backup/`), so it can be undone (see Removing).
+This makes plorpOS the menu the Nano starts into, in place of FunKey's
+RetroFE and GMenu2X, which it removes. Everything it changes or removes in the
+Nano's system is kept first in `plorpOS/backup/`, so it can be undone (see
+Removing).
 
 Connect a shell to the Nano (see [Connecting](#connecting)), then:
 
@@ -38,15 +39,22 @@ sh /mnt/plorpOS/install-root.sh
 reboot
 ```
 
-It changes:
+It:
 
-- `/usr/local/sbin/frontend`, FunKey's menu loop, to start plorpOS (and
+- copies plorpOS's programs to `/usr/local/plorpos/` and runs them from there,
+  so the card can be lent to a computer while plorpOS is running;
+- changes `/usr/local/sbin/frontend`, FunKey's menu loop, to start plorpOS (and
   start it again if it ever stops);
-- `/etc/asound.conf`, the speaker mix, at half level per channel so music is
-  not clipped on the mono speaker.
+- changes `/etc/asound.conf`, the speaker mix, to half level per channel so
+  music is not clipped on the mono speaker;
+- removes RetroFE and GMenu2X. FunKey's cores, PicoArch's menu, the apps and
+  your saves stay.
 
 FunKey's own USB-audio handling stays: it sets a DAC's level when it is
 plugged in and points the volume keys at it.
+
+**Updating:** copy the new `plorpOS` folder over the old one, run
+`install-root.sh` again and restart.
 
 ## Using it
 
@@ -69,6 +77,15 @@ aspect ratio, exit.
 Volume and brightness are FunKey's keys everywhere: **FN + A / Y** and
 **FN + X / B**.
 
+**Settings** (last on the shelf):
+
+- **Share the card with a computer** - the Nano's card appears on the computer
+  as a USB drive; the music stops. Eject it on the computer, then press B. This
+  needs **USB at start: USB drive** (the Nano's usual mode).
+- **USB at start** - USB drive, Network (ssh) or adb, from the next start (see
+  Connecting).
+- **Restart**, **Power off** - press A twice.
+
 ## A USB DAC
 
 Plug it into the Nano's USB-C port. The music moves to it within two seconds,
@@ -89,7 +106,8 @@ Nano starts:
 | `usbnet` | a network device: `ssh root@192.168.137.2`, password `funkey`, after giving the computer's side `192.168.137.1/24` |
 | `adb` | an Android Debug Bridge device: `adb shell` |
 
-Create the empty file, safely eject, restart the Nano.
+Create the empty file, safely eject, restart the Nano - or choose it in
+plorpOS's **Settings > USB at start** and restart.
 
 ## Trying it without installing
 
@@ -128,5 +146,6 @@ sh /mnt/plorpOS/uninstall-root.sh
 reboot
 ```
 
-This puts back the files `install-root.sh` changed, from
-`/mnt/plorpOS/backup/`. Then delete the `plorpOS` folder.
+This puts back what `install-root.sh` changed or removed - FunKey's menu loop
+and sound settings, RetroFE and GMenu2X - from `/mnt/plorpOS/backup/`, and
+removes `/usr/local/plorpos`. Then delete the `plorpOS` folder.
