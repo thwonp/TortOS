@@ -28,7 +28,7 @@ Put music in `Music/`, one folder per artist and one per album inside it
 ## 2. Make plorpOS the Nano's menu
 
 This replaces FunKey's menu (RetroFE or GMenu2X) with plorpOS at every start.
-It changes four files in the Nano's system and keeps copies of them first
+It changes two files in the Nano's system and keeps copies of them first
 (`plorpOS/backup/`), so it can be undone (see Removing).
 
 Connect a shell to the Nano (see [Connecting](#connecting)), then:
@@ -40,11 +40,13 @@ reboot
 
 It changes:
 
-- `/usr/local/sbin/frontend`, FunKey's menu loop, to start plorpOS;
-- FunKey's USB-audio watcher (`/etc/init.d/S49audio`, `S52audioinit`), turned
-  off: plorpOS moves the music to a DAC by itself;
+- `/usr/local/sbin/frontend`, FunKey's menu loop, to start plorpOS (and
+  start it again if it ever stops);
 - `/etc/asound.conf`, the speaker mix, at half level per channel so music is
   not clipped on the mono speaker.
+
+FunKey's own USB-audio handling stays: it sets a DAC's level when it is
+plugged in and points the volume keys at it.
 
 ## Using it
 
@@ -114,7 +116,8 @@ setsid sh /mnt/plorpOS/start.sh &
 - **Resume.** When a game exits, FunKey saves its place, and the next start of
   that game asks whether to resume.
 - **Power.** The power key in a game saves and turns off, as before; the next
-  start goes straight back into that game.
+  start goes straight back into that game, and plorpOS (with the music) comes
+  up when you leave it.
 
 ## Removing plorpOS
 

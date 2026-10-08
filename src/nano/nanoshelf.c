@@ -910,6 +910,12 @@ int main(void)
 	signal(SIGUSR1, SIG_IGN);    /* the power key: powerdown does the rest */
 	signal(SIGPIPE, SIG_IGN);
 	setenv("HOME", GAME_HOME, 1);
+	/* Muse's speaker by name. FunKey's USB-audio watcher points ALSA's
+	 * "default" at a DAC while one is in (its ~/.asoundrc, which is also
+	 * what moves the volume keys to the DAC), so "default" is not always
+	 * the speaker; monocard (/etc/asound.conf) is. A DAC is chosen with
+	 * SINK instead (dac_poll). */
+	setenv("MUSE_CODEC", "monocard", 1);
 	pid_record(getpid());
 
 	if (SDL_Init(0) != 0 || TTF_Init() != 0 || !video_start()) {

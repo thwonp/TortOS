@@ -1,0 +1,50 @@
+#!/bin/sh
+# plorpOS-Nano's /usr/local/sbin/frontend (install-root.sh puts it there).
+#
+# FunKey-OS starts its menu with `frontend init &` from /root/.profile, after
+# `instant_play load` has resumed any game a power-off saved. This answers the
+# same commands with one menu, plorpOS: init keeps /mnt/plorpOS/start.sh
+# running, the way FunKey's loop kept RetroFE or GMenu2X running.
+#   /mnt/disable_frontend   holds it, as before (`frontend set none`)
+#   /run/rebooting          ends it, as before
+LOCK=/var/lock/frontend.lock
+DISABLE=/mnt/disable_frontend
+REBOOTING=/run/rebooting
+START=/mnt/plorpOS/start.sh
+
+case "$1" in
+init)
+	if [ -f "$LOCK" ]; then echo "$LOCK already exists" >&2; exit 1; fi
+	touch "$LOCK"
+	while [ ! -f "$REBOOTING" ]; do
+		if [ -f "$DISABLE" ] || [ ! -f "$START" ]; then
+			sleep 5
+			continue
+		fi
+		umount /opk >/dev/null 2>&1
+		sh "$START" &
+		pid record $!
+		wait $!
+		pid erase
+		# As FunKey's loop: a menu that died leaves the VT and keys behind.
+		termfix_all
+		keymap default
+		sleep 0.5
+	done
+	rm -f "$LOCK"
+	;;
+get)
+	if [ -f "$DISABLE" ]; then echo none; else echo plorpos; fi
+	;;
+set)
+	case "$2" in
+	none) touch "$DISABLE" ;;
+	*)    rm -f "$DISABLE" ;;
+	esac
+	;;
+*)
+	echo "Usage: frontend init|get|set plorpos|none" >&2
+	exit 1
+	;;
+esac
+exit 0
