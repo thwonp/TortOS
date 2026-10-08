@@ -422,6 +422,7 @@ bool plat_headphones_present(void);
  * out. Nothing is sent to Diatom or Muse; both stay on "default". */
 void plat_audio_speaker_only(bool on);
 bool plat_bt_audio(void);
+bool plat_usb_audio(void);          /* a USB DAC's sink exists */
 void plat_sink_follow(bool game);   /* a headset's own volume -> the level */
 #endif
 /* kind: 1 = brightness, 2 = volume */

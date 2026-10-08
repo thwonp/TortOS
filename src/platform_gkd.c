@@ -631,19 +631,21 @@ static void jack_init(void)
  * that changes - so routing here is choosing the default sink, and Diatom and
  * Muse are never told a device. ROCKNIX's module-switch-on-connect already
  * makes a new headset the default; this adds the launcher's rules on top:
- * a cable wins (the kernel puts it on the built-in sink), Speaker never uses
- * Bluetooth, and a headset going away while it was playing pauses Muse, as a
- * phone does.
+ * a USB DAC wins, then a cable (the kernel puts it on the built-in sink),
+ * Speaker never uses a DAC or Bluetooth, and a headset or DAC going away while
+ * it was playing pauses Muse, as a phone does.
  *
  * Driven by `pactl subscribe` - one child for the launcher's life, woken only
  * when a sink comes, goes or the default changes - plus the jack watchdog's
  * pin and the player's setting, both looked at every 250 ms for nothing. */
 static bool route_bt;               /* PipeWire has a Bluetooth sink */
+static bool route_usb;              /* PipeWire has a USB DAC's sink */
 static int  sink_level = -1;        /* the default sink's volume, in rungs */
 static int  wpctl_level(void);
 
 void plat_audio_speaker_only(bool on) { __atomic_store_n(&route_speaker_only, on, __ATOMIC_RELAXED); }
 bool plat_bt_audio(void) { return __atomic_load_n(&route_bt, __ATOMIC_RELAXED); }
+bool plat_usb_audio(void) { return __atomic_load_n(&route_usb, __ATOMIC_RELAXED); }
 
 /* The same note btplayer leaves on the Brick for a headset's own buttons, and
  * musec reads it wherever Muse matters; tmpfs, so nothing reaches the card. */
@@ -658,20 +660,28 @@ static void btkey_write(const char *act)
 	if (fclose(f) == 0) rename("/tmp/tortos_btkey.new", "/tmp/tortos_btkey");
 }
 
-static void route_eval(bool *on_bt)
+enum { ON_BUILTIN, ON_BT, ON_USB };   /* which sink route_eval chose last */
+
+static void route_eval(int *on)
 {
 	extern char **environ;
-	char line[256], bt[128] = "", builtin[128] = "", def[128] = "";
+	char line[256], bt[128] = "", usb[128] = "", builtin[128] = "", def[128] = "";
 	const char *want;
 	bool speaker = __atomic_load_n(&route_speaker_only, __ATOMIC_RELAXED);
 	FILE *f = popen("pactl list short sinks 2>/dev/null", "r");
 
 	if (!f) return;
+	/* By name, not by order: a USB DAC is an alsa_output too, and taking the
+	 * first one as the built-in only worked while it happened to list second.
+	 * PipeWire names every USB card's sink alsa_output.usb-<vendor>_<product>,
+	 * whatever the DAC. */
 	while (fgets(line, sizeof line, f)) {
 		char name[128];
 		if (sscanf(line, "%*s %127s", name) != 1) continue;
 		if (!strncmp(name, "bluez_output.", 13) && !bt[0])
 			snprintf(bt, sizeof bt, "%s", name);
+		else if (!strncmp(name, "alsa_output.usb-", 16) && !usb[0])
+			snprintf(usb, sizeof usb, "%s", name);
 		else if (!strncmp(name, "alsa_output.", 12) && !builtin[0])
 			snprintf(builtin, sizeof builtin, "%s", name);
 	}
@@ -680,22 +690,28 @@ static void route_eval(bool *on_bt)
 		if (fgets(def, sizeof def, f)) def[strcspn(def, "\n")] = '\0';
 		pclose(f);
 	}
-	/* Two headsets: keep the one already chosen. */
+	/* Two headsets, or two DACs: keep the one already chosen. */
 	if (bt[0] && !strncmp(def, "bluez_output.", 13)) snprintf(bt, sizeof bt, "%s", def);
+	if (usb[0] && !strncmp(def, "alsa_output.usb-", 16)) snprintf(usb, sizeof usb, "%s", def);
 	__atomic_store_n(&route_bt, bt[0] != '\0', __ATOMIC_RELAXED);
+	__atomic_store_n(&route_usb, usb[0] != '\0', __ATOMIC_RELAXED);
 
-	if (*on_bt && !bt[0]) {
-		fprintf(stderr, "audio: headset gone, pausing Muse\n");
+	if ((*on == ON_BT && !bt[0]) || (*on == ON_USB && !usb[0])) {
+		fprintf(stderr, "audio: %s gone, pausing Muse\n", *on == ON_USB ? "USB DAC" : "headset");
 		btkey_write("pause");
 	}
-	want = speaker || plat_headphones_present() || !bt[0] ? builtin : bt;
-	*on_bt = want == bt;
+	if (speaker)                         want = builtin;
+	else if (usb[0])                     want = usb;
+	else if (plat_headphones_present() || !bt[0]) want = builtin;
+	else                                 want = bt;
+	*on = want == usb ? ON_USB : want == bt ? ON_BT : ON_BUILTIN;
 	if (want[0] && strcmp(want, def)) {
 		char *argv[] = { "pactl", "set-default-sink", (char *)want, NULL };
 		pid_t pid;
 		int st;
 
-		fprintf(stderr, "audio: output %s\n", want == bt ? "bluetooth" : "built-in");
+		fprintf(stderr, "audio: output %s\n",
+		        want == usb ? "USB DAC" : want == bt ? "bluetooth" : "built-in");
 		if (posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ) == 0)
 			waitpid(pid, &st, 0);
 	}
@@ -703,7 +719,7 @@ static void route_eval(bool *on_bt)
 
 static void *route_worker(void *arg)
 {
-	bool on_bt = false;
+	int on = ON_BUILTIN;
 	(void)arg;
 
 	for (;;) {
@@ -747,7 +763,7 @@ static void *route_worker(void *arg)
 				jack    = plat_headphones_present();
 				dirty   = true;
 			}
-			if (dirty) route_eval(&on_bt);
+			if (dirty) route_eval(&on);
 			/* After route_eval, so a new default is the one read. Every
 			 * volume set - ours, Diatom's, a headset's - is a sink change. */
 			if (dirty || (p.revents && strstr(buf, "'change' on sink #")))

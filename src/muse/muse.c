@@ -121,6 +121,12 @@ static void q_push(const qcmd *in)
 static int   g_wake[2] = { -1, -1 };   /* player -> main: something to say */
 static dec  *g_dec;                    /* player thread only */
 static char  g_dev[128] = "default";   /* player thread only */
+/* The codec, where Muse goes when it has nowhere else: "default" unless the
+ * launcher names it in MUSE_CODEC. The Bricks' alsa-lib settles what
+ * "default" means once per process, and a process that met a USB DAC there
+ * kept meaning the DAC after it was pulled - every open busy, every track
+ * skipped (plorpos-8wc.8). Their launcher names /etc/asound.conf's Playback. */
+static const char *g_codec = "default";
 static volatile sig_atomic_t g_quit;
 
 static void wake(void)
@@ -246,7 +252,7 @@ static void handle(const qcmd *q)
 		 * in hw_params - so Muse can only have it once Diatom has let go,
 		 * and the launcher tells Diatom first but cannot see when it has.
 		 * `default` is dmix and always opens, so it is tried once. */
-		int tries = strcmp(q->dev, "default") ? 10 : 1, i;
+		int tries = strcmp(q->dev, g_codec) ? 10 : 1, i;
 		struct timespec t0, t1;
 
 		/* Already there: reported, and nothing reopened. The launcher resends
@@ -276,8 +282,8 @@ static void handle(const qcmd *q)
 		}
 		clock_gettime(CLOCK_MONOTONIC, &t1);
 		if (i == tries) {
-			say("%s; falling back to default", pcm_error());
-			snprintf(g_dev, sizeof g_dev, "default");
+			say("%s; falling back to %s", pcm_error(), g_codec);
+			snprintf(g_dev, sizeof g_dev, "%s", g_codec);
 			pcm_open(g_dev);
 		} else {
 			/* Logged every time: it happens only at a handover, and how long
@@ -389,14 +395,27 @@ static void *player(void *arg)
 		 * write that failed skipped one: a headset switched off ran through the
 		 * album, measured 2026-09-25. SINK says where it went, and the launcher
 		 * sends the headset back when it reconnects. */
-		if (lost && strcmp(g_dev, "default") && g_dec) {
-			say("%s; the headset went, falling back to default", pcm_error());
-			snprintf(g_dev, sizeof g_dev, "default");
+		if (lost && strcmp(g_dev, g_codec) && g_dec) {
+			/* A USB DAC (the launcher names one plughw:CARD=<id>) is pulled
+			 * out by hand, from headphones the player is wearing: arrive on
+			 * the codec PAUSED, as a phone does. Playing on and leaving the
+			 * pause to the launcher put half a second of the album out of the
+			 * speaker first - its look comes every 500 ms (Brick Pro,
+			 * 2026-10-07). A headset that drops keeps playing on. */
+			bool dac = !strncmp(g_dev, "plughw:CARD=", 12);
+
+			say("%s; the %s went, falling back to %s%s", pcm_error(),
+			    dac ? "USB DAC" : "headset", g_codec, dac ? ", paused" : "");
+			snprintf(g_dev, sizeof g_dev, "%s", g_codec);
 			pcm_open(g_dev);
 			snprintf(S.sink, sizeof S.sink, "%s", g_dev);
 			S.ev_sink = 1;
-			wake();
 			reopen(S.heard);
+			if (dac) {
+				S.state = ST_PAUSED;
+				S.ev_state = 1;
+			}
+			wake();
 			continue;
 		}
 
@@ -685,6 +704,13 @@ int main(void)
 	int lfd, cfd = -1;
 	char buf[4096];
 	size_t have = 0;
+	const char *codec = getenv("MUSE_CODEC");
+
+	if (codec && *codec) {
+		g_codec = codec;
+		snprintf(g_dev, sizeof g_dev, "%s", codec);
+		snprintf(S.sink, sizeof S.sink, "%s", codec);
+	}
 	time_t last_pos = 0;
 
 	signal(SIGPIPE, SIG_IGN);

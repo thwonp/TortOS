@@ -73,6 +73,9 @@ int         musec_chapter_now(void);
 bool musec_take_ran_out(void);
 
 void musec_toggle(void);       /* pause or resume */
+/* Pause only, never resume - and if Muse is not "playing" right now (it may be
+ * mid-fallback after its output went), at the first "playing" within 2 s. */
+void musec_pause(void);
 /* The next and previous track - or, in a book whose file has chapters, the
  * next chapter and the start of this one (or the one before, within three
  * seconds of its start), falling back to the files at either end. */

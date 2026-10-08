@@ -2029,6 +2029,83 @@ static const char *aout_bt_sink(void)
 #endif
 }
 
+/* A USB DAC, from the kernel's own list of sound cards.
+ *
+ * Any card snd-usb-audio made counts - nothing here knows one DAC from another
+ * (aout_usb_card). Read on the same half-second as the headset: /proc is a
+ * read of kernel memory, not a fork, and plugging a DAC in should feel as
+ * immediate as plugging a cable in. On the GKD PipeWire sees the card first
+ * and platform_gkd.c routes it; this is only the label for the menu. */
+#if !defined(PLATFORM_GKD)
+static char g_usb_link[32];   /* bus/device of the DAC; a replug is a new one */
+#endif
+
+static const char *aout_usb_sink(void)
+{
+	static char sink[64];
+#if defined(PLATFORM_GKD)
+	snprintf(sink, sizeof sink, "%s", plat_usb_audio() ? "usb" : "");
+	return sink;
+#else
+	static unsigned last;
+	static bool     primed;
+	unsigned now = plat_now_ms();
+	char  cards[2048], path[48];
+	size_t n = 0;
+	int   card = -1;
+	FILE *f;
+
+	if (primed && now - last < 500) return sink;
+	primed = true;
+	last = now;
+	sink[0] = g_usb_link[0] = '\0';
+	if ((f = fopen("/proc/asound/cards", "r"))) {
+		n = fread(cards, 1, sizeof cards - 1, f);
+		fclose(f);
+	}
+	cards[n] = '\0';
+	if (!aout_usb_card(cards, sink, (int)sizeof sink, &card)) return sink;
+	/* "003/002": the device number goes up on every plug, so a DAC pulled and
+	 * put back between two looks still reads as a new connection - which is
+	 * what g_bt_link is for a headset. */
+	snprintf(path, sizeof path, "/proc/asound/card%d/usbbus", card);
+	if ((f = fopen(path, "r"))) {
+		if (fgets(g_usb_link, sizeof g_usb_link, f))
+			g_usb_link[strcspn(g_usb_link, "\r\n")] = '\0';
+		fclose(f);
+	}
+	return sink;
+#endif
+}
+
+#if !defined(PLATFORM_GKD)
+/* The connection behind whatever the sound goes to: a headset's link, a DAC's
+ * bus address, or nothing for the codec. A change under the same device
+ * string is a reconnect the holder has to be told about. */
+static const char *aout_link(const aout_state *s)
+{
+	switch (aout_resolve(s)) {
+	case AOUT_USB: return g_usb_link;
+	case AOUT_BT:  return g_bt_link;
+	default:       return "";
+	}
+}
+#endif
+
+/* The codec's own name, for aout_state.codec. The Bricks' alsa-lib settles
+ * what "default" means once per process, and a process that met a USB DAC
+ * there goes on meaning the DAC - Diatom asked for default and held the DAC;
+ * a Muse started with one plugged in failed every open after (plorpos-8wc.8).
+ * So there the codec is always named: the firmware's own shared path,
+ * /etc/asound.conf's Playback (softvol over dmix), which is all default is
+ * without a DAC - not sysdefault, the bare card, which would not share. Muse
+ * gets the same name in MUSE_CODEC for its own fallback. */
+#if !defined(PLATFORM_GKD) && !defined(PLATFORM_H700) && defined(__aarch64__)
+#define AOUT_CODEC_PCM "Playback"   /* the Bricks; not the desktop build */
+#else
+#define AOUT_CODEC_PCM ""
+#endif
+
 static aout_state aout_now(void)
 {
 	aout_state s;
@@ -2040,6 +2117,8 @@ static aout_state aout_now(void)
 	if (g_aout_policy == AOUT_SPEAKER) s.wired = false;
 #endif
 	s.bt_sink = aout_bt_sink();
+	s.usb_sink = aout_usb_sink();
+	s.codec   = AOUT_CODEC_PCM;
 	return s;
 }
 
@@ -2059,12 +2138,11 @@ static aout_dest aout_actual(const aout_state *s)
 	char at[128];
 	const char *muse = musec_sink_now();
 
-	/* Muse holding the headset is where the sound is, whatever Diatom says:
-	 * Diatom was moved off it to let Muse have it. */
-	if (musec_heard() && muse[0] && strcmp(muse, "default")) return AOUT_BT;
+	/* Muse holding the headset (or the DAC) is where the sound is, whatever
+	 * Diatom says: Diatom was moved off it to let Muse have it. */
+	if (musec_heard() && muse[0] && strcmp(muse, "default")) return aout_dest_of(s, muse);
 	if (!plat_resident_audio(at, sizeof at)) return aout_resolve(s);
-	if (at[0]) return AOUT_BT;
-	return s->wired ? AOUT_WIRED : AOUT_SPK;
+	return aout_dest_of(s, at);
 #endif
 }
 
@@ -2127,7 +2205,8 @@ static void aout_tell_diatom(const aout_state *s, const char *dev, bool force,
 }
 #endif
 
-/* The headset's own volume, kept at the Brick's level while sound goes to one.
+/* The headset's own volume, kept at the Brick's level while sound goes to one
+ * - and a USB DAC's, the same way (btvol_set).
  *
  * The volume keys move the codec, which a Bluetooth route bypasses, so on a
  * headset they did nothing - and a headset with no buttons of its own, the
@@ -2229,7 +2308,8 @@ static void bt_volume_follow(const char *out, bool fresh)
  * A Bluetooth headset cannot be shared - bluealsa 3.1 gives an A2DP PCM to one
  * client at a time, measured 2026-09-25 - so it is HANDED between them, and it
  * goes to whoever may be heard: Muse while it plays, which is exactly when
- * ADR-0032 has already quieted the game, and Diatom otherwise.
+ * ADR-0032 has already quieted the game, and Diatom otherwise. A USB DAC is
+ * handed over the same way: plughw on its card takes one opener too.
  *
  * Release before acquire, or the second open fails and falls back. Towards
  * Muse, Diatom is told first and Muse's SINK retries for a second while Diatom
@@ -2244,29 +2324,52 @@ static void aout_apply(bool force)
 	plat_audio_speaker_only(g_aout_policy == AOUT_SPEAKER);
 #else
 	static char  link_seen[32];
+	static bool  on_usb, muse_on_usb;
 	aout_state  s    = aout_now();
 	const char *out  = aout_device(&s);
-	bool        muse = out[0] && musec_heard();
+	const char *link = aout_link(&s);
+	const char *codec = s.codec ? s.codec : "";
+	bool        muse, named;
+
+	/* The DAC was pulled out from under the music: pause it, as a phone does,
+	 * rather than carry on out of the speaker - the player was listening on
+	 * headphones a moment ago. Only for a DAC that went with Muse on it at the
+	 * last look, not for the row moving to Speaker, which is asking for the
+	 * speaker - and not on "is it playing now", which a Muse already falling
+	 * back on its own is not (musec_pause holds it). Games are not paused;
+	 * they follow the sound to wherever it goes next. */
+	if (muse_on_usb && !(s.usb_sink && s.usb_sink[0])) {
+		fprintf(stderr, "audio: USB DAC gone, pausing Muse\n");
+		musec_pause();
+	}
+	on_usb = aout_resolve(&s) == AOUT_USB;
+	named = aout_named(&s);
+	muse = named && musec_heard();
+	muse_on_usb = on_usb && muse;
 	/* A new connection under the same name - the headset dropped and came
 	 * back between two looks at it. Nothing else here can see that, and
 	 * whoever fell back to the speaker while it was gone would stay there:
 	 * seen 2026-09-25, a song in Muse. So the holder is told again, once.
 	 * Harmless when it never left: Diatom and Muse both ignore a device they
 	 * are already on. */
-	bool        fresh = out[0] && g_bt_link[0] && strcmp(g_bt_link, link_seen);
+	bool        fresh = named && link[0] && strcmp(link, link_seen);
 
 	if (!muse) {
-		musec_sink("");
-		if (out[0] && !musec_sink_settled()) return;    /* Muse is still letting go */
+		musec_sink(codec);
+		if (named && !musec_sink_settled()) return;     /* Muse is still letting go */
 	}
 	if (fresh) {
-		fprintf(stderr, "audio: %s is a new connection (link %s)\n", out, g_bt_link);
+		fprintf(stderr, "audio: %s is a new connection (link %s)\n", out, link);
 		if (muse) musec_sink_again();
 	}
-	snprintf(link_seen, sizeof link_seen, "%s", out[0] ? g_bt_link : "");
-	aout_tell_diatom(&s, muse || g_pico8_runs ? "" : out, force || (fresh && !muse), muse);
+	snprintf(link_seen, sizeof link_seen, "%s", named ? link : "");
+	/* A DAC's level first: it wakes at whatever it was left at, often its
+	 * full 0 dB, and the first frames would be heard there. A headset's
+	 * control only exists once it is connected, so it keeps its order. */
+	if (on_usb) bt_volume_follow(out, fresh);
+	aout_tell_diatom(&s, muse || g_pico8_runs ? codec : out, force || (fresh && !muse), muse);
 	if (muse) musec_sink(out);
-	bt_volume_follow(out, fresh);
+	if (!on_usb) bt_volume_follow(named ? out : "", fresh);
 #endif
 }
 
@@ -10935,11 +11038,11 @@ static bool native_tick(void *ctx)
 		aout_state s = aout_now();
 		const char *out = aout_device(&s);
 
-		plat_child_audio(musec_playing() ? NULL : out, g_bt_link);
+		plat_child_audio(musec_playing() ? NULL : out, aout_link(&s));
 		/* And the headset's volume, which the volume keys move only through
 		 * this: without it a press reached the headset when the menu next
 		 * opened (plorpos-ahc). Sent on a change only. */
-		bt_volume_follow(out, false);
+		bt_volume_follow(aout_named(&s) ? out : "", false);
 	}
 #endif
 	return musec_playing();
@@ -13695,6 +13798,8 @@ int main(int argc, char *argv[])
 			/* A shot starts no daemon: it draws one frame and exits, and a
 			 * cover it would ask for is drawn as missing instead - see
 			 * muse_covers_settle. */
+			/* Before Muse is ever spawned: its codec, by name (AOUT_CODEC_PCM). */
+			if (AOUT_CODEC_PCM[0]) setenv("MUSE_CODEC", AOUT_CODEC_PCM, 1);
 			musec_init(shot_path ? "" : bin, music);
 			musec_on_before_heard(aout_before_muse);
 		}

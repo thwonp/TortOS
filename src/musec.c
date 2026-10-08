@@ -71,6 +71,7 @@ static char     g_sink_said[128];   /* what it last reported, "" not yet */
 static unsigned g_sink_ms;          /* when the ask went */
 static bool     g_sink_waiting;     /* asked, and no answer yet */
 static bool     g_asked;            /* PLAY or RESUME sent, not yet answered */
+static unsigned g_pause_until;    /* musec_pause held until then, 0 none */
 static void   (*g_before_heard)(void);
 
 static void seek_to(double t);
@@ -244,7 +245,13 @@ static void event(const char *line)
 		g_asked = false;
 		g_now.state = !strcmp(v, "playing") ? MU_PLAYING
 		            : !strcmp(v, "paused")  ? MU_PAUSED : MU_STOPPED;
-		if (g_now.state == MU_PLAYING) g_skips = 0;
+		if (g_now.state == MU_PLAYING) {
+			g_skips = 0;
+			/* A pause asked for while Muse was between states - see
+			 * musec_pause - lands on the first "playing" after it. */
+			if (g_pause_until && (int)(g_pause_until - plat_now_ms()) > 0) sendf("PAUSE");
+		}
+		g_pause_until = 0;
 	} else if (!strncmp(line, "CHAPTER", 7)) {
 		int i;
 
@@ -451,6 +458,20 @@ void musec_play(const char *const *paths, int n, int start, double at, bool book
 	snprintf(g_artist, sizeof g_artist, "%s", artist ? artist : "");
 	snprintf(g_album, sizeof g_album, "%s", album ? album : "");
 	play_current();
+}
+
+/* Pause, and only pause - never the resume a toggle would be. When the output
+ * goes away under Muse it is often not "playing" at that instant: it is
+ * failing a write and falling back to the codec on its own (measured on the
+ * Brick Pro 2026-10-07, a DAC pulled out), and a PAUSE then is refused. So it
+ * is held for two seconds and sent at the first "playing" - which is the
+ * fallback coming up on the speaker, the one thing it exists to stop. */
+void musec_pause(void)
+{
+	if (g_now.state == MU_PLAYING) { sendf("PAUSE"); return; }
+	if (g_now.state == MU_PAUSED || g_now.state == MU_OFF) return;
+	g_pause_until = plat_now_ms() + 2000;
+	if (!g_pause_until) g_pause_until = 1;
 }
 
 void musec_toggle(void)

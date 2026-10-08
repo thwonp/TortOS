@@ -2,11 +2,18 @@
 /* See src/audioout.h for why this is a file of its own. */
 #include "audioout.h"
 
+#include <stdio.h>
+#include <string.h>
+
 aout_dest aout_resolve(const aout_state *s)
 {
 	/* A cable wins outright, in every policy. Someone who physically plugged
 	 * something in has said what they want more plainly than any setting, and
-	 * a headset that is merely connected has not said anything at all. */
+	 * a headset that is merely connected has not said anything at all. A DAC
+	 * is the same act at the other port, and the later one, so it comes first
+	 * - except when pinned to Speaker, which refuses everything software
+	 * routes. */
+	if (s->policy == AOUT_AUTO && s->usb_sink && s->usb_sink[0]) return AOUT_USB;
 	if (s->wired) return AOUT_WIRED;
 	if (s->policy == AOUT_AUTO && s->bt_sink && s->bt_sink[0]) return AOUT_BT;
 	return AOUT_SPK;
@@ -16,7 +23,63 @@ const char *aout_device(const aout_state *s)
 {
 	/* "" is the port's default device, which on this hardware is the codec
 	 * through dmix - and therefore both the speaker AND the wired jack. */
-	return aout_resolve(s) == AOUT_BT ? s->bt_sink : "";
+	switch (aout_resolve(s)) {
+	case AOUT_USB: return s->usb_sink;
+	case AOUT_BT:  return s->bt_sink;
+	default:       return s->codec ? s->codec : "";
+	}
+}
+
+bool aout_named(const aout_state *s)
+{
+	aout_dest d = aout_resolve(s);
+
+	return d == AOUT_USB || d == AOUT_BT;
+}
+
+aout_dest aout_dest_of(const aout_state *s, const char *dev)
+{
+	if (!dev || !dev[0] || (s->codec && s->codec[0] && !strcmp(dev, s->codec)))
+		return s->wired ? AOUT_WIRED : AOUT_SPK;
+	if (s->usb_sink && s->usb_sink[0] && !strcmp(dev, s->usb_sink)) return AOUT_USB;
+	return AOUT_BT;
+}
+
+bool aout_usb_card(const char *cards, char *dev, int cap, int *card)
+{
+	const char *l;
+
+	if (cap > 0) dev[0] = '\0';
+	/* Each card is two lines, and the first reads
+	 *     " 3 [KA13           ]: USB-Audio - FIIO KA13"
+	 * - index, id padded to fifteen, then the driver. snd-usb-audio names
+	 * itself USB-Audio for every device it binds, which is what makes this
+	 * any DAC rather than one. */
+	for (l = cards; l && *l; l = strchr(l, '\n') ? strchr(l, '\n') + 1 : NULL) {
+		const char *p = l, *id, *end;
+		int idx = 0, len;
+
+		/* The index is printed "%2i", so a card's line has it in the first two
+		 * columns; the description under it is indented past them. */
+		while (*p == ' ' && p - l < 2) p++;
+		if (*p < '0' || *p > '9') continue;
+		while (*p >= '0' && *p <= '9') idx = idx * 10 + (*p++ - '0');
+		while (*p == ' ') p++;
+		if (*p++ != '[') continue;
+		id = p;
+		if (!(end = strchr(id, ']'))) continue;
+		p = end + 1;
+		while (end > id && end[-1] == ' ') end--;
+		len = (int)(end - id);
+		if (len <= 0 || strncmp(p, ": USB-Audio", 11)) continue;
+		if (snprintf(dev, (size_t)cap, "plughw:CARD=%.*s,DEV=0", len, id) >= cap) {
+			dev[0] = '\0';
+			return false;
+		}
+		if (card) *card = idx;
+		return true;
+	}
+	return false;
 }
 
 const char *aout_policy_name(aout_policy p)
@@ -26,7 +89,8 @@ const char *aout_policy_name(aout_policy p)
 
 const char *aout_dest_name(aout_dest d)
 {
-	return d == AOUT_BT ? "bluetooth" : d == AOUT_WIRED ? "wired" : "speaker";
+	return d == AOUT_USB ? "USB DAC" : d == AOUT_BT ? "bluetooth"
+	     : d == AOUT_WIRED ? "wired" : "speaker";
 }
 
 bool aout_should_reapply(int remembered, bool wired_now, bool have_level)
