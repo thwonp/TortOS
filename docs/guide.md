@@ -269,6 +269,12 @@ The GKD and the RG SP have one port, and it works for either.
 A DAC with no volume control of its own plays at full volume; the device's
 buttons can't turn it down.
 
+**On the Brick and Brick Pro, Wi-Fi can cause brief dropouts on a DAC** -
+a few milliseconds of silence, more often the weaker the signal. It is the
+radio itself, not the music player, and nothing in software has cured it.
+If you hear them, turn Wi-Fi off under **MENU > Wi-Fi Services** while you
+listen.
+
 ### Bluetooth
 
 A paired headset reconnects by itself at boot and mid-session, and game audio

@@ -120,6 +120,18 @@ static bool bind(void)
 	return true;
 }
 
+/* How much audio ALSA holds ahead of the ear. 200 ms - see pcm_open - except
+ * a USB DAC (the launcher names one plughw:CARD=<id>), which gets 500 ms. On
+ * the codec Muse writes into dmix, whose own ring holds another ~170 ms, so a
+ * stall in the writer is covered twice; straight into a DAC only this buffer
+ * covers it, and on the Brick 200 ms ran dry several times an album
+ * (plorpos-8wc.9). Pause, seek and skip drop the buffer, so its size is not
+ * felt there, and the heard position already subtracts what is queued. */
+static unsigned pcm_latency_us(const char *device)
+{
+	return strncmp(device, "plughw:CARD=", 12) ? 200000 : 500000;
+}
+
 bool pcm_open(const char *device)
 {
 	int r;
@@ -139,7 +151,7 @@ bool pcm_open(const char *device)
 	 * 200 ms of latency: long enough that a busy frame in a running game does
 	 * not starve it, short enough that pause and seek feel immediate. */
 	r = a_set_params(g_pcm, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED,
-	                 2, 48000, 0, 200000);
+	                 2, 48000, 0, pcm_latency_us(device));
 	/* Except a headset that is not running at 48 kHz, where ALSA has to
 	 * resample or nothing plays. A headset picks the rate when IT starts the
 	 * connection: the OpenFit came back at 44.1 kHz on reconnecting by itself
@@ -159,7 +171,8 @@ bool pcm_open(const char *device)
 		r = a_open(&g_pcm, plug, SND_PCM_STREAM_PLAYBACK, 0);
 		if (r >= 0)
 			r = a_set_params(g_pcm, SND_PCM_FORMAT_S16_LE,
-			                 SND_PCM_ACCESS_RW_INTERLEAVED, 2, 48000, 1, 200000);
+			                 SND_PCM_ACCESS_RW_INTERLEAVED, 2, 48000, 1,
+			                 pcm_latency_us(device));
 		else
 			g_pcm = NULL;
 		if (r >= 0)
