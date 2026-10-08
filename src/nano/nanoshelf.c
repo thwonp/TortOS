@@ -204,6 +204,7 @@ static void recent_load(void)
 		line[strcspn(line, "\n")] = '\0';
 		if (!tab) continue;
 		*tab = '\0';
+		if (!tab[1]) continue;
 		for (s = 0; s < NSYS && strcmp(SYS[s].dir, line); s++) { }
 		if (s == NSYS) continue;
 		recent[nrecent].sys = s;
@@ -687,12 +688,16 @@ static void lat_report(const char *when)
 	lat_n = lat_sum = lat_max = 0;
 }
 
-static void launch(int s, const char *file)
+static void launch(int s, const char *file_in)
 {
-	char core[256], rom[512];
+	char core[256], rom[512], file[256];
 	unsigned t0;
 	pid_t pid;
 	int st;
+
+	/* A copy: from Recently Played, file_in is in recent[], which
+	 * recent_add rewrites. */
+	snprintf(file, sizeof file, "%s", file_in);
 
 	core_path(&SYS[s], core, sizeof core);
 	snprintf(rom, sizeof rom, CARD "/%s/%s", SYS[s].dir, file);
