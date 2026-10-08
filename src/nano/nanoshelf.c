@@ -37,10 +37,12 @@
 #include <strings.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "../audioout.h"
 #include "../musec.h"
 #include "../muselib.h"
 #include "../platproc.h"
@@ -322,8 +324,59 @@ static void music_init(void)
 	else lib_walk(NULL);
 }
 
+/* A USB DAC (plorpos-ggv.8). Muse is moved to it while it is in, and falls
+ * back to the speaker paused by itself when it is pulled (MUSE_HANDOVER's
+ * "the DAC went"). Looked for every 2 s: the Nano has one USB port, so a DAC
+ * comes and goes by hand and not often. */
+static char dac[64];
+static int  dac_card = -1;
+
+static void dac_poll(void)
+{
+	static unsigned last;
+	char cards[2048], dev[64];
+	int card = -1;
+	size_t n = 0;
+	FILE *f;
+
+	if (last && plat_now_ms() - last < 2000) return;
+	last = plat_now_ms();
+	if ((f = fopen("/proc/asound/cards", "r"))) {
+		n = fread(cards, 1, sizeof cards - 1, f);
+		fclose(f);
+	}
+	cards[n] = '\0';
+	if (!aout_usb_card(cards, dev, sizeof dev, &card)) { dev[0] = '\0'; card = -1; }
+	if (!strcmp(dev, dac)) return;
+	snprintf(dac, sizeof dac, "%s", dev);
+	dac_card = card;
+	musec_sink(dac);
+	fprintf(stderr, "nanoshelf: output %s\n", dac[0] ? dac : "speaker");
+}
+
+/* Where a game's sound goes. The Nano's SDL plays through the kernel's OSS
+ * emulation and opens /dev/dsp whatever AUDIODEV says (measured 2026-10-08),
+ * so with a DAC in, /dev/dsp is pointed at the DAC's OSS device for the game
+ * - card N's is char 14, minor 3 + 16N - and back at the codec's after it,
+ * and at every start in case a game was running when this process died. */
+static void dsp_point(int card)
+{
+	int minor = 3 + 16 * (card > 0 ? card : 0);
+	dev_t want = makedev(14, minor);
+	struct stat st;
+
+	if (stat("/dev/dsp", &st) == 0 && S_ISCHR(st.st_mode) && st.st_rdev == want) return;
+	unlink("/dev/dsp.plorpos");
+	if (mknod("/dev/dsp.plorpos", S_IFCHR | 0600, want) == 0 &&
+	    rename("/dev/dsp.plorpos", "/dev/dsp") == 0)
+		fprintf(stderr, "nanoshelf: /dev/dsp is card %d's\n", card > 0 ? card : 0);
+	else
+		fprintf(stderr, "nanoshelf: /dev/dsp for card %d: %s\n", card > 0 ? card : 0, strerror(errno));
+}
+
 static void music_tick(void)
 {
+	dac_poll();
 	musec_poll();
 	commands();
 	publish();
@@ -707,6 +760,8 @@ static void launch(int s, const char *file_in)
 		system("mkdir -p " GAME_HOME "/.picoarch/system && "
 		       "cp /usr/games/lynxboot.img " GAME_HOME "/.picoarch/system/");
 	lat_report("before a game");
+	dac_poll();
+	dsp_point(dac_card);
 	video_stop();
 	t0 = plat_now_ms();
 	pid = fork();
@@ -728,6 +783,7 @@ static void launch(int s, const char *file_in)
 		        (plat_now_ms() - t0) / 1000, WIFEXITED(st) ? WEXITSTATUS(st) : -WTERMSIG(st));
 	}
 	pid_record(getpid());
+	dsp_point(-1);
 	/* What FunKey's frontend loop does after every program: a game killed
 	 * mid-way leaves VT switching locked and the keyboard dead. */
 	system("termfix_all >/dev/null 2>&1; keymap default >/dev/null 2>&1");
@@ -868,6 +924,7 @@ int main(void)
 	}
 	for (s = 0; s < NSYS; s++) sys_shown[s] = sys_has_games(&SYS[s]);
 	recent_load();
+	dsp_point(-1);
 	music_init();
 	stack[0] = (view){ V_HOME, 0, 0, 0 };
 	draw();
