@@ -235,6 +235,12 @@ nano:
 	docker run --rm -v $(CURDIR):/work -v $(CURDIR)/sdk-nano/sdk:/sdk:ro -w /work $(IMAGE) \
 		make -f mk/nano.mk NANO_VERSION=$(NANO_VERSION) $(NANO_BIN)
 
+# out/plorpOS-nano-v$(NANO_VERSION).zip: plorpOS/ for the card's /mnt, with
+# the PicoArch fork from PICOARCH (mk/nano-payload.sh).
+.PHONY: nano-zip
+nano-zip: nano
+	./mk/nano-payload.sh $(NANO_VERSION)
+
 # The check binaries are rebuilt every time, deliberately.
 #
 # They take about a second each, and make's mtime comparison is second-granular
