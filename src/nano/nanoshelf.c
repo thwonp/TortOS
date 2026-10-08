@@ -35,7 +35,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -286,9 +288,26 @@ static void commands(void)
 	}
 }
 
+/* A Muse left playing by a nanoshelf that died: the queue died with it, so
+ * that track would play out and stop, with this process saying "stopped" and
+ * a game fighting it for the codec meanwhile. Stopped now instead. */
+static void stop_orphan(void)
+{
+	struct sockaddr_un sa = { .sun_family = AF_UNIX };
+	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+
+	snprintf(sa.sun_path, sizeof sa.sun_path, "/tmp/muse.sock");
+	if (fd >= 0 && connect(fd, (struct sockaddr *)&sa, sizeof sa) == 0 &&
+	    write(fd, "STOP\n", 5) == 5)
+		fprintf(stderr, "nanoshelf: stopped a Muse left playing\n");
+	if (fd >= 0) close(fd);
+}
+
 static void music_init(void)
 {
 	pthread_t th;
+
+	stop_orphan();
 
 	mkdir(STATE, 0777);
 	if (mkfifo(CMD, 0666) != 0 && errno != EEXIST)
@@ -800,8 +819,12 @@ static void key(SDLKey k)
 	case SDLK_a: activate(); break;
 	case SDLK_b: if (depth > 0) depth--; break;
 	case SDLK_x:
-		if (v->v == V_NOW) push(V_QUEUE, 0);
-		else open_now();
+		if (v->v == V_NOW) {
+			push(V_QUEUE, 0);
+			CUR.sel = musec_now()->index;     /* open on the track playing */
+		} else {
+			open_now();
+		}
 		break;
 	case SDLK_y:
 		if (v->v == V_NOW) musec_set_mode((muq_mode)((musec_mode() + 1) % MUQ_MODES));
