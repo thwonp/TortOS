@@ -801,6 +801,7 @@ static void pid_record(pid_t pid)
 /* Latency, input to the frame on the panel, kept as a summary per run (lean
  * logging): written when a game starts and at exit. */
 static unsigned lat_n, lat_sum, lat_max;
+static bool     launched;   /* the input started a game: its redraw is after it */
 
 static void lat_report(const char *when)
 {
@@ -829,6 +830,7 @@ static void launch(int s, const char *file_in)
 		system("mkdir -p " GAME_HOME "/.picoarch/system && "
 		       "cp /usr/games/lynxboot.img " GAME_HOME "/.picoarch/system/");
 	lat_report("before a game");
+	launched = true;
 	dac_poll();
 	dsp_point(dac_card);
 	video_stop();
@@ -1122,7 +1124,7 @@ int main(void)
 		}
 		if (dirty && screen) {
 			draw();
-			if (t_in) {
+			if (t_in && !launched) {
 				unsigned d = plat_now_ms() - t_in;
 
 				lat_n++;
@@ -1130,6 +1132,7 @@ int main(void)
 				if (d > lat_max) lat_max = d;
 			}
 		}
+		launched = false;
 		SDL_Delay(15);
 	}
 	lat_report("at exit");
