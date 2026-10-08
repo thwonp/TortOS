@@ -79,6 +79,7 @@ TortOS does, it still does. On top of that:
 
 - **Music plays over gameplay** and can be accessed with the tap of the select button from any menu. This is one of the things that makes TortOS great, and plorpOS extends this through all its added systems. 
 - **USB DAC Support** on all supported devices (as of v1.5.1).
+  - On the Brick and Brick Pro, plug the DAC into the USB-C port on top. If you hear brief dropouts, turn Wi-Fi off under **MENU > Wi-Fi Services** while you listen - the Brick's Wi-Fi can interrupt a DAC, more so on a weak signal.
 - **Music keeps playing through sleep.** A tap of POWER, lid close (on the RG SP), or the configurable idle timer
   while Muse plays turns only the screen off, and the album plays on.
   - Now Playing's buttons work in the dark, iPod-style, and the volume keys work
