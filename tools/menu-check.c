@@ -303,6 +303,16 @@ static void audio_row(void)
 	sys_menu_build(&u, rows, &b, &heading);
 	ck(!strcmp(val(&rows[PM_AUDIO]), "auto (USB DAC)"), "auto, on a USB DAC");
 
+	/* The Bricks' USB DAC position: searching until a DAC answers. */
+	u.audio_policy = AOUT_USBDAC;
+	u.audio_dest = AOUT_NONE;
+	sys_menu_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[PM_AUDIO]), "USB DAC (search)"), "USB DAC, nothing found yet");
+	u.audio_dest = AOUT_USB;
+	sys_menu_build(&u, rows, &b, &heading);
+	ck(!strcmp(val(&rows[PM_AUDIO]), "USB DAC"), "USB DAC, found");
+	u.audio_policy = AOUT_AUTO;
+
 	/* Pinned says the place with no "auto", because there is no rule left to
 	 * describe - it is just where the sound is. */
 	u.audio_policy = AOUT_SPEAKER;

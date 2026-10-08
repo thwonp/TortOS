@@ -13,7 +13,10 @@ aout_dest aout_resolve(const aout_state *s)
 	 * is the same act at the other port, and the later one, so it comes first
 	 * - except when pinned to Speaker, which refuses everything software
 	 * routes. */
-	if (s->policy == AOUT_AUTO && s->usb_sink && s->usb_sink[0]) return AOUT_USB;
+	bool usb = s->usb_sink && s->usb_sink[0];
+
+	if (s->policy == AOUT_USBDAC) return usb ? AOUT_USB : AOUT_NONE;
+	if (s->policy == AOUT_AUTO && usb) return AOUT_USB;
 	if (s->wired) return AOUT_WIRED;
 	if (s->policy == AOUT_AUTO && s->bt_sink && s->bt_sink[0]) return AOUT_BT;
 	return AOUT_SPK;
@@ -28,6 +31,20 @@ const char *aout_device(const aout_state *s)
 	case AOUT_BT:  return s->bt_sink;
 	default:       return "";
 	}
+}
+
+aout_policy aout_policy_step(aout_policy p, int dir, bool usb_manual)
+{
+	int n = usb_manual ? AOUT_POLICY_COUNT : AOUT_USBDAC;
+	int i = ((int)p % n + (dir < 0 ? n - 1 : 1)) % n;
+
+	return (aout_policy)i;
+}
+
+aout_policy aout_usb_follow(aout_policy p, bool had_dac, bool dac_now, bool usb_manual)
+{
+	if (usb_manual && p == AOUT_USBDAC && had_dac && !dac_now) return AOUT_AUTO;
+	return p;
 }
 
 aout_dest aout_dest_of(const aout_state *s, const char *dev)
@@ -76,12 +93,12 @@ bool aout_usb_card(const char *cards, char *dev, int cap, int *card)
 
 const char *aout_policy_name(aout_policy p)
 {
-	return p == AOUT_SPEAKER ? "Speaker" : "Auto";
+	return p == AOUT_SPEAKER ? "Speaker" : p == AOUT_USBDAC ? "USB DAC" : "Auto";
 }
 
 const char *aout_dest_name(aout_dest d)
 {
-	return d == AOUT_USB ? "USB DAC" : d == AOUT_BT ? "bluetooth"
+	return d == AOUT_NONE ? "nothing" : d == AOUT_USB ? "USB DAC" : d == AOUT_BT ? "bluetooth"
 	     : d == AOUT_WIRED ? "wired" : "speaker";
 }
 

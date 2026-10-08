@@ -1012,6 +1012,11 @@ static int mute_fd = -1;
  * full volume with the switch down. Exactly the fault jack_forget exists to
  * prevent, and found by reading its comment. */
 static int muted = -1;
+/* Audio Output's USB DAC position, muting the codec as the switch does - see
+ * plat_mute_force. Applied by the next plat_mute_poll, like the switch. */
+static bool mute_forced;
+
+void plat_mute_force(bool on) { mute_forced = on; }
 /* Button Lock mode (TortOS-ib9): the switch stops muting and becomes an
  * iPod-style hold switch instead - see plat_hold_switch. Cached, not read from
  * the db, because plat_mute_poll runs every frame. */
@@ -1077,7 +1082,7 @@ bool plat_headphones_present(void) { return jack_present() != 0; }
  * emulator's. See BACKLOG 28. */
 bool plat_mute_poll(bool own_volume)
 {
-	int now = mute_switch_down() && !switch_locks ? 1 : 0;
+	int now = (mute_switch_down() && !switch_locks) || mute_forced ? 1 : 0;
 
 	if (now == muted) return false;
 	muted = now;
@@ -1239,6 +1244,7 @@ void apply_brightness(int b) { cur_bright = b; }
 void plat_audio_jack_poll(void) { }
 /* And no switch to flip. */
 bool plat_mute_poll(bool own_volume) { (void)own_volume; return false; }
+void plat_mute_force(bool on) { (void)on; }
 bool plat_muted(void) { return false; }
 bool plat_headphones_present(void) { return false; }
 void jack_forget(void) { }

@@ -167,19 +167,14 @@ bool plat_resident_ready(void);
 bool plat_resident_ready_wait(void);
 /* USB host mode for a DAC (plorpos-8wc). The GKD and the H700 switch their
  * port themselves when a DAC goes in; the Brick and Brick Pro cannot see one -
- * their port watches an ID pin a USB-C device never pulls - so there it has to
- * be asked for, and given back once the DAC is gone so the port charges again.
+ * their port watches an ID pin a USB-C device never pulls - so there the
+ * Audio Output row's USB DAC position asks for it (audioout.h).
  *
- * plat_usb_host_manual: this port needs asking (true on the Bricks only).
- * plat_usb_host_request: ask; returns at once, the switch happens off-thread.
- * plat_usb_host_poll: called with whether a USB audio card exists now, on the
- *   launcher's half-second look; drops host mode when nothing turned up within
- *   a few seconds of asking, or when the DAC that did has gone.
- * plat_usb_host_on: host mode is held now, for the menu to say so. */
-bool plat_usb_host_manual(void);
-void plat_usb_host_request(void);
-void plat_usb_host_poll(bool dac_present);
-bool plat_usb_host_on(void);
+ * plat_usb_dac_manual: this port needs asking (true on the Bricks only).
+ * plat_usb_dac_host: host mode on or off; returns at once, the switch itself
+ *   happens off-thread. A no-op where the port needs no asking. */
+bool plat_usb_dac_manual(void);
+void plat_usb_dac_host(bool on);
 
 #if !defined(PLATFORM_GKD)
 /* Native PICO-8's sound device, followed by pico8sdl.so: NULL nothing, "" the
@@ -417,6 +412,11 @@ void plat_audio_jack_poll(void);
  * so only the speaker switch may be touched and never the gain. */
 bool plat_mute_poll(bool own_volume);
 bool plat_muted(void);
+/* Mute the codec - speaker and jack - as the switch would, whatever the
+ * switch says: Audio Output's USB DAC position on the Bricks, where sound may
+ * only come out of the DAC. Diatom's mute is the codec's alone, so a DAC keeps
+ * playing under it. Takes effect at the next plat_mute_poll. */
+void plat_mute_force(bool on);
 /* Main settings' Mute Switch row (TortOS-ib9). With lock on, the switch never
  * mutes, and plat_hold_switch answers whether it is down - read live, it is a
  * real switch - so music_dark can ignore buttons in a pocket. Loaded from db
