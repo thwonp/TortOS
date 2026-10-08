@@ -73,3 +73,13 @@ sysroot-rgsp/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# Agent and issue-tracker workflow files: local to a working copy, not part of
+# plorpOS. Issues live in the local Dolt database under .beads/, and
+# core.hooksPath may point at .beads/hooks, so these stay on disk untracked.
+/.beads/
+/.claude/
+/.codex/
+/.agents/
+/AGENTS.md
+/.beads.gate.lock
