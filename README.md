@@ -49,7 +49,7 @@ TortOS does, it still does. On top of that:
 - **PICO-8.** Carts play in fake-08 by default, with full save state and rewind functionality. 
   - Native PICO-8 with Splore is also fully supported (seriously, buy it) - Just put your raspberry-pi files in `Bios/` and switch the shelf.
   - A cart you play in Splore lands on the shelf with its full artwork.
-- **Sega CD and 32X,** on the Genesis shelf.
+- **Sega CD and 32X,** either combined on the Genesis shelf or on their own dedicated shelves.
 - **Achievements for disc games and arcade sets**
 
 **In a game**
