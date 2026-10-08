@@ -139,11 +139,6 @@ int sys_menu_build(const sys_ui *u, menu_row *out, menu_bufs *b,
 	 * makes the player guess which of three places they are about to hear. */
 	if (u->audio_policy == AOUT_AUTO)
 		snprintf(b->d, sizeof b->d, "auto (%s)", aout_dest_name(u->audio_dest));
-	else if (u->audio_policy == AOUT_USBDAC)
-		/* The Bricks' third position: the port is asking for a DAC, and until
-		 * one answers nothing is heard - which the row has to say. */
-		snprintf(b->d, sizeof b->d, "%s", u->audio_dest == AOUT_USB ? "USB DAC"
-		                                                            : "USB DAC (search)");
 	else
 		snprintf(b->d, sizeof b->d, "%s", aout_dest_name(u->audio_dest));
 	out[PM_AUDIO]        = (menu_row){ "Audio Output", b->d, true };

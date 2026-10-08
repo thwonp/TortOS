@@ -28,23 +28,15 @@
 typedef enum {
 	AOUT_AUTO = 0,   /* a USB DAC, then wired, then Bluetooth, then the speaker */
 	AOUT_SPEAKER,    /* never a DAC or Bluetooth; a cable still works */
-	AOUT_USBDAC,     /* the DAC or nothing - the Bricks only, see below */
 	AOUT_POLICY_COUNT
 } aout_policy;
-
-/* The Bricks cannot see a DAC go in (their port watches an ID pin a USB-C
- * device never pulls), so the port is put into host mode by choosing this
- * position, and only then. It silences the speaker and the jack on purpose:
- * host mode drives power out of the port the device charges from, and a
- * setting that quietly costs battery is one people leave on. Silence is a
- * nuisance nobody leaves on. Never saved - a boot starts on Auto. */
 
 /* Where the sound actually ends up. Four destinations, but only THREE device
  * strings: wired and speaker are the same ALSA device, because the jack switch
  * that separates them lives in the codec, below ALSA, and is the port's job
  * (plat_audio_jack_poll). The distinction survives here only because the menu
  * has to be able to say which one you are hearing. */
-typedef enum { AOUT_SPK = 0, AOUT_WIRED, AOUT_BT, AOUT_USB, AOUT_NONE } aout_dest;
+typedef enum { AOUT_SPK = 0, AOUT_WIRED, AOUT_BT, AOUT_USB } aout_dest;
 
 typedef struct {
 	aout_policy policy;
@@ -59,21 +51,9 @@ typedef struct {
  * into the port the device charges from, so it outranks the jack. */
 aout_dest   aout_resolve(const aout_state *s);
 
-/* The device string to hand Diatom: the sink's own name, or "" for the codec -
- * also for USB DAC with no DAC yet, where the codec is muted rather than
- * routed away (plat_mute_force: ALSA's null device is unpaced, and a player
- * writing into it spins). Never NULL, so a caller can always print it. */
+/* The device string to hand Diatom: the sink's own name, or "" for the codec.
+ * Never NULL, so a caller can always print or compare it. */
 const char *aout_device(const aout_state *s);
-
-/* The next position for a press on the row: dir > 0 forward (A, right),
- * < 0 back. USB DAC is offered only where the port needs asking. */
-aout_policy aout_policy_step(aout_policy p, int dir, bool usb_manual);
-
-/* What the policy becomes now that the DAC is or is not there, on a port that
- * needs asking: a DAC that was found and has gone hands back to Auto, and the
- * port with it. Nothing else moves it - in particular not a DAC still listed
- * for a moment after the player stepped off USB DAC. */
-aout_policy aout_usb_follow(aout_policy p, bool had_dac, bool dac_now, bool usb_manual);
 
 /* Which destination a device string is, for reading back where a player
  * actually is: "" is the codec (wired or speaker, by the jack), the DAC's own

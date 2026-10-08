@@ -2030,38 +2030,3 @@ void plat_clock_zone(const char *id)
 	tzset();
 }
 
-/* ---- USB host mode for a DAC (plorpos-8wc), see platform.h --------------- */
-
-#if defined(__linux__) && !defined(PLATFORM_GKD) && !defined(PLATFORM_H700)
-/* The sunxi USB manager's role switch: 1 host, 0 none (it then goes back to
- * watching for a charger or a computer). Written, never read beside: reading
- * its usb_host / usb_device / usb_null nodes SWITCHES the role, and on the
- * H700 one such read hung in D state until a reboot. otg_role itself is safe
- * both ways. Measured 2026-10-07 on the Brick and the Brick Pro: the write
- * returns at once and a DAC is a sound card about 1.5 s later. */
-#define OTG_ROLE "/sys/devices/platform/soc/usbc0/otg_role"
-
-static int otg_write(void *arg)
-{
-	FILE *f = fopen(OTG_ROLE, "w");
-
-	if (f) { fputs((const char *)arg, f); fclose(f); }
-	return 0;
-}
-
-bool plat_usb_dac_manual(void) { return true; }
-
-/* Off the thread that draws: a sysfs write into a USB stack is not something
- * to have the menu wait on, however quick it measured. */
-void plat_usb_dac_host(bool on)
-{
-	SDL_Thread *t = SDL_CreateThread(otg_write, "otg", (void *)(on ? "1" : "0"));
-
-	if (t) SDL_DetachThread(t);
-	else   otg_write((void *)(on ? "1" : "0"));
-	fprintf(stderr, "audio: USB port %s\n", on ? "to host, for a DAC" : "given back");
-}
-#else
-bool plat_usb_dac_manual(void) { return false; }
-void plat_usb_dac_host(bool on) { (void)on; }
-#endif

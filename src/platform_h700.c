@@ -586,7 +586,6 @@ void jack_forget(void) { jack_was = -1; }
 
 /* No mute switch on the H700s. */
 bool plat_mute_poll(bool own_volume) { (void)own_volume; return false; }
-void plat_mute_force(bool on) { (void)on; }   /* the Bricks only */
 bool plat_muted(void) { return false; }
 void mute_forget(void) { }
 void plat_mute_switch_lock(bool lock) { (void)lock; }

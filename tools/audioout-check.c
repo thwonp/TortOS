@@ -107,7 +107,7 @@ static void every_case(void)
 {
 	int p, w, b, u, n = 0;
 
-	printf("all twenty-four combinations resolve, in the order usb > wired > bt > speaker:\n");
+	printf("all sixteen combinations resolve, in the order usb > wired > bt > speaker:\n");
 	for (p = 0; p < AOUT_POLICY_COUNT; p++)
 		for (w = 0; w < 2; w++)
 			for (b = 0; b < 2; b++)
@@ -118,21 +118,16 @@ static void every_case(void)
 
 					n++;
 					ck(d == AOUT_SPK || d == AOUT_WIRED || d == AOUT_BT ||
-					   d == AOUT_USB || d == AOUT_NONE, "resolves to a real destination");
-					if (d == AOUT_NONE) ck(p == AOUT_USBDAC && !u,
-					                       "nothing only while USB DAC searches");
-					if (p == AOUT_USBDAC) ck(d == (u ? AOUT_USB : AOUT_NONE),
-					                         "USB DAC is the DAC or nothing");
-					else if (u && p == AOUT_AUTO) ck(d == AOUT_USB, "a DAC on Auto always wins");
+					   d == AOUT_USB, "resolves to a real destination");
+					if (u && p == AOUT_AUTO) ck(d == AOUT_USB, "a DAC on Auto always wins");
 					else if (w) ck(d == AOUT_WIRED, "otherwise wired wins");
 					if (d == AOUT_BT) ck(!w && !u && b && p == AOUT_AUTO,
 					                     "bluetooth only with no cable or DAC, on Auto");
-					if (d == AOUT_USB) ck(u && p != AOUT_SPEAKER, "a DAC only on Auto or USB DAC");
-					if (d != AOUT_NONE)
-						ck(aout_dest_of(&s, aout_device(&s)) == d,
-						   "the device string reads back as the same destination");
+					if (d == AOUT_USB) ck(u && p == AOUT_AUTO, "a DAC only on Auto");
+					ck(aout_dest_of(&s, aout_device(&s)) == d,
+					   "the device string reads back as the same destination");
 				}
-	ck(n == 24, "twenty-four combinations were actually tried");
+	ck(n == 16, "sixteen combinations were actually tried");
 }
 
 /* The DAC: above the jack and the headset, refused by Speaker like a headset. */
@@ -153,36 +148,6 @@ static void usb_dac(void)
 	s = su(AOUT_AUTO, false, BT, USB);
 	ck(aout_dest_of(&s, BT) == AOUT_BT, "a player on the headset reads as bluetooth");
 	ck(aout_dest_of(&s, "") == AOUT_SPK, "and one on the codec as the speaker");
-}
-
-/* The Bricks' third position: the row, and what pulling the DAC does. */
-static void usb_position(void)
-{
-	aout_state s;
-
-	printf("the USB DAC position:\n");
-	s = su(AOUT_USBDAC, true, BT, NULL);
-	ck(aout_resolve(&s) == AOUT_NONE, "without a DAC it is nothing, jack and headset alike");
-	ck(!strcmp(aout_device(&s), ""), "on the codec, which the caller mutes - never null");
-
-	ck(aout_policy_step(AOUT_AUTO, 1, true) == AOUT_SPEAKER, "Brick: auto -> speaker");
-	ck(aout_policy_step(AOUT_SPEAKER, 1, true) == AOUT_USBDAC, "speaker -> USB DAC");
-	ck(aout_policy_step(AOUT_USBDAC, 1, true) == AOUT_AUTO, "USB DAC -> auto");
-	ck(aout_policy_step(AOUT_AUTO, -1, true) == AOUT_USBDAC, "and back the other way");
-	ck(aout_policy_step(AOUT_AUTO, 1, false) == AOUT_SPEAKER &&
-	   aout_policy_step(AOUT_SPEAKER, 1, false) == AOUT_AUTO &&
-	   aout_policy_step(AOUT_AUTO, -1, false) == AOUT_SPEAKER,
-	   "elsewhere only two positions");
-
-	ck(aout_usb_follow(AOUT_USBDAC, true, false, true) == AOUT_AUTO,
-	   "a found DAC pulled out goes back to Auto");
-	ck(aout_usb_follow(AOUT_USBDAC, false, false, true) == AOUT_USBDAC,
-	   "still searching stays searching");
-	ck(aout_usb_follow(AOUT_USBDAC, true, true, true) == AOUT_USBDAC, "a DAC still there stays");
-	ck(aout_usb_follow(AOUT_SPEAKER, true, true, true) == AOUT_SPEAKER,
-	   "stepping off with the DAC still listed is not undone");
-	ck(aout_usb_follow(AOUT_AUTO, true, false, false) == AOUT_AUTO,
-	   "a port that switches itself is never moved");
 }
 
 /* /proc/asound/cards as each device printed it, 2026-10-07, plus DACs that
@@ -245,7 +210,6 @@ static void names(void)
 	ck(strcmp(aout_dest_name(AOUT_BT), aout_dest_name(AOUT_SPK)) != 0,
 	   "so do bluetooth and speaker");
 	ck(!strcmp(aout_dest_name(AOUT_USB), "USB DAC"), "a DAC reads as USB DAC");
-	ck(!strcmp(aout_policy_name(AOUT_USBDAC), "USB DAC"), "so does the position");
 }
 
 
@@ -349,7 +313,6 @@ int main(void)
 	empty_sink();
 	every_case();
 	usb_dac();
-	usb_position();
 	cards();
 	names();
 	reapply_rule();

@@ -165,17 +165,6 @@ bool plat_resident_ready(void);
 /* The same, for a launch: a Diatom that is up but still starting gets up to
  * 8 s to say READY rather than 400 ms (plorpos-7ny.34). */
 bool plat_resident_ready_wait(void);
-/* USB host mode for a DAC (plorpos-8wc). The GKD and the H700 switch their
- * port themselves when a DAC goes in; the Brick and Brick Pro cannot see one -
- * their port watches an ID pin a USB-C device never pulls - so there the
- * Audio Output row's USB DAC position asks for it (audioout.h).
- *
- * plat_usb_dac_manual: this port needs asking (true on the Bricks only).
- * plat_usb_dac_host: host mode on or off; returns at once, the switch itself
- *   happens off-thread. A no-op where the port needs no asking. */
-bool plat_usb_dac_manual(void);
-void plat_usb_dac_host(bool on);
-
 #if !defined(PLATFORM_GKD)
 /* Native PICO-8's sound device, followed by pico8sdl.so: NULL nothing, "" the
  * default, else a PCM name with the headset's link id (plorpos-7ny.35, the
@@ -412,11 +401,6 @@ void plat_audio_jack_poll(void);
  * so only the speaker switch may be touched and never the gain. */
 bool plat_mute_poll(bool own_volume);
 bool plat_muted(void);
-/* Mute the codec - speaker and jack - as the switch would, whatever the
- * switch says: Audio Output's USB DAC position on the Bricks, where sound may
- * only come out of the DAC. Diatom's mute is the codec's alone, so a DAC keeps
- * playing under it. Takes effect at the next plat_mute_poll. */
-void plat_mute_force(bool on);
 /* Main settings' Mute Switch row (TortOS-ib9). With lock on, the switch never
  * mutes, and plat_hold_switch answers whether it is down - read live, it is a
  * real switch - so music_dark can ignore buttons in a pocket. Loaded from db

@@ -1984,7 +1984,7 @@ static aout_policy aout_load(void)
 
 static void aout_save(aout_policy p)
 {
-	db_set_str(db_dev(), "audioout", p == AOUT_SPEAKER ? "speaker" : "auto");   /* USB DAC: auto */
+	db_set_str(db_dev(), "audioout", p == AOUT_SPEAKER ? "speaker" : "auto");
 }
 
 /* The connected sink, published by bt_reconnect in launch.sh.
@@ -2092,50 +2092,6 @@ static const char *aout_link(const aout_state *s)
 }
 #endif
 
-/* The policy, changed: saved (USB DAC never is - a boot starts on Auto), and
- * on the Bricks the port follows it into and out of host mode. */
-static void aout_set_policy(aout_policy p)
-{
-	bool was_usb = g_aout_policy == AOUT_USBDAC;
-
-	g_aout_policy = p;
-	aout_save(p);
-	if (was_usb != (p == AOUT_USBDAC)) {
-		plat_usb_dac_host(p == AOUT_USBDAC);
-		plat_mute_force(p == AOUT_USBDAC);   /* only the DAC is heard */
-	}
-}
-
-/* The DAC under USB DAC, watched: once one has been found, pulling it out
- * goes back to Auto, which gives the port back to charging - the player does
- * not have to remember the row. And a DAC already there when the launcher
- * starts is one the last launcher asked for (it restarted with the port still
- * in host mode, the only way a Brick has a USB card): adopted, so that pulling
- * it out is handled the same way. */
-static void aout_usb_watch(const char *usb)
-{
-	static bool had, looked;
-	bool now = usb && usb[0];
-	aout_policy p;
-
-	if (!looked) {
-		looked = true;
-		if (now && plat_usb_dac_manual() && g_aout_policy != AOUT_USBDAC) {
-			fprintf(stderr, "audio: a USB DAC is already on the port; USB DAC\n");
-			g_aout_policy = AOUT_USBDAC;    /* already in host mode: no switch */
-			plat_mute_force(true);
-		}
-	}
-	p = aout_usb_follow(g_aout_policy, had, now, plat_usb_dac_manual());
-	if (p != g_aout_policy) {
-		fprintf(stderr, "audio: USB DAC unplugged; back to Auto\n");
-		aout_set_policy(p);
-	}
-	/* Remembered only under USB DAC, so stepping off it and back on starts a
-	 * new search rather than flipping straight back. */
-	had = g_aout_policy == AOUT_USBDAC && (had || now);
-}
-
 static aout_state aout_now(void)
 {
 	aout_state s;
@@ -2148,8 +2104,6 @@ static aout_state aout_now(void)
 #endif
 	s.bt_sink = aout_bt_sink();
 	s.usb_sink = aout_usb_sink();
-	aout_usb_watch(s.usb_sink);
-	s.policy = g_aout_policy;           /* the watch may have moved it */
 	return s;
 }
 
@@ -7911,11 +7865,11 @@ static menu_result sysmenu_key(app *a, void *ctx, in_button key, int sel)
 		return MENU_STAY;
 	}
 
-	/* Two positions, three on the Bricks (USB DAC), stepped through: right
-	 * and A forward, left back - with two that is the same thing. */
+	/* Two positions, so left and right and A all do the same thing: there is
+	 * nothing to step through, only something to turn off and on. */
 	if (sel == PM_AUDIO && (d || key == IN_ACCEPT)) {
-		aout_set_policy(aout_policy_step(g_aout_policy, d < 0 ? -1 : 1,
-		                                 plat_usb_dac_manual()));
+		g_aout_policy = g_aout_policy == AOUT_AUTO ? AOUT_SPEAKER : AOUT_AUTO;
+		aout_save(g_aout_policy);
 		/* Forced: the resolved DEVICE may not have changed - pinning Speaker
 		 * with a cable in is still the codec - but the setting did, and the
 		 * next unplug must act on the new policy rather than on a cached
