@@ -235,11 +235,29 @@ nano:
 	docker run --rm -v $(CURDIR):/work -v $(CURDIR)/sdk-nano/sdk:/sdk:ro -w /work $(IMAGE) \
 		make -f mk/nano.mk NANO_VERSION=$(NANO_VERSION) $(NANO_BIN)
 
+# PicoArch for the Nano: the fork thwonp/picoarch (branch plorpos-nano) at
+# PICOARCH_REF, cloned to build/nano/picoarch and built in the container with
+# its build-nano.sh. PICOARCH=<dir> builds a local checkout of it instead.
+PICOARCH_URL := https://github.com/thwonp/picoarch.git
+PICOARCH_REF := 5b1f8c19b5e1163b9f40649e383657e4c0c02f7c
+PICOARCH_DIR := $(CURDIR)/build/nano/picoarch
+PICOARCH ?= $(PICOARCH_DIR)
+.PHONY: nano-picoarch
+nano-picoarch:
+	@if [ "$(PICOARCH)" = "$(PICOARCH_DIR)" ]; then \
+		[ -d $(PICOARCH_DIR)/.git ] || git clone -q $(PICOARCH_URL) $(PICOARCH_DIR) || exit 1; \
+		git -C $(PICOARCH_DIR) cat-file -e $(PICOARCH_REF)^{commit} 2>/dev/null || git -C $(PICOARCH_DIR) fetch -q origin; \
+		git -C $(PICOARCH_DIR) checkout -q $(PICOARCH_REF) && \
+		git -C $(PICOARCH_DIR) submodule update -q --init; \
+	fi
+	$(MAKE) -s -C $(PICOARCH) libpicofe/.patched   # host: the image has no patch(1)
+	docker run --rm -v $(PICOARCH):/w -v $(CURDIR)/sdk-nano/sdk:/sdk:ro -w /w $(IMAGE) ./build-nano.sh
+
 # out/plorpOS-nano-v$(NANO_VERSION).zip: plorpOS/ for the card's /mnt, with
-# the PicoArch fork from PICOARCH (mk/nano-payload.sh).
+# PicoArch from PICOARCH (mk/nano-payload.sh).
 .PHONY: nano-zip
-nano-zip: nano
-	./mk/nano-payload.sh $(NANO_VERSION)
+nano-zip: nano nano-picoarch
+	PICOARCH=$(PICOARCH) ./mk/nano-payload.sh $(NANO_VERSION)
 
 # The check binaries are rebuilt every time, deliberately.
 #
