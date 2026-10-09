@@ -1,6 +1,6 @@
 # Installing on an Anbernic RG Nano
 
-plorpOS-Nano is a small plorpOS for the **RG Nano**, where music comes first:
+plorpOS nano is a small plorpOS for the **RG Nano**, where music comes first:
 the shelf plays your albums, and they keep playing while you play a game. It is
 not the full plorpOS - the Nano has 64 MB of memory and one slow core - but
 three things in one folder:

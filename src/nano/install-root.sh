@@ -1,5 +1,5 @@
 #!/bin/sh
-# plorpOS-Nano: make plorpOS the RG Nano's menu (docs/install-nano.md).
+# plorpOS nano: make plorpOS the RG Nano's menu (docs/install-nano.md).
 # Run as root on the Nano, then reboot. Undone by uninstall-root.sh.
 #
 # Every change to the read-only system partition, each kept first in
@@ -74,4 +74,4 @@ mv -f /root/.profile.new /root/.profile
 for m in $MENUS; do rm -rf "/$m"; done
 rm -f /mnt/disable_frontend
 sync
-echo "plorpOS installed; restart the Nano to start it"
+echo "plorpOS nano installed; restart the Nano to start it"

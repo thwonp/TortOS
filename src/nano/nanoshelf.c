@@ -1057,11 +1057,11 @@ static const char *view_title(const view *v)
 	static char t[160];
 
 	switch (v->v) {
-	case V_HOME:     return "plorpOS";
+	case V_HOME:     return "plorpOS nano";
 	case V_GAMES:    return SYS[v->arg].label;
 	case V_RECENT:   return "Recently Played";
 	case V_FAVS:     return "Favorites";
-	case V_SETTINGS: return "plorpOS-Nano " TORTOS_VERSION;
+	case V_SETTINGS: return "plorpOS nano v" TORTOS_VERSION;
 	case V_NOW:      return "Now Playing";
 	case V_ARTISTS:  return "Music";
 	case V_ALBUMS:   snprintf(t, sizeof t, "%s", lib.artists[v->arg].name); return t;

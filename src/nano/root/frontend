@@ -1,5 +1,5 @@
 #!/bin/sh
-# plorpOS-Nano's /usr/local/sbin/frontend (install-root.sh puts it there).
+# plorpOS nano's /usr/local/sbin/frontend (install-root.sh puts it there).
 #
 # FunKey-OS starts its menu with `frontend init &` from /root/.profile, after
 # `instant_play load` has resumed any game a power-off saved. This answers the

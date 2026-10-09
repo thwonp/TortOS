@@ -1,5 +1,5 @@
 #!/bin/sh
-# plorpOS-Nano: start the shelf, from wherever this script is - installed,
+# plorpOS nano: start the shelf, from wherever this script is - installed,
 # /usr/local/plorpos (FunKey's frontend loop runs it, install-root.sh); tried
 # out, the card's /mnt/plorpOS (by hand over adb, with the stock frontend
 # stopped first: docs/install-nano.md). Its log is a per-run summary in /tmp,

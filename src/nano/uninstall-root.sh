@@ -1,5 +1,5 @@
 #!/bin/sh
-# plorpOS-Nano: put back what install-root.sh changed, from the copies it kept
+# plorpOS nano: put back what install-root.sh changed, from the copies it kept
 # in /mnt/plorpOS/backup/. Run as root on the Nano, then reboot.
 set -e
 B=/mnt/plorpOS/backup

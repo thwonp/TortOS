@@ -42,7 +42,7 @@ done
 git -C "$PICOARCH" diff "$(git -C "$PICOARCH" merge-base HEAD origin/main)" HEAD -- . ':!libpicofe' \
 	> "$P/src/picoarch-plorpos.patch"
 cat > "$P/src/SOURCE.txt" << T
-plorpOS-Nano $V
+plorpOS nano v$V
 
 nanoshelf, muse, musectl: https://github.com/thwonp/TortOS (MIT; src/nano/,
   src/muse/), built with FunKey-sdk-2.3.0.
