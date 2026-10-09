@@ -604,7 +604,8 @@ static void text(TTF_Font *f, int x, int y, int maxw, const char *s, SDL_Color c
  * tools: lending the card to a computer (share), the USB mode for the next
  * start (its flag files), restart and power off. Volume and brightness stay
  * on FN + A/Y and FN + X/B, which fkgpiod handles everywhere. */
-enum { S_OUTPUT, S_LIBRARY, S_USB_DRIVE, S_USB_MODE, S_RESTART, S_POWEROFF, S_KEYS, S_VERSION, S_COUNT };
+enum { S_OUTPUT, S_LIBRARY, S_USB_DRIVE, S_USB_MODE, S_SLEEP, S_LOCK, S_RESTART, S_POWEROFF,
+       S_KEYS, S_VERSION, S_COUNT };
 static int confirm = -1;           /* the row whose A asks to be pressed again */
 static char note[96];              /* a line over the footer for a few seconds */
 static unsigned note_until;
@@ -627,6 +628,45 @@ static bool run_ok(const char *cmd)
 static int usb_mode(void)
 {
 	return access(CARD "/adb", F_OK) == 0 ? 2 : access(CARD "/usbnet", F_OK) == 0 ? 1 : 0;
+}
+
+/* plorpOS's own settings, `name value` a line (ggv.28): the inactive
+ * shutdown in minutes (0 = never) and the button lock while dimmed. */
+#define SETTINGS DATA "/settings.txt"
+static const int sleep_choices[] = { 1, 2, 5, 10, 30, 0 };
+#define NSLEEP ((int)(sizeof sleep_choices / sizeof sleep_choices[0]))
+static int set_sleep = 1, set_lock = 1;
+
+static void settings_load(void)
+{
+	char k[32];
+	int v;
+	FILE *f = fopen(SETTINGS, "r");
+
+	if (!f) return;
+	while (fscanf(f, "%31s %d", k, &v) == 2) {
+		if (!strcmp(k, "shutdown")) set_sleep = v;
+		else if (!strcmp(k, "lock")) set_lock = !!v;
+	}
+	fclose(f);
+}
+
+static void settings_save(void)
+{
+	FILE *f = fopen(SETTINGS ".new", "w");
+
+	if (!f) return;
+	fprintf(f, "shutdown %d\nlock %d\n", set_sleep, set_lock);
+	if (fclose(f) == 0) rename(SETTINGS ".new", SETTINGS);
+	else unlink(SETTINGS ".new");
+}
+
+static void sleep_next(void)
+{
+	int i;
+
+	for (i = 0; i < NSLEEP && sleep_choices[i] != set_sleep; i++) ;
+	set_sleep = sleep_choices[(i + 1) % NSLEEP];
 }
 
 static void usb_mode_set(int m)
@@ -724,6 +764,11 @@ static void row_label(const view *v, int i, char *buf, size_t n)
 		case S_LIBRARY:   snprintf(buf, n, "Library: %d tracks", lib_ready ? lib.ntracks : 0); break;
 		case S_USB_DRIVE: snprintf(buf, n, "Share the card with a computer"); break;
 		case S_USB_MODE:  snprintf(buf, n, "USB at start: %s", usb_mode_name(usb_mode())); break;
+		case S_SLEEP:
+			if (set_sleep) snprintf(buf, n, "Inactive shutdown: %d min", set_sleep);
+			else snprintf(buf, n, "Inactive shutdown: Never");
+			break;
+		case S_LOCK:      snprintf(buf, n, "Sleep button lock: %s", set_lock ? "On" : "Off"); break;
 		case S_RESTART:   snprintf(buf, n, confirm == i ? "Restart? Press A again" : "Restart"); break;
 		case S_POWEROFF:  snprintf(buf, n, confirm == i ? "Power off? Press A again" : "Power off"); break;
 		case S_KEYS:      snprintf(buf, n, "Controls"); break;
@@ -768,14 +813,16 @@ static const controls_t controls[] = {
 		{ "A",            "open" },
 		{ "B",            "back" },
 		{ "X",            "Now Playing" },
-		{ "START",        "play / pause" } } },
+		{ "START",        "play / pause" },
+		{ "Power tap",    "dim Now Playing" } } },
 	{ "Now Playing", {
 		{ "L / R",        "track back / next" },
 		{ "Left / Right", "seek 10 s" },
 		{ "Y",            "play mode" },
-		{ "X",            "queue" } } },
+		{ "X",            "queue" },
+		{ "Power tap",    "brightness back" } } },
 	{ "In a game", {
-		{ "MENU",         "game menu" },
+		{ "MENU (power tap)", "game menu" },
 		{ "Up / Down",    "menu page" },
 		{ "MUSIC page: A", "play / pause" },
 		{ "B",            "close menu" } } },
@@ -783,7 +830,7 @@ static const controls_t controls[] = {
 		{ "SELECT (FN)+A / Y", "volume up / down" },
 		{ "SELECT (FN)+X / B", "brightness up / down" },
 		{ "SELECT (FN)+Up",    "screenshot" },
-		{ "Power key",         "off; a game resumes" } } },
+		{ "Power hold",        "off; a game resumes" } } },
 };
 #define NCONTROLS ((int)(sizeof controls / sizeof controls[0]))
 
@@ -950,6 +997,7 @@ static unsigned music_sig(void)
 /* ------------------------------------------------------------------ launch */
 
 static volatile sig_atomic_t want_quit;
+static unsigned active_at;          /* the last button, music or game (ggv.28) */
 static void on_term(int sig) { (void)sig; want_quit = 1; }
 
 /* FunKey's power key signals the pid in /var/run/funkey.pid (its `pid` tool):
@@ -1018,6 +1066,7 @@ static void run_game(const char *core, const char *rom)
 	}
 	pid_record(getpid());
 	dsp_point(-1);
+	active_at = plat_now_ms();          /* a game is not inactivity */
 	/* What FunKey's frontend loop does after every program: a game killed
 	 * mid-way leaves VT switching locked and the keyboard dead. */
 	system("termfix_all >/dev/null 2>&1; keymap default >/dev/null 2>&1");
@@ -1262,6 +1311,8 @@ static void activate(void)
 			usb_mode_set((usb_mode() + 1) % 3);
 			set_note("Used from the next start");
 			break;
+		case S_SLEEP: sleep_next(); settings_save(); break;
+		case S_LOCK:  set_lock = !set_lock; settings_save(); break;
 		case S_RESTART:
 		case S_POWEROFF:
 			if (confirm != v->sel) { confirm = v->sel; break; }
@@ -1275,6 +1326,74 @@ static void activate(void)
 		}
 		return;
 	}
+}
+
+/* ------------------------------------------------------- dim, shutdown */
+
+/* The power key's tap is the MENU key (fkgpiod: q). On the shelf it opens Now
+ * Playing dimmed (ggv.28): backlight level 0, the lowest the RG Nano has (its
+ * LEDs hang off the always-on 5 V rail, so they never go fully dark), still
+ * working - unless the lock is on, when only another tap does anything.
+ * Only another tap brings the brightness back (B and X do nothing while
+ * dimmed: Now Playing is where it stays). The key's hold stays FunKey's
+ * clean power off.
+ * Inactive shutdown: no button and no music for the set minutes, anywhere
+ * outside a game, powers off with the queue kept. */
+#define BACKLIGHT "/sys/class/backlight/backlight/brightness"
+static bool     dimmed;
+static unsigned dim_at;
+static char     backlight[16];
+
+static void dim(void)
+{
+	int fd = open(BACKLIGHT, O_RDONLY);
+	ssize_t n = fd >= 0 ? read(fd, backlight, sizeof backlight - 1) : -1;
+
+	if (fd >= 0) close(fd);
+	backlight[n > 0 ? n : 0] = '\0';
+	if ((fd = open(BACKLIGHT, O_WRONLY)) >= 0) {
+		if (write(fd, "0", 1) != 1) { /* stays bright */ }
+		close(fd);
+	}
+	open_now();
+	dimmed = true;
+	dim_at = plat_now_ms();
+}
+
+static void undim(const char *by)
+{
+	char now[16];
+	int fd = open(BACKLIGHT, O_RDONLY);
+	ssize_t n = fd >= 0 ? read(fd, now, sizeof now - 1) : -1;
+
+	if (fd >= 0) close(fd);
+	/* FN + X/B while dimmed set a level of its own: keep that one. */
+	if (n > 0 && now[0] == '0' && backlight[0] && (fd = open(BACKLIGHT, O_WRONLY)) >= 0) {
+		if (write(fd, backlight, strlen(backlight)) < 0) { /* stays dim */ }
+		close(fd);
+	}
+	dimmed = false;
+	fprintf(stderr, "nanoshelf: dimmed %u s, back by %s\n", (plat_now_ms() - dim_at) / 1000, by);
+}
+
+/* A button while dimmed: true when it is done with. */
+static bool dimmed_key(SDLKey k)
+{
+	if (k == SDLK_q) { undim("power"); return true; }
+	return set_lock || k == SDLK_x || k == SDLK_b;
+}
+
+static void shutdown_tick(void)
+{
+	unsigned now = plat_now_ms();
+
+	if (musec_now()->state == MU_PLAYING) active_at = now;
+	if (!set_sleep || now - active_at < (unsigned)set_sleep * 60000u) return;
+	fprintf(stderr, "nanoshelf: inactive %d min: power off\n", set_sleep);
+	queue_save();
+	sync();
+	system("powerdown now");
+	want_quit = 1;
 }
 
 static void key(SDLKey k)
@@ -1311,6 +1430,7 @@ static void key(SDLKey k)
 		if (v->v == V_NOW) musec_set_mode((muq_mode)((musec_mode() + 1) % MUQ_MODES));
 		break;
 	case SDLK_s: musec_toggle(); break;          /* START, everywhere */
+	case SDLK_q: dim(); break;                   /* the power key's tap */
 	case SDLK_m: if (v->v == V_NOW) musec_prev(); break;   /* L */
 	case SDLK_n: if (v->v == V_NOW) musec_next(); break;   /* R */
 	default: break;
@@ -1353,6 +1473,8 @@ int main(void)
 	}
 	for (s = 0; s < NSYS; s++) sys_shown[s] = sys_has_games(&SYS[s]);
 	recent_load();
+	settings_load();
+	active_at = plat_now_ms();
 	dsp_point(-1);
 	music_init();
 	resume_instant_play(up_start);
@@ -1367,7 +1489,8 @@ int main(void)
 		while (SDL_PollEvent(&e)) {
 			if (e.type == SDL_KEYDOWN) {
 				if (!t_in) t_in = plat_now_ms();
-				key(e.key.keysym.sym);
+				active_at = t_in;
+				if (!dimmed || !dimmed_key(e.key.keysym.sym)) key(e.key.keysym.sym);
 				dirty = true;
 			} else if (e.type == SDL_QUIT) {
 				want_quit = 1;
@@ -1379,6 +1502,7 @@ int main(void)
 
 			last_tick = now;
 			music_tick();
+			shutdown_tick();
 			s2 = music_sig();
 			if (s2 != sig) { sig = s2; dirty = true; }
 		}
