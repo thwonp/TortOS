@@ -26,6 +26,53 @@ to `Game Boy/`, `Music/` and the rest.
 Put music in `Music/`, one folder per artist and one per album inside it
 (`Music/<artist>/<album>/<tracks>`). MP3, FLAC, AAC/M4A, Ogg and Opus play.
 
+## What goes where on the card
+
+Games go in FunKey's folders, at the root of the card. plorpOS shows a console
+once its folder has a game in it.
+
+| Folder | Shown as | Files |
+|---|---|---|
+| `Game Boy` | Game Boy | `.gb` `.dmg` `.zip` |
+| `Game Boy Color` | Game Boy Color | `.gbc` `.zip` |
+| `Game Boy Advance` | Game Boy Advance | `.gba` `.agb` `.gbz` `.bin` `.zip` |
+| `NES` | NES | `.nes` `.fds` `.unf` `.unif` `.zip` |
+| `SNES` | Super NES | `.smc` `.sfc` `.fig` `.swc` `.gd3` `.gd7` `.dx2` `.bsx` `.zip` |
+| `Sega Genesis` | Genesis | `.md` `.gen` `.smd` `.bin` `.32x` `.cue` `.iso` `.chd` `.cso` `.m3u` `.68k` `.sgd` `.pco` `.zip` |
+| `Sega Master System` | Master System | `.sms` `.gg` `.sg` `.sc` `.bin` `.zip` |
+| `Game Gear` | Game Gear | `.gg` `.zip` |
+| `PCE-TurboGrafx` | PC Engine | `.pce` `.sgx` `.cue` `.ccd` `.chd` `.toc` `.m3u` `.zip` |
+| `Neo Geo Pocket` | Neo Geo Pocket | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` |
+| `WonderSwan` | WonderSwan | `.ws` `.wsc` `.pc2` `.zip` |
+| `Atari lynx` | Atari Lynx | `.lnx` `.lyx` `.o` `.zip` |
+| `Pokemon Mini` | Pokemon Mini | `.min` `.zip` |
+| `PICO-8` | PICO-8 | `.p8` `.png` `.zip` |
+| `PS1` | PlayStation | `.cue` `.bin` `.chd` `.pbp` `.m3u` `.iso` `.img` `.mdf` `.toc` `.cbn` |
+| `MAME 2000` | Arcade (MAME) | `.zip` |
+| `Final Burn Alpha 2012` | Arcade (FBA) | `.zip` |
+
+**BIOS files** go in `FunKey/.picoarch/system/`. None is required:
+
+| System | File | Without it |
+|---|---|---|
+| Game Boy Advance | `gba_bios.bin` | a built-in BIOS; a few games misbehave |
+| PlayStation | `scph1001.bin` (or `scph5501.bin`, `scph7001.bin`) | a built-in BIOS; less compatible |
+| PC Engine CD | `syscard3.pce` | CD games don't start (cards play) |
+| Pokemon Mini | `bios.min` | a built-in BIOS |
+| Atari Lynx | `lynxboot.img` | none needed - FunKey ships it and plorpOS puts it there |
+
+Saves and PicoArch's settings are in `FunKey/.picoarch/` too - keep that
+folder.
+
+**Tidying a new card.** FunKey's image also fills the card with things only its
+own menus use. Once plorpOS is installed these can be deleted: `Applications`,
+`Emulators`, `Native games`, `Settings` (FunKey's app launchers), and - if you
+won't go back to FunKey's menu to play them - `DOOM`, `Quake`, `Quake II`,
+`Wolfenstein 3D`, `Spear of Destiny` and `Libretro` (those games' engines).
+Keep `FunKey`, `Music`, `plorpOS` and the game folders above (empty ones are
+fine). The sample games in the game folders are free homebrew; delete any you
+don't want.
+
 ## 2. Make plorpOS the Nano's menu
 
 This makes plorpOS the menu the Nano starts into, in place of FunKey's
@@ -128,6 +175,11 @@ same time.
 
 ## Connecting
 
+The install needs a shell on the Nano once. The simplest is **adb**, from
+Google's [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools)
+(Windows, macOS, Linux; unzip it and run `adb` from that folder). On Linux it is
+also a package: `android-tools` (Arch), `adb` (Debian, Ubuntu).
+
 FunKey's USB modes are chosen by a file on the shared partition, read when the
 Nano starts:
 
@@ -157,10 +209,6 @@ setsid sh /mnt/plorpOS/start.sh &
   `favorites.txt`, `settings.txt`, and `queue.txt` - the queue and place, kept
   over a restart, stopped until you press play). Game saves and PicoArch settings: FunKey's own,
   `/mnt/FunKey/.picoarch/`. Logs: `/tmp/nanoshelf.log`, gone at restart.
-- **Consoles shown** are those with a game in their FunKey folder: Game Boy,
-  Game Boy Color, Game Boy Advance, NES, Super NES, Genesis, Master System,
-  Game Gear, PC Engine, Neo Geo Pocket, WonderSwan, Atari Lynx, Pokemon Mini,
-  PICO-8, PlayStation, Arcade (MAME 2000, FBA 2012).
 - **Full speed with music playing** was measured for Game Boy, Game Boy Advance
   and Genesis. Heavier systems may slow down while music decodes.
 - **Resume.** When a game exits, FunKey saves its place, and the next start of
