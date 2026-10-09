@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <math.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
@@ -528,12 +529,6 @@ static void fmt_time(double s, char *out, size_t n)
 	snprintf(out, n, "%d:%02d", t / 60, t % 60);
 }
 
-static const char *mode_name(muq_mode m)
-{
-	static const char *const names[] = { "In order", "Repeat all", "Repeat one", "Shuffle" };
-
-	return m < MUQ_MODES ? names[m] : "";
-}
 
 /* -------------------------------------------------------------- the screen */
 
@@ -569,6 +564,138 @@ static void fill(int x, int y, int w, int h, Uint32 c)
 	SDL_Rect r = { (Sint16)x, (Sint16)y, (Uint16)w, (Uint16)h };
 
 	SDL_FillRect(screen, &r, c);
+}
+
+/* The play mode as a mark, not a word (ggv.15) - the shapes of the other
+ * ports' ui.c (g_build there; menu.ttf has no arrows): strokes and arrowheads
+ * in a unit square, 4x4 supersampled into an alpha mask once per mode. In
+ * order has none, as there: it is what plays when nothing was asked for. */
+typedef struct { float x0, y0, x1, y1; } g_seg;
+typedef struct { float ax, ay, bx, by, cx, cy; } g_tri;
+#define G_W   0.055f            /* half a stroke */
+#define G_MAX 24
+typedef struct {
+	g_seg seg[G_MAX];
+	g_tri tri[4];
+	int   nseg, ntri;
+	float w[G_MAX];
+} g_shape;
+
+static void g_line(g_shape *s, float x0, float y0, float x1, float y1, float w)
+{
+	if (s->nseg == G_MAX) return;
+	s->w[s->nseg] = w;
+	s->seg[s->nseg++] = (g_seg){ x0, y0, x1, y1 };
+}
+
+static void g_arc(g_shape *s, float cx, float cy, float r, float a0, float a1)
+{
+	int i;
+
+	for (i = 0; i < 6; i++) {
+		float t0 = a0 + (a1 - a0) * (float)i / 6.0f, t1 = a0 + (a1 - a0) * (float)(i + 1) / 6.0f;
+
+		g_line(s, cx + r * cosf(t0), cy + r * sinf(t0), cx + r * cosf(t1), cy + r * sinf(t1), G_W);
+	}
+}
+
+static void g_head(g_shape *s, float tx, float ty, float dx, float dy)
+{
+	float bx = tx - dx * 0.17f, by = ty - dy * 0.17f, px = -dy * 0.13f, py = dx * 0.13f;
+
+	if (s->ntri == 4) return;
+	s->tri[s->ntri++] = (g_tri){ tx, ty, bx + px, by + py, bx - px, by - py };
+}
+
+static void g_build(muq_mode m, g_shape *s)
+{
+	const float pi = 3.14159265f;
+
+	memset(s, 0, sizeof *s);
+	if (m == MUQ_SHUFFLE) {
+		g_line(s, 0.10f, 0.32f, 0.30f, 0.32f, G_W);
+		g_line(s, 0.30f, 0.32f, 0.60f, 0.68f, G_W);
+		g_line(s, 0.60f, 0.68f, 0.72f, 0.68f, G_W);
+		g_head(s, 0.89f, 0.68f, 1.0f, 0.0f);
+		g_line(s, 0.10f, 0.68f, 0.30f, 0.68f, G_W);
+		g_line(s, 0.30f, 0.68f, 0.60f, 0.32f, G_W);
+		g_line(s, 0.60f, 0.32f, 0.72f, 0.32f, G_W);
+		g_head(s, 0.89f, 0.32f, 1.0f, 0.0f);
+		return;
+	}
+	g_line(s, 0.12f, 0.60f, 0.12f, 0.42f, G_W);
+	g_arc(s, 0.30f, 0.42f, 0.18f, pi, 1.5f * pi);
+	g_line(s, 0.30f, 0.24f, 0.68f, 0.24f, G_W);
+	g_head(s, 0.86f, 0.24f, 1.0f, 0.0f);
+	g_line(s, 0.88f, 0.40f, 0.88f, 0.58f, G_W);
+	g_arc(s, 0.70f, 0.58f, 0.18f, 0.0f, 0.5f * pi);
+	g_line(s, 0.70f, 0.76f, 0.32f, 0.76f, G_W);
+	g_head(s, 0.14f, 0.76f, -1.0f, 0.0f);
+	if (m == MUQ_REPEAT_ONE) {
+		g_line(s, 0.50f, 0.38f, 0.50f, 0.62f, 0.04f);
+		g_line(s, 0.50f, 0.38f, 0.445f, 0.43f, 0.04f);
+	}
+}
+
+static int g_inside(const g_shape *s, float x, float y)
+{
+	int i;
+
+	for (i = 0; i < s->nseg; i++) {
+		const g_seg *g = &s->seg[i];
+		float vx = g->x1 - g->x0, vy = g->y1 - g->y0, len2 = vx * vx + vy * vy;
+		float t = len2 > 0 ? ((x - g->x0) * vx + (y - g->y0) * vy) / len2 : 0, dx, dy;
+
+		if (t < 0) t = 0;
+		if (t > 1) t = 1;
+		dx = x - (g->x0 + t * vx);
+		dy = y - (g->y0 + t * vy);
+		if (dx * dx + dy * dy <= s->w[i] * s->w[i]) return 1;
+	}
+	for (i = 0; i < s->ntri; i++) {
+		const g_tri *t = &s->tri[i];
+		float d1 = (x - t->bx) * (t->ay - t->by) - (t->ax - t->bx) * (y - t->by);
+		float d2 = (x - t->cx) * (t->by - t->cy) - (t->bx - t->cx) * (y - t->cy);
+		float d3 = (x - t->ax) * (t->cy - t->ay) - (t->cx - t->ax) * (y - t->ay);
+		int neg = d1 < 0 || d2 < 0 || d3 < 0, pos = d1 > 0 || d2 > 0 || d3 > 0;
+
+		if (!(neg && pos)) return 1;
+	}
+	return 0;
+}
+
+#define GLYPH_SZ (FONT_SZ + 1)
+
+/* The mark for m in colour c, made the first time it is drawn. */
+static SDL_Surface *mode_glyph(muq_mode m, SDL_Color c)
+{
+	static SDL_Surface *made[MUQ_MODES];
+	g_shape shape;
+	SDL_Surface *g;
+	int x, y, i, j;
+
+	if (m <= MUQ_IN_ORDER || m >= MUQ_MODES) return NULL;
+	if (made[m]) return made[m];
+	g = SDL_CreateRGBSurface(SDL_SRCALPHA, GLYPH_SZ, GLYPH_SZ, 32,
+	                         0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
+	if (!g) return NULL;
+	g_build(m, &shape);
+	SDL_LockSurface(g);
+	for (y = 0; y < GLYPH_SZ; y++) {
+		Uint32 *row = (Uint32 *)((Uint8 *)g->pixels + (size_t)y * g->pitch);
+
+		for (x = 0; x < GLYPH_SZ; x++) {
+			int hit = 0;
+
+			for (j = 0; j < 4; j++)
+				for (i = 0; i < 4; i++)
+					hit += g_inside(&shape, ((float)x + ((float)i + 0.5f) / 4.0f) / GLYPH_SZ,
+					                ((float)y + ((float)j + 0.5f) / 4.0f) / GLYPH_SZ);
+			row[x] = (Uint32)(hit * 255 / 16) << 24 | (Uint32)c.r << 16 | (Uint32)c.g << 8 | c.b;
+		}
+	}
+	SDL_UnlockSurface(g);
+	return made[m] = g;
 }
 
 /* Text at x,y no wider than maxw, cut with "..." when it is. align: 0 left,
@@ -927,10 +1054,24 @@ static void draw_now(void)
 	fmt_time(m->len, b, sizeof b);
 	text(font, 12, y, 60, a, C_DIM, 0);
 	text(font, W - 72, y, 60, b, C_DIM, 2);                      y += FONT_SZ + 9;
-	snprintf(line, sizeof line, "%s  -  %d of %d  -  %s",
+	snprintf(line, sizeof line, "%s  -  %d of %d",
 	         m->state == MU_PAUSED ? "Paused" : musec_heard() ? "Playing" : "Stopped",
-	         m->count ? m->index + 1 : 0, m->count, mode_name(musec_mode()));
-	text(font, 8, y, W - 16, line, C_DIM, 1);                     y += FONT_SZ + 7;
+	         m->count ? m->index + 1 : 0, m->count);
+	{   /* the line and the mode's mark after it, centred together */
+		SDL_Surface *g = mode_glyph(musec_mode(), C_DIM);
+		int lw = 0, lh = 0, gw = g ? GLYPH_SZ + 8 : 0, x0;
+
+		TTF_SizeUTF8(font, line, &lw, &lh);
+		if (lw > W - 16 - gw) lw = W - 16 - gw;
+		x0 = (W - lw - gw) / 2;
+		text(font, x0, y, lw, line, C_DIM, 0);
+		if (g) {
+			SDL_Rect r = { (Sint16)(x0 + lw + 8), (Sint16)(y + (lh - GLYPH_SZ) / 2), 0, 0 };
+
+			SDL_BlitSurface(g, NULL, screen, &r);
+		}
+	}
+	y += FONT_SZ + 7;
 	if (next) {
 		const char *slash = strrchr(next, '/');
 		char nm[160];
