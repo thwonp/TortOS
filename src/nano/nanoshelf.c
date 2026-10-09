@@ -820,11 +820,13 @@ static int confirm = -1;           /* the row whose A asks to be pressed again *
 static char note[96];              /* a line over the footer for a few seconds */
 static unsigned note_until;
 
-static void set_note(const char *msg)
+static void set_note_ms(const char *msg, unsigned ms)
 {
 	snprintf(note, sizeof note, "%s", msg);
-	note_until = plat_now_ms() + 3000;
+	note_until = plat_now_ms() + ms;
 }
+
+static void set_note(const char *msg) { set_note_ms(msg, 3000); }
 
 static bool run_ok(const char *cmd)
 {
@@ -871,12 +873,12 @@ static void settings_save(void)
 	else unlink(SETTINGS ".new");
 }
 
-static void sleep_next(void)
+static void sleep_step(int dir)
 {
 	int i;
 
 	for (i = 0; i < NSLEEP && sleep_choices[i] != set_sleep; i++) ;
-	set_sleep = sleep_choices[(i + 1) % NSLEEP];
+	set_sleep = sleep_choices[(i + NSLEEP + dir) % NSLEEP];
 }
 
 static void usb_mode_set(int m)
@@ -1531,6 +1533,20 @@ static void play_album(int al, int start)
 	publish();     /* "playing" now, so a game would let go in time */
 }
 
+/* A row with choices, one along (dir 1) or back (-1): A and Right go along,
+ * Left back. Other rows ignore it. */
+static void setting_step(int id, int dir)
+{
+	switch (id) {
+	case S_USB_MODE:
+		usb_mode_set((usb_mode() + 3 + dir) % 3);
+		set_note_ms("Reboot to apply", 2000);
+		break;
+	case S_SLEEP: sleep_step(dir); settings_save(); break;
+	case S_LOCK:  set_lock = !set_lock; settings_save(); break;
+	}
+}
+
 static void activate(void)
 {
 	view *v = &CUR;
@@ -1572,11 +1588,10 @@ static void activate(void)
 		case S_USB_DRIVE: usb_drive(); break;
 		case S_KEYS:      push(V_CONTROLS, 0); break;
 		case S_USB_MODE:
-			usb_mode_set((usb_mode() + 1) % 3);
-			set_note("Used from the next start");
+		case S_SLEEP:
+		case S_LOCK:
+			setting_step(srow[v->sel], 1);
 			break;
-		case S_SLEEP: sleep_next(); settings_save(); break;
-		case S_LOCK:  set_lock = !set_lock; settings_save(); break;
 		case S_RESTART:
 		case S_POWEROFF:
 			if (confirm != v->sel) { confirm = v->sel; break; }
@@ -1673,11 +1688,13 @@ static void key(SDLKey k)
 	case SDLK_l:
 		if (v->v == V_NOW) musec_seek_by(-10);
 		else if (v->v == V_CONTROLS) v->sel = (v->sel + NCONTROLS - 1) % NCONTROLS;
+		else if (v->v == V_SETTINGS) setting_step(srow[v->sel], -1);
 		else if (n) v->sel = v->sel > ROWS ? v->sel - ROWS : 0;
 		break;
 	case SDLK_r:
 		if (v->v == V_NOW) musec_seek_by(10);
 		else if (v->v == V_CONTROLS) v->sel = (v->sel + 1) % NCONTROLS;
+		else if (v->v == V_SETTINGS) setting_step(srow[v->sel], 1);
 		else if (n) v->sel = v->sel + ROWS < n ? v->sel + ROWS : n - 1;
 		break;
 	case SDLK_a: activate(); break;
@@ -1697,7 +1714,7 @@ static void key(SDLKey k)
 			const char *file = v->v == V_GAMES ? games[v->sel] : v->v == V_RECENT ? recent[v->sel].file
 			                                                                     : favs[v->sel].file;
 
-			set_note(fav_toggle(s, file) ? "Added to Favorites" : "Removed from Favorites");
+			set_note_ms(fav_toggle(s, file) ? "Added to Favorites" : "Removed from Favorites", 2000);
 		}
 		break;
 	case SDLK_s: musec_toggle(); break;          /* START, everywhere */
