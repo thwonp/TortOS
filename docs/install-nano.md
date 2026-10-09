@@ -1,36 +1,105 @@
 # Installing on an Anbernic RG Nano
 
-plorpOS nano is a small plorpOS for the **RG Nano**, where music comes first:
+plorpOS nano is a super stripped down plorpOS for the **RG Nano**, where music comes first:
 the shelf plays your albums, and they keep playing while you play a game. It is
 not the full plorpOS - the Nano has 64 MB of memory and one slow core - but
 three things in one folder:
 
-- **nanoshelf**, the menu: your consoles, their games, Recently Played,
+- **nanoshelf UI**, the menu: your consoles, their games, Recently Played,
   Favorites, and Music (Now Playing, artists > albums > tracks, the queue);
 - **Muse**, plorpOS's music player, in the background;
 - **PicoArch** for the games ([plorpOS's fork](https://github.com/thwonp/picoarch/tree/plorpos-nano)
   of [DrUm78's](https://github.com/DrUm78/picoarch), with a MUSIC page in its
   menu), using the cores already on the Nano.
 
-It runs on **FunKey-OS 2.3.0 for the RG Nano** (DrUm78's build, the system
-the Nano ships with). It uses that system's own games folders, cores, saves,
+It runs on [DrUm78's FunKey OS Build](https://github.com/DrUm78/FunKey-OS/releases/tag/fps-classics), using its games folders, cores, saves,
 volume and brightness keys; it does not replace them.
 
-## 1. Copy plorpOS to the card
+## 1. Flash DrUm78's FunKey-OS
+
+plorpOS nano installs on top of **DrUm78's FunKey-OS for the RG Nano**. If your
+Nano doesn't run it yet, or for a fresh card:
+
+1. Download **`FunKey-sdcard-DrUm78_RG_Nano.img`** from DrUm78's
+   [FunKey-OS release](https://github.com/DrUm78/FunKey-OS/releases/tag/fps-classics).
+   Flashing it **wipes the card**.
+2. Write it to the microSD card with an image tool such as
+   [balenaEtcher](https://etcher.balena.io/) or
+   [Win32 Disk Imager](https://win32-disk-imager.en.uptodown.com), following
+   the release notes there.
+3. Put the card in the Nano and turn it on. The first start finishes the
+   install and resizes the card's partition - let it finish, until FunKey's
+   menu shows.
+
+## 2. Copy plorpOS to the card
+
+Power off the Nano (hold the power button) and put its microSD card in the
+computer. The card's big partition - the one with `Game Boy/`, `Music/` and
+the rest - is the one to copy to. **Do not reformat the other partitions if Windows asks you to**. 
 
 Download **`plorpOS-nano-v<version>.zip`** and unzip it. It holds one folder,
 `plorpOS-nano-v<version>`; copy **what is inside it** - the `plorpOS` folder and
-the empty file `adb` - to the root of the Nano's shared partition: the drive
-that appears when the Nano is connected to a computer by USB, next to
-`Game Boy/`, `Music/` and the rest.
+the empty file `adb` - to the root of that partition.
 
-The `adb` file makes the Nano start with a shell for step 2. The install
+The `adb` file makes the Nano start with a shell for step 3. The install
 deletes it, so afterwards the Nano is a USB drive again.
+
+**NOTE**: If you want to clean up your card, see [Tidying your card](#tidying-your-card). Leaving the default folders is harmless.
+
+Copy your media according to [What goes where on the card](#what-goes-where-on-the-card).
+
+## 3. Make plorpOS the Nano's menu
+
+This makes plorpOS the menu the Nano starts into, in place of FunKey's
+RetroFE and GMenu2X, which it removes. Everything it changes or removes in the
+Nano's system is kept first in `plorpOS/backup/`, so it can be undone (see
+Removing).
+
+Eject the card, put it back in the Nano, turn the Nano on and connect it to
+the computer by USB. With [adb](#connecting) on the computer, first check that
+the Nano is there:
+
+```
+adb devices
+```
+
+It should list one device, followed by `device`. If the list is empty, check
+the cable and that `adb` is at the root of the card, then restart the Nano. 
+If you're having connection troubles, a USB A-C cable is more reliable.
+
+Then:
+
+```
+adb shell sh /mnt/plorpOS/install-root.sh
+adb reboot
+```
+
+It:
+
+- copies plorpOS's programs to `/usr/local/plorpos/` and runs them from there,
+  so the card can be lent to a computer while plorpOS is running;
+- changes `/usr/local/sbin/frontend`, FunKey's menu loop, to start plorpOS (and
+  start it again if it ever stops);
+- changes `/etc/asound.conf`, the speaker mix, to half level per channel so
+  music is not clipped on the mono speaker;
+- removes RetroFE and GMenu2X. FunKey's cores, PicoArch's menu, the apps and
+  your saves stay;
+- makes plorpOS resume a game saved by the power key (in `/root/.profile`,
+  FunKey's start script), so the music comes back with it;
+- deletes the `adb` / `usbnet` file, so the Nano starts as a USB drive again.
+  To keep a shell, choose **Settings > USB at start** after the restart.
+
+FunKey's own USB-audio handling stays: it sets a DAC's level when it is
+plugged in and points the volume keys at it.
+
+**Updating:** copy the new `plorpOS` folder over the old one, and `adb` too,
+then run the same two `adb` commands. Your settings stay, and the Nano is a
+USB drive again after the restart.
+
+## What goes where on the card
 
 Put music in `Music/`, one folder per artist and one per album inside it
 (`Music/<artist>/<album>/<tracks>`). MP3, FLAC, AAC/M4A, Ogg and Opus play.
-
-## What goes where on the card
 
 Games go in FunKey's folders, at the root of the card. plorpOS shows a console
 once its folder has a game in it.
@@ -68,8 +137,10 @@ once its folder has a game in it.
 Saves and PicoArch's settings are in `FunKey/.picoarch/` too - keep that
 folder.
 
-**Tidying a new card.** FunKey's image also fills the card with things only its
-own menus use. Once plorpOS is installed these can be deleted: `Applications`,
+## Tidying your card
+
+FunKey's image also fills the card with things only its own menus use.
+Once plorpOS is installed these can be deleted: `Applications`,
 `Emulators`, `Native games`, `Settings` (FunKey's app launchers), and - if you
 won't go back to FunKey's menu to play them - `DOOM`, `Quake`, `Quake II`,
 `Wolfenstein 3D`, `Spear of Destiny` and `Libretro` (those games' engines).
@@ -77,42 +148,6 @@ Keep `FunKey`, `Music`, `plorpOS` and the game folders above (empty ones are
 fine). The sample games in the game folders are free homebrew; delete any you
 don't want.
 
-## 2. Make plorpOS the Nano's menu
-
-This makes plorpOS the menu the Nano starts into, in place of FunKey's
-RetroFE and GMenu2X, which it removes. Everything it changes or removes in the
-Nano's system is kept first in `plorpOS/backup/`, so it can be undone (see
-Removing).
-
-Eject the drive, restart the Nano and leave it connected by USB. With
-[adb](#connecting) on the computer:
-
-```
-adb shell sh /mnt/plorpOS/install-root.sh
-adb reboot
-```
-
-It:
-
-- copies plorpOS's programs to `/usr/local/plorpos/` and runs them from there,
-  so the card can be lent to a computer while plorpOS is running;
-- changes `/usr/local/sbin/frontend`, FunKey's menu loop, to start plorpOS (and
-  start it again if it ever stops);
-- changes `/etc/asound.conf`, the speaker mix, to half level per channel so
-  music is not clipped on the mono speaker;
-- removes RetroFE and GMenu2X. FunKey's cores, PicoArch's menu, the apps and
-  your saves stay;
-- makes plorpOS resume a game saved by the power key (in `/root/.profile`,
-  FunKey's start script), so the music comes back with it;
-- deletes the `adb` / `usbnet` file, so the Nano starts as a USB drive again.
-  To keep a shell, choose **Settings > USB at start** after the restart.
-
-FunKey's own USB-audio handling stays: it sets a DAC's level when it is
-plugged in and points the volume keys at it.
-
-**Updating:** copy the new `plorpOS` folder over the old one, and `adb` too,
-then run the same two `adb` commands. Your settings stay, and the Nano is a
-USB drive again after the restart.
 
 ## Using it
 
