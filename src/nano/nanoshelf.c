@@ -53,9 +53,13 @@
 
 #define W     240
 #define H     240
+/* One text size, the rows from it; the bars stay as they were (at 15 that
+ * fills the list exactly: 10 rows of 20). */
+#define FONT_SZ  15
+#define FONT_BIG (FONT_SZ + 4)
 #define TOP   22
 #define BOT   18
-#define ROW   18
+#define ROW   (FONT_SZ + 5)
 #define ROWS  ((H - TOP - BOT) / ROW)
 
 #define CARD     "/mnt"
@@ -776,12 +780,12 @@ static const char *view_title(const view *v)
 static const char *view_hint(const view *v)
 {
 	switch (v->v) {
-	case V_HOME:   return "A open   X music   START play/pause";
-	case V_NOW:    return "A pause  L/R track  </> seek  Y mode";
-	case V_TRACKS: return "A play   B back   X now playing";
+	case V_HOME:   return "A open  X music  START pause";
+	case V_NOW:    return "A pause  L/R track  Y mode";
+	case V_TRACKS: return "A play  B back  X music";
 	case V_QUEUE:  return "B back";
 	}
-	return "A open   B back   X now playing";
+	return "A open  B back  X music";
 }
 
 static void draw_header(const view *v)
@@ -834,20 +838,20 @@ static void draw_now(void)
 		text(font, 8, y, W - 16, "Nothing playing. Music > an album.", C_DIM, 0);
 		return;
 	}
-	text(font_big, 8, y, W - 16, m->title, C_TEXT, 1);           y += 26;
-	text(font, 8, y, W - 16, m->artist, C_ACC, 1);                y += 20;
-	text(font, 8, y, W - 16, m->album, C_DIM, 1);                 y += 30;
+	text(font_big, 8, y, W - 16, m->title, C_TEXT, 1);           y += FONT_BIG + 9;
+	text(font, 8, y, W - 16, m->artist, C_ACC, 1);                y += FONT_SZ + 7;
+	text(font, 8, y, W - 16, m->album, C_DIM, 1);                 y += FONT_SZ + 17;
 	fill(12, y, W - 24, 4, c_track);
 	if (m->len > 0) fill(12, y, (int)((W - 24) * (m->at / m->len > 1 ? 1 : m->at / m->len)), 4, c_fill);
 	y += 8;
 	fmt_time(m->at, a, sizeof a);
 	fmt_time(m->len, b, sizeof b);
 	text(font, 12, y, 60, a, C_DIM, 0);
-	text(font, W - 72, y, 60, b, C_DIM, 2);                      y += 22;
+	text(font, W - 72, y, 60, b, C_DIM, 2);                      y += FONT_SZ + 9;
 	snprintf(line, sizeof line, "%s  -  %d of %d  -  %s",
 	         m->state == MU_PAUSED ? "Paused" : musec_heard() ? "Playing" : "Stopped",
 	         m->count ? m->index + 1 : 0, m->count, mode_name(musec_mode()));
-	text(font, 8, y, W - 16, line, C_DIM, 1);                     y += 20;
+	text(font, 8, y, W - 16, line, C_DIM, 1);                     y += FONT_SZ + 7;
 	if (next) {
 		const char *slash = strrchr(next, '/');
 		char nm[160];
@@ -1071,7 +1075,7 @@ static void message(const char *l1, const char *l2)
 	fill(0, 0, W, TOP, c_bar);
 	text(font, 6, 3, W - 12, "USB drive", C_TEXT, 0);
 	text(font, 8, 90, W - 16, l1, C_TEXT, 1);
-	text(font, 8, 112, W - 16, l2, C_DIM, 1);
+	text(font, 8, 90 + FONT_SZ + 9, W - 16, l2, C_DIM, 1);
 	SDL_Flip(screen);
 }
 
@@ -1286,8 +1290,8 @@ int main(void)
 		fprintf(stderr, "nanoshelf: %s\n", SDL_GetError());
 		return 1;
 	}
-	font = TTF_OpenFont(font_path, 13);
-	font_big = TTF_OpenFont(font_path, 17);
+	font = TTF_OpenFont(font_path, FONT_SZ);
+	font_big = TTF_OpenFont(font_path, FONT_BIG);
 	if (!font || !font_big) {
 		fprintf(stderr, "nanoshelf: %s: %s\n", font_path, TTF_GetError());
 		return 1;
