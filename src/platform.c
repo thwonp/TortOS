@@ -1630,12 +1630,12 @@ int plat_resident_wait(void)
 	screen_yield(true);
 	r = diatom_wait();
 	screen_yield(false);
-#if defined(PLATFORM_H700)
+#if !defined(PLATFORM_GKD)
 	/* A pause hands the input back too, and with it the level: take the
 	 * game's now, not at EXIT. Otherwise the jack poll below re-applies this
 	 * side's older level the moment the menu opens, and the game resumes at
-	 * it - every in-game menu "reset" the volume (2026-10-06). The Brick has
-	 * the same order; plorpos-7ny bead to check it there. */
+	 * it - every in-game menu "reset" the volume (h700 2026-10-06; Brick
+	 * user report 2026-10-09, measured 63 -> 33, plorpos-7ny.13). */
 	if (r == RES_PAUSED) d_apply_levels();
 #endif
 
