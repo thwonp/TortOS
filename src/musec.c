@@ -348,7 +348,12 @@ static void event(const char *line)
 		/* A track that will not open is skipped rather than ending the
 		 * album - but not forever: a whole album of files that fail is a
 		 * folder problem, and walking it at a frame a track says nothing. */
-		if (++g_skips < 8) advance(true); else g_now.state = MU_STOPPED;
+		/* Except an output that is busy - a game or a headset still holding
+		 * it: the next track would find it busy too, and an album ran out a
+		 * track a second that way (plorpos-ggv.24). Stopped where it is,
+		 * pause/play starts it again. */
+		if (strstr(v, "busy")) { g_asked = false; g_now.state = MU_STOPPED; }
+		else if (++g_skips < 8) advance(true); else g_now.state = MU_STOPPED;
 	}
 }
 
