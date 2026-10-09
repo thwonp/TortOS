@@ -190,6 +190,8 @@ You need a TrimUI Brick, Brick Hammer or Brick Pro, a microSD card and, just thi
 
 On the GKD 350H Ultra, see [Installing on the GKD](docs/install-gkd.md) instead, and on the Anbernic RG SP, [Installing on the RG SP](docs/install-h700.md).
 
+On the Anbernic RG Nano there is **plorpOS nano**, a small music-first version: Muse plays on the shelf and through your games, controlled from a MUSIC page in the game menu. It runs on DrUm78's FunKey-OS for the RG Nano, with its games and cores; see [Installing on the RG Nano](docs/install-nano.md) and `plorpOS-nano-v0.1.zip`.
+
 1. **Format the card as exFAT,** with a Master Boot Record partition scheme. On a Mac, open Disk Utility, choose *View > Show All Devices*, and erase the card itself rather than its volume.
 2. **Download `plorpOS-brick-v1.5.zip`** from [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
 3. **Copy everything inside it to the root of the card:** `TortOS/`, `.tmp_update/`, `trimui/`, `Roms/`, `Music/`, `Audiobooks/`, `Bios/` and `Saves/`.
