@@ -929,25 +929,14 @@ static void lat_report(const char *when)
 	lat_n = lat_sum = lat_max = 0;
 }
 
-static void launch(int s, const char *file_in)
+/* PicoArch with core and rom, music going on around it, then the shelf's
+ * screen back. */
+static void run_game(const char *core, const char *rom)
 {
-	char core[256], rom[512], file[256];
 	unsigned t0;
 	pid_t pid;
 	int st;
 
-	/* A copy: from Recently Played, file_in is in recent[], which
-	 * recent_add rewrites. */
-	snprintf(file, sizeof file, "%s", file_in);
-
-	core_path(&SYS[s], core, sizeof core);
-	snprintf(rom, sizeof rom, CARD "/%s/%s", SYS[s].dir, file);
-	recent_add(s, file);
-	if (!strcmp(SYS[s].core, "mednafen_lynx") &&
-	    access(GAME_HOME "/.picoarch/system/lynxboot.img", R_OK) != 0)
-		system("mkdir -p " GAME_HOME "/.picoarch/system && "
-		       "cp /usr/games/lynxboot.img " GAME_HOME "/.picoarch/system/");
-	lat_report("before a game");
 	launched = true;
 	dac_poll();
 	dsp_point(dac_card);
@@ -968,7 +957,7 @@ static void launch(int s, const char *file_in)
 			music_tick();
 			usleep(100000);
 		}
-		fprintf(stderr, "nanoshelf: %s/%s: %u s, exit %d\n", SYS[s].dir, file,
+		fprintf(stderr, "nanoshelf: %s: %u s, exit %d\n", rom,
 		        (plat_now_ms() - t0) / 1000, WIFEXITED(st) ? WEXITSTATUS(st) : -WTERMSIG(st));
 	}
 	pid_record(getpid());
@@ -980,6 +969,98 @@ static void launch(int s, const char *file_in)
 		fprintf(stderr, "nanoshelf: video after the game: %s\n", SDL_GetError());
 		want_quit = 1;
 	}
+}
+
+static void launch(int s, const char *file_in)
+{
+	char core[256], rom[512], file[256];
+
+	/* A copy: from Recently Played, file_in is in recent[], which
+	 * recent_add rewrites. */
+	snprintf(file, sizeof file, "%s", file_in);
+
+	core_path(&SYS[s], core, sizeof core);
+	snprintf(rom, sizeof rom, CARD "/%s/%s", SYS[s].dir, file);
+	recent_add(s, file);
+	if (!strcmp(SYS[s].core, "mednafen_lynx") &&
+	    access(GAME_HOME "/.picoarch/system/lynxboot.img", R_OK) != 0)
+		system("mkdir -p " GAME_HOME "/.picoarch/system && "
+		       "cp /usr/games/lynxboot.img " GAME_HOME "/.picoarch/system/");
+	lat_report("before a game");
+	run_game(core, rom);
+}
+
+/* ------------------------------------------------------------ instant play */
+
+/* The power key in a game: PicoArch saves, FunKey's `instant_play save`
+ * writes the command line to INSTANT_PLAY as a little script,
+ *   'program' 'core' 'rom' &
+ *   pid record $! ...
+ * and powers off. FunKey's /root/.profile ran it at the next boot, before
+ * any menu - so no music during it. install-root.sh turned that off; the
+ * shelf runs it here instead, before its first screen, with the queue
+ * already back (stopped on its track: the MUSIC page plays it). Taken out of
+ * the way first, as FunKey's `instant_play load` does, so a crash in the game
+ * does not bring it back at every boot. */
+#define INSTANT_PLAY "/mnt/instant_play"
+#define RESUME_PLAY  "/mnt/resume_play"
+
+/* The next 'quoted' word of a line `instant_play save` wrote ('\'' inside). */
+static const char *ip_word(const char *p, char *out, size_t n)
+{
+	size_t k = 0;
+
+	while (*p == ' ') p++;
+	if (*p++ != '\'') return NULL;
+	for (;;) {
+		if (!*p || *p == '\n') return NULL;
+		if (*p == '\'') {
+			if (strncmp(p, "'\\''", 4)) break;
+			p += 3;
+		}
+		if (k + 1 < n) out[k++] = *p;
+		p++;
+	}
+	out[k] = '\0';
+	return p + 1;
+}
+
+static unsigned uptime_ms(void)
+{
+	double up = 0;
+	FILE *f = fopen("/proc/uptime", "r");
+
+	if (f) { if (fscanf(f, "%lf", &up) != 1) up = 0; fclose(f); }
+	return (unsigned)(up * 1000);
+}
+
+static void resume_instant_play(unsigned up_start)
+{
+	char line[1024], prog[PATH_MAX], core[256], rom[512];
+	const char *p, *name;
+	FILE *f;
+
+	if (rename(INSTANT_PLAY, RESUME_PLAY) != 0) return;
+	line[0] = '\0';
+	if ((f = fopen(RESUME_PLAY, "r"))) {
+		if (!fgets(line, sizeof line, f)) line[0] = '\0';
+		fclose(f);
+	}
+	if ((p = ip_word(line, prog, sizeof prog)) && (p = ip_word(p, core, sizeof core)) &&
+	    ip_word(p, rom, sizeof rom) &&
+	    !strcmp((name = strrchr(prog, '/')) ? name + 1 : prog, "picoarch")) {
+		fprintf(stderr, "nanoshelf: instant play %s, %u ms after the shelf started (uptime %u ms)\n",
+		        rom, uptime_ms() - up_start, uptime_ms());
+		run_game(core, rom);
+	} else {
+		/* Not PicoArch's: as FunKey ran it, without the music page. */
+		fprintf(stderr, "nanoshelf: instant play, not PicoArch: %s", line);
+		video_stop();
+		system("sh " RESUME_PLAY "; termfix_all >/dev/null 2>&1; keymap default >/dev/null 2>&1");
+		pid_record(getpid());
+		if (!video_start()) want_quit = 1;
+	}
+	remove(RESUME_PLAY);
 }
 
 /* ---------------------------------------------------------------- USB drive */
@@ -1182,7 +1263,7 @@ static void key(SDLKey k)
 
 int main(void)
 {
-	unsigned sig = 0, last_tick = 0;
+	unsigned sig = 0, last_tick = 0, up_start;
 	int s;
 
 	signal(SIGTERM, on_term);
@@ -1198,6 +1279,7 @@ int main(void)
 	 * the speaker; monocard (/etc/asound.conf) is. A DAC is chosen with
 	 * SINK instead (dac_poll). */
 	setenv("MUSE_CODEC", "monocard", 1);
+	up_start = uptime_ms();
 	pid_record(getpid());
 
 	if (SDL_Init(0) != 0 || TTF_Init() != 0 || !video_start()) {
@@ -1214,6 +1296,7 @@ int main(void)
 	recent_load();
 	dsp_point(-1);
 	music_init();
+	resume_instant_play(up_start);
 	stack[0] = (view){ V_HOME, 0, 0, 0 };
 	draw();
 

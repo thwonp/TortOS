@@ -10,6 +10,9 @@
 #                              card to a computer (share), as RetroFE could
 #   /usr/local/sbin/frontend   FunKey's menu loop -> plorpOS's (root/frontend)
 #   /etc/asound.conf           speaker mix at half per channel (root/asound.conf)
+#   /root/.profile             its `instant_play load` off (backup/root-profile.tar):
+#                              nanoshelf resumes a game the power key saved, so
+#                              the music is there during it
 #   RetroFE and GMenu2X        removed (backup/root-menus.tar); FunKey's cores,
 #                              PicoArch's menu files and its apps stay
 # Run it again after copying a new plorpOS folder to the card: it updates
@@ -38,6 +41,10 @@ if [ ! -f "$B/root-menus.tar" ]; then
 	(cd / && tar -cf "$B/root-menus.tar" $present)
 	echo "kept RetroFE and GMenu2X in $B/root-menus.tar"
 fi
+if [ ! -f "$B/root-profile.tar" ]; then
+	(cd / && tar -cf "$B/root-profile.tar" root/.profile)
+	echo "kept FunKey's /root/.profile in $B/root-profile.tar"
+fi
 
 /usr/local/sbin/rw
 # Read-only again after; while the old menu loop still has its script open
@@ -55,6 +62,9 @@ chmod 755 /usr/local/sbin/frontend.new
 mv -f /usr/local/sbin/frontend.new /usr/local/sbin/frontend
 cp "$HERE/root/asound.conf" /etc/asound.conf.new
 mv -f /etc/asound.conf.new /etc/asound.conf
+cp -p /root/.profile /root/.profile.new
+sed 's|^instant_play load$|# instant_play load   (plorpOS: nanoshelf resumes the game)|' /root/.profile > /root/.profile.new
+mv -f /root/.profile.new /root/.profile
 for m in $MENUS; do rm -rf "/$m"; done
 rm -f /mnt/disable_frontend
 sync
