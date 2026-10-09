@@ -348,6 +348,40 @@ static void music_init(void)
 static char dac[64];
 static int  dac_card = -1;
 
+/* Whether FunKey's `audio` poller is done with a DAC that has just come: it
+ * writes /mnt/FunKey/.asoundrc, restarts alsa-utils (alsactl, which leaves a
+ * DAC it has no state for at the DAC's own level - full, on a FiiO KA13) and
+ * only then sets the saved level (`volume usbaudioinit`). Music moved over
+ * before that blasted for a second (plorpos-ggv.19), so it waits for the file
+ * and for none of those to be running. */
+static bool funkey_dac_ready(void)
+{
+	static const char *const busy[] = { "alsactl", "alsa-utils", "sbin/volume", "amixer" };
+	char path[288], cmd[256];
+	struct dirent *e;
+	bool ready = true;
+	DIR *d;
+
+	if (access("/mnt/FunKey/.asoundrc", F_OK) != 0) return false;
+	if (!(d = opendir("/proc"))) return true;
+	while (ready && (e = readdir(d))) {
+		size_t n, i;
+		FILE *f;
+
+		if (!isdigit((unsigned char)e->d_name[0])) continue;
+		snprintf(path, sizeof path, "/proc/%s/cmdline", e->d_name);
+		if (!(f = fopen(path, "r"))) continue;
+		n = fread(cmd, 1, sizeof cmd - 1, f);
+		fclose(f);
+		for (i = 0; i < n; i++) if (!cmd[i]) cmd[i] = ' ';
+		cmd[n] = '\0';
+		for (i = 0; i < sizeof busy / sizeof busy[0]; i++)
+			if (strstr(cmd, busy[i])) ready = false;
+	}
+	closedir(d);
+	return ready;
+}
+
 static void dac_poll(void)
 {
 	static unsigned last;
@@ -365,6 +399,7 @@ static void dac_poll(void)
 	cards[n] = '\0';
 	if (!aout_usb_card(cards, dev, sizeof dev, &card)) { dev[0] = '\0'; card = -1; }
 	if (!strcmp(dev, dac)) return;
+	if (dev[0] && !funkey_dac_ready()) return;
 	snprintf(dac, sizeof dac, "%s", dev);
 	dac_card = card;
 	musec_sink(dac);
