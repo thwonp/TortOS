@@ -61,6 +61,7 @@
 #define CARD     "/mnt"
 #define DATA     CARD "/plorpOS"      /* what plorpOS keeps on the card */
 #define RECENT   DATA "/recent.txt"
+#define QUEUE    DATA "/queue.txt"
 #define STATE    "/tmp/plorpos"
 #define NOW      STATE "/now"
 #define CMD      STATE "/cmd"
@@ -323,6 +324,8 @@ static void stop_orphan(void)
 	if (fd >= 0) close(fd);
 }
 
+static void queue_load(void);
+
 static void music_init(void)
 {
 	pthread_t th;
@@ -337,6 +340,7 @@ static void music_init(void)
 	cmd_fd = open(CMD, O_RDONLY | O_NONBLOCK);
 	cmd_keep = open(CMD, O_WRONLY | O_NONBLOCK);
 	musec_init(muse_bin, CARD);
+	queue_load();
 	if (pthread_create(&th, NULL, lib_walk, NULL) == 0) pthread_detach(th);
 	else lib_walk(NULL);
 }
@@ -426,12 +430,91 @@ static void dsp_point(int card)
 		fprintf(stderr, "nanoshelf: /dev/dsp for card %d: %s\n", card > 0 ? card : 0, strerror(errno));
 }
 
+/* The queue and its track kept over a restart (plorpos-ggv.25): written to the
+ * card once it has stood still for QUEUE_SETTLE_MS - twenty skips through an
+ * album are one write - and loaded stopped at start, for pause/play to go on
+ * from that track. Track by track: the place in a song is not kept. */
+#define QUEUE_SETTLE_MS 5000
+
+static unsigned queue_sig(void)
+{
+	const char *const *paths, *artist, *album;
+	int cur, n = musec_queue(&paths, &cur, &artist, &album), i;
+	unsigned h = 2166136261u;
+
+	if (n <= 0) return 0;
+	h = (h ^ (unsigned)n) * 16777619u;
+	h = (h ^ (unsigned)cur) * 16777619u;
+	h = (h ^ (unsigned)musec_mode()) * 16777619u;
+	for (i = 0; paths[0][i]; i++) h = (h ^ (unsigned char)paths[0][i]) * 16777619u;
+	return h ? h : 1;
+}
+
+static void queue_save(void)
+{
+	const char *const *paths, *artist, *album;
+	int cur, n = musec_queue(&paths, &cur, &artist, &album), i;
+	FILE *f;
+
+	if (n <= 0 || !(f = fopen(QUEUE ".new", "w"))) return;
+	fprintf(f, "track\t%d\nmode\t%d\nartist\t%s\nalbum\t%s\n", cur, (int)musec_mode(), artist, album);
+	for (i = 0; i < n; i++) fprintf(f, "%s\n", paths[i]);
+	if (fclose(f) == 0) rename(QUEUE ".new", QUEUE);
+	else unlink(QUEUE ".new");
+}
+
+static void queue_keep(void)
+{
+	static unsigned saved, seen, since;
+	unsigned sig = queue_sig(), now = plat_now_ms();
+
+	if (!saved) saved = seen = sig;            /* what start loaded, or nothing */
+	if (sig != seen) { seen = sig; since = now; }
+	if (sig && sig != saved && now - since >= QUEUE_SETTLE_MS) {
+		queue_save();
+		saved = sig;
+	}
+}
+
+static void queue_load(void)
+{
+	char line[LIB_PATH + 16], artist[128] = "", album[128] = "";
+	char **paths = NULL;
+	int n = 0, cap = 0, cur = 0, mode = -1, i;
+	FILE *f = fopen(QUEUE, "r");
+
+	if (!f) return;
+	while (fgets(line, sizeof line, f)) {
+		line[strcspn(line, "\n")] = '\0';
+		if (!strncmp(line, "track\t", 6)) cur = atoi(line + 6);
+		else if (!strncmp(line, "mode\t", 5)) mode = atoi(line + 5);
+		else if (!strncmp(line, "artist\t", 7)) snprintf(artist, sizeof artist, "%s", line + 7);
+		else if (!strncmp(line, "album\t", 6)) snprintf(album, sizeof album, "%s", line + 6);
+		else if (line[0]) {
+			if (n == cap) {
+				char **p = realloc(paths, (size_t)(cap = cap ? cap * 2 : 64) * sizeof *p);
+
+				if (!p) break;
+				paths = p;
+			}
+			if (!(paths[n] = strdup(line))) break;
+			n++;
+		}
+	}
+	fclose(f);
+	if (mode >= 0 && mode < MUQ_MODES) musec_set_mode((muq_mode)mode);
+	if (n > 0) musec_load((const char *const *)paths, n, cur, 0, false, 1.0, artist, album);
+	for (i = 0; i < n; i++) free(paths[i]);
+	free(paths);
+}
+
 static void music_tick(void)
 {
 	dac_poll();
 	musec_poll();
 	commands();
 	publish();
+	queue_keep();
 }
 
 static void fmt_time(double s, char *out, size_t n)
