@@ -732,7 +732,7 @@ static void text(TTF_Font *f, int x, int y, int maxw, const char *s, SDL_Color c
  * start (its flag files), restart and power off. Volume and brightness stay
  * on FN + A/Y and FN + X/B, which fkgpiod handles everywhere. */
 enum { S_OUTPUT, S_LIBRARY, S_USB_DRIVE, S_USB_MODE, S_SLEEP, S_LOCK, S_RESTART, S_POWEROFF,
-       S_KEYS, S_VERSION, S_COUNT };
+       S_KEYS, S_COUNT };
 static int confirm = -1;           /* the row whose A asks to be pressed again */
 static char note[96];              /* a line over the footer for a few seconds */
 static unsigned note_until;
@@ -899,7 +899,6 @@ static void row_label(const view *v, int i, char *buf, size_t n)
 		case S_RESTART:   snprintf(buf, n, confirm == i ? "Restart? Press A again" : "Restart"); break;
 		case S_POWEROFF:  snprintf(buf, n, confirm == i ? "Power off? Press A again" : "Power off"); break;
 		case S_KEYS:      snprintf(buf, n, "Controls"); break;
-		case S_VERSION:   snprintf(buf, n, "plorpOS-Nano %s", TORTOS_VERSION); break;
 		}
 		break;
 	case V_ARTISTS:
@@ -969,7 +968,7 @@ static const char *view_title(const view *v)
 	case V_HOME:     return "plorpOS";
 	case V_GAMES:    return SYS[v->arg].label;
 	case V_RECENT:   return "Recently Played";
-	case V_SETTINGS: return "Settings";
+	case V_SETTINGS: return "plorpOS-Nano " TORTOS_VERSION;
 	case V_NOW:      return "Now Playing";
 	case V_ARTISTS:  return "Music";
 	case V_ALBUMS:   snprintf(t, sizeof t, "%s", lib.artists[v->arg].name); return t;
@@ -994,14 +993,41 @@ static const char *view_hint(const view *v)
 	return "A open  B back  X music";
 }
 
+/* The battery, from the AXP209 (ggv.30): read every 30 s, "+" while it
+ * charges. */
+#define BATTERY "/sys/class/power_supply/axp20x-battery/"
+static int  bat_pct = -1;
+static bool bat_chg;
+
+static void battery_poll(void)
+{
+	static unsigned last;
+	char st[32] = "";
+	int pct = -1;
+	FILE *f;
+
+	if (last && plat_now_ms() - last < 30000) return;
+	last = plat_now_ms();
+	if ((f = fopen(BATTERY "capacity", "r"))) { if (fscanf(f, "%d", &pct) != 1) pct = -1; fclose(f); }
+	if ((f = fopen(BATTERY "status", "r"))) { if (!fgets(st, sizeof st, f)) st[0] = '\0'; fclose(f); }
+	bat_pct = pct;
+	bat_chg = !strncmp(st, "Charging", 8);
+}
+
 static void draw_header(const view *v)
 {
 	const mu_now *m = musec_now();
 	const char *mark = musec_heard() ? ">" : m->state == MU_PAUSED ? "||" : "";
+	char bat[16] = "";
+	int bw = 0, mw = 0, h;
 
+	if (bat_pct >= 0) snprintf(bat, sizeof bat, "%s%d%%", bat_chg ? "+" : "", bat_pct);
+	if (bat[0]) TTF_SizeUTF8(font, bat, &bw, &h);
+	if (mark[0]) TTF_SizeUTF8(font, mark, &mw, &h);
 	fill(0, 0, W, TOP, c_bar);
-	text(font, 6, 3, W - 36, view_title(v), C_TEXT, 0);
-	text(font, W - 30, 3, 24, mark, C_ACC, 2);
+	if (bat[0]) text(font, W - 6 - bw, 3, bw, bat, C_DIM, 0);
+	if (mark[0]) text(font, W - 6 - bw - (bw ? 8 : 0) - mw, 3, mw, mark, C_ACC, 0);
+	text(font, 6, 3, W - 12 - bw - mw - 16, view_title(v), C_TEXT, 0);
 }
 
 static void draw_list(view *v)
@@ -1130,6 +1156,7 @@ static unsigned music_sig(void)
 
 	for (p = m->title; *p; p++) h = h * 31u + (unsigned char)*p;
 	h += (unsigned)lib_ready * 977u;
+	h += (unsigned)(bat_pct + 1) * 7919u + (unsigned)bat_chg * 15731u;
 	h += ((int)(note_until - plat_now_ms()) > 0) * 4099u;
 	if (CUR.v == V_NOW) h += (unsigned)m->at * 1009u + (unsigned)musec_mode() * 17u;
 	return h;
@@ -1615,6 +1642,7 @@ int main(void)
 	for (s = 0; s < NSYS; s++) sys_shown[s] = sys_has_games(&SYS[s]);
 	recent_load();
 	settings_load();
+	battery_poll();
 	active_at = plat_now_ms();
 	dsp_point(-1);
 	music_init();
@@ -1643,6 +1671,7 @@ int main(void)
 
 			last_tick = now;
 			music_tick();
+			battery_poll();
 			shutdown_tick();
 			s2 = music_sig();
 			if (s2 != sig) { sig = s2; dirty = true; }
