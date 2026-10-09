@@ -644,7 +644,7 @@ static const char *usb_mode_name(int m)
 
 /* ------------------------------------------------------------------- views */
 
-enum { V_HOME, V_GAMES, V_RECENT, V_SETTINGS, V_NOW, V_ARTISTS, V_ALBUMS, V_TRACKS, V_QUEUE };
+enum { V_HOME, V_GAMES, V_RECENT, V_SETTINGS, V_NOW, V_ARTISTS, V_ALBUMS, V_TRACKS, V_QUEUE, V_CONTROLS };
 typedef struct { int v, arg, sel, top; } view;
 static view stack[8];
 static int  depth;
@@ -726,7 +726,7 @@ static void row_label(const view *v, int i, char *buf, size_t n)
 		case S_USB_MODE:  snprintf(buf, n, "USB at start: %s", usb_mode_name(usb_mode())); break;
 		case S_RESTART:   snprintf(buf, n, confirm == i ? "Restart? Press A again" : "Restart"); break;
 		case S_POWEROFF:  snprintf(buf, n, confirm == i ? "Power off? Press A again" : "Power off"); break;
-		case S_KEYS:      snprintf(buf, n, "Volume FN + A/Y, brightness FN + X/B"); break;
+		case S_KEYS:      snprintf(buf, n, "Controls"); break;
 		case S_VERSION:   snprintf(buf, n, "plorpOS-Nano %s", TORTOS_VERSION); break;
 		}
 		break;
@@ -759,6 +759,34 @@ static void row_label(const view *v, int i, char *buf, size_t n)
 	}
 }
 
+/* Settings > Controls: what each button does, a page per place (ggv.21). */
+typedef struct { const char *name; const char *rows[8][2]; } controls_t;
+static const controls_t controls[] = {
+	{ "Shelf", {
+		{ "Up / Down",    "move" },
+		{ "Left / Right", "page" },
+		{ "A",            "open" },
+		{ "B",            "back" },
+		{ "X",            "Now Playing" },
+		{ "START",        "play / pause" } } },
+	{ "Now Playing", {
+		{ "L / R",        "track back / next" },
+		{ "Left / Right", "seek 10 s" },
+		{ "Y",            "play mode" },
+		{ "X",            "queue" } } },
+	{ "In a game", {
+		{ "MENU",         "game menu" },
+		{ "Up / Down",    "menu page" },
+		{ "MUSIC page: A", "play / pause" },
+		{ "B",            "close menu" } } },
+	{ "Anywhere", {
+		{ "SELECT (FN)+A / Y", "volume up / down" },
+		{ "SELECT (FN)+X / B", "brightness up / down" },
+		{ "SELECT (FN)+Up",    "screenshot" },
+		{ "Power key",         "off; a game resumes" } } },
+};
+#define NCONTROLS ((int)(sizeof controls / sizeof controls[0]))
+
 static const char *view_title(const view *v)
 {
 	static char t[160];
@@ -773,6 +801,9 @@ static const char *view_title(const view *v)
 	case V_ALBUMS:   snprintf(t, sizeof t, "%s", lib.artists[v->arg].name); return t;
 	case V_TRACKS:   snprintf(t, sizeof t, "%s", lib.albums[v->arg].name); return t;
 	case V_QUEUE:    return "Queue";
+	case V_CONTROLS:
+		snprintf(t, sizeof t, "%s  %d/%d", controls[v->sel].name, v->sel + 1, NCONTROLS);
+		return t;
 	}
 	return "";
 }
@@ -784,6 +815,7 @@ static const char *view_hint(const view *v)
 	case V_NOW:    return "A pause  L/R track  Y mode";
 	case V_TRACKS: return "A play  B back  X music";
 	case V_QUEUE:  return "B back";
+	case V_CONTROLS: return "Left/Right page  B back";
 	}
 	return "A open  B back  X music";
 }
@@ -862,6 +894,25 @@ static void draw_now(void)
 	}
 }
 
+/* A button left, what it does right; below it, indented, when both do not
+ * fit on one row. */
+static void draw_controls(int page)
+{
+	const controls_t *c = &controls[page];
+	int i, y = TOP + 4;
+
+	for (i = 0; i < 8 && c->rows[i][0]; i++) {
+		int kw = 0, aw = 0, h;
+
+		TTF_SizeUTF8(font, c->rows[i][0], &kw, &h);
+		TTF_SizeUTF8(font, c->rows[i][1], &aw, &h);
+		text(font, 8, y, W - 16, c->rows[i][0], C_ACC, 0);
+		if (kw + 12 + aw > W - 16) y += ROW;
+		text(font, 8, y, W - 16, c->rows[i][1], C_TEXT, 2);
+		y += ROW;
+	}
+}
+
 static void draw(void)
 {
 	view *v = &CUR;
@@ -870,6 +921,7 @@ static void draw(void)
 	fill(0, 0, W, H, c_bg);
 	draw_header(v);
 	if (v->v == V_NOW) draw_now();
+	else if (v->v == V_CONTROLS) draw_controls(v->sel);
 	else draw_list(v);
 	fill(0, H - BOT, W, BOT, c_bar);
 	if ((int)(note_until - plat_now_ms()) > 0)
@@ -1205,6 +1257,7 @@ static void activate(void)
 	case V_SETTINGS:
 		switch (v->sel) {
 		case S_USB_DRIVE: usb_drive(); break;
+		case S_KEYS:      push(V_CONTROLS, 0); break;
 		case S_USB_MODE:
 			usb_mode_set((usb_mode() + 1) % 3);
 			set_note("Used from the next start");
@@ -1236,10 +1289,12 @@ static void key(SDLKey k)
 	case SDLK_d: if (n) v->sel = (v->sel + 1) % n; break;
 	case SDLK_l:
 		if (v->v == V_NOW) musec_seek_by(-10);
+		else if (v->v == V_CONTROLS) v->sel = (v->sel + NCONTROLS - 1) % NCONTROLS;
 		else if (n) v->sel = v->sel > ROWS ? v->sel - ROWS : 0;
 		break;
 	case SDLK_r:
 		if (v->v == V_NOW) musec_seek_by(10);
+		else if (v->v == V_CONTROLS) v->sel = (v->sel + 1) % NCONTROLS;
 		else if (n) v->sel = v->sel + ROWS < n ? v->sel + ROWS : n - 1;
 		break;
 	case SDLK_a: activate(); break;
