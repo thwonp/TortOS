@@ -66,6 +66,7 @@
 #define CARD     "/mnt"
 #define DATA     CARD "/plorpOS"      /* what plorpOS keeps on the card */
 #define RECENT   DATA "/recent.txt"
+#define FAVS     DATA "/favorites.txt"
 #define QUEUE    DATA "/queue.txt"
 #define STATE    "/tmp/plorpos"
 #define NOW      STATE "/now"
@@ -211,18 +212,22 @@ static void game_name(const char *file, char *out, size_t n)
 
 /* --------------------------------------------------------- recently played */
 
+/* A game on the card: its console and its file in that console's folder.
+ * recent.txt and favorites.txt keep them a line each, `folder<TAB>file`. */
+typedef struct { int sys; char file[256]; } game_ref;
+
 #define NRECENT 20
-static struct { int sys; char file[256]; } recent[NRECENT];
+static game_ref recent[NRECENT];
 static int nrecent;
 
-static void recent_load(void)
+static int refs_load(const char *path, game_ref *g, int max)
 {
 	char line[400];
-	FILE *f = fopen(RECENT, "r");
+	int n = 0;
+	FILE *f = fopen(path, "r");
 
-	nrecent = 0;
-	if (!f) return;
-	while (nrecent < NRECENT && fgets(line, sizeof line, f)) {
+	if (!f) return 0;
+	while (n < max && fgets(line, sizeof line, f)) {
 		char *tab = strchr(line, '\t');
 		int s;
 
@@ -232,17 +237,35 @@ static void recent_load(void)
 		if (!tab[1]) continue;
 		for (s = 0; s < NSYS && strcmp(SYS[s].dir, line); s++) { }
 		if (s == NSYS) continue;
-		recent[nrecent].sys = s;
-		snprintf(recent[nrecent].file, sizeof recent[0].file, "%s", tab + 1);
-		nrecent++;
+		g[n].sys = s;
+		snprintf(g[n].file, sizeof g[0].file, "%s", tab + 1);
+		n++;
 	}
 	fclose(f);
+	return n;
+}
+
+static void refs_save(const char *path, const game_ref *g, int n)
+{
+	char tmp[PATH_MAX];
+	int i;
+	FILE *f;
+
+	snprintf(tmp, sizeof tmp, "%s.new", path);
+	if (!(f = fopen(tmp, "w"))) return;
+	for (i = 0; i < n; i++) fprintf(f, "%s\t%s\n", SYS[g[i].sys].dir, g[i].file);
+	if (fclose(f) == 0) rename(tmp, path);
+	else unlink(tmp);
+}
+
+static void recent_load(void)
+{
+	nrecent = refs_load(RECENT, recent, NRECENT);
 }
 
 static void recent_add(int s, const char *file)
 {
 	int i, j;
-	FILE *f;
 
 	for (i = 0; i < nrecent; i++)
 		if (recent[i].sys == s && !strcmp(recent[i].file, file)) break;
@@ -251,10 +274,56 @@ static void recent_add(int s, const char *file)
 	for (j = i; j > 0; j--) recent[j] = recent[j - 1];
 	recent[0].sys = s;
 	snprintf(recent[0].file, sizeof recent[0].file, "%s", file);
-	if (!(f = fopen(RECENT ".new", "w"))) return;
-	for (i = 0; i < nrecent; i++)
-		fprintf(f, "%s\t%s\n", SYS[recent[i].sys].dir, recent[i].file);
-	if (fclose(f) == 0) rename(RECENT ".new", RECENT);
+	refs_save(RECENT, recent, nrecent);
+}
+
+/* -------------------------------------------------------------- favorites */
+
+/* Y on a game puts it in Favorites or takes it out (ggv.31), kept A-Z by its
+ * name; the game lists mark one with a "*". */
+#define NFAVS 200
+static game_ref favs[NFAVS];
+static int nfavs;
+
+static void favs_load(void)
+{
+	nfavs = refs_load(FAVS, favs, NFAVS);
+}
+
+static int fav_find(int s, const char *file)
+{
+	int i;
+
+	for (i = 0; i < nfavs; i++)
+		if (favs[i].sys == s && !strcmp(favs[i].file, file)) return i;
+	return -1;
+}
+
+/* True when the game is a favorite now. */
+static bool fav_toggle(int s, const char *file_in)
+{
+	char file[256], a[200], b[200];
+	int i = fav_find(s, file_in);
+
+	snprintf(file, sizeof file, "%s", file_in);   /* may be in favs[] */
+	if (i >= 0) {
+		memmove(&favs[i], &favs[i + 1], (size_t)(nfavs - i - 1) * sizeof favs[0]);
+		nfavs--;
+		refs_save(FAVS, favs, nfavs);
+		return false;
+	}
+	if (nfavs == NFAVS) return false;
+	game_name(file, a, sizeof a);
+	for (i = 0; i < nfavs; i++) {
+		game_name(favs[i].file, b, sizeof b);
+		if (strcasecmp(a, b) < 0) break;
+	}
+	memmove(&favs[i + 1], &favs[i], (size_t)(nfavs - i) * sizeof favs[0]);
+	favs[i].sys = s;
+	snprintf(favs[i].file, sizeof favs[i].file, "%s", file);
+	nfavs++;
+	refs_save(FAVS, favs, nfavs);
+	return true;
 }
 
 /* ------------------------------------------------------------------ music */
@@ -811,7 +880,7 @@ static const char *usb_mode_name(int m)
 
 /* ------------------------------------------------------------------- views */
 
-enum { V_HOME, V_GAMES, V_RECENT, V_SETTINGS, V_NOW, V_ARTISTS, V_ALBUMS, V_TRACKS, V_QUEUE, V_CONTROLS };
+enum { V_HOME, V_GAMES, V_RECENT, V_SETTINGS, V_NOW, V_ARTISTS, V_ALBUMS, V_TRACKS, V_QUEUE, V_CONTROLS, V_FAVS };
 typedef struct { int v, arg, sel, top; } view;
 static view stack[8];
 static int  depth;
@@ -819,7 +888,7 @@ static int  depth;
 
 /* Home's rows, rebuilt each time it is drawn: what they are depends on what
  * is on the card and whether anything is queued. */
-enum { H_NOW, H_MUSIC, H_RECENT, H_SYS, H_SETTINGS };
+enum { H_NOW, H_MUSIC, H_RECENT, H_FAVS, H_SYS, H_SETTINGS };
 static struct { int kind, sys; } home[NSYS + 5];
 static int  nhome;
 static bool sys_shown[NSYS];
@@ -832,6 +901,7 @@ static void home_build(void)
 	if (musec_now()->count > 0) home[nhome++].kind = H_NOW;
 	home[nhome++].kind = H_MUSIC;
 	if (nrecent) home[nhome++].kind = H_RECENT;
+	if (nfavs) home[nhome++].kind = H_FAVS;
 	for (s = 0; s < NSYS; s++)
 		if (sys_shown[s]) { home[nhome].kind = H_SYS; home[nhome++].sys = s; }
 	home[nhome++].kind = H_SETTINGS;
@@ -843,6 +913,7 @@ static int view_len(const view *v)
 	case V_HOME:     return nhome;
 	case V_GAMES:    return ngames;
 	case V_RECENT:   return nrecent;
+	case V_FAVS:     return nfavs;
 	case V_SETTINGS: return S_COUNT;
 	case V_ARTISTS:  return lib_ready ? lib.nartists : 0;
 	case V_ALBUMS:   return lib_ready ? lib.artists[v->arg].n : 0;
@@ -871,20 +942,24 @@ static void row_label(const view *v, int i, char *buf, size_t n)
 		case H_NOW:      snprintf(buf, n, "Now Playing: %s", m->title[0] ? m->title : "-"); break;
 		case H_MUSIC:    snprintf(buf, n, "Music"); break;
 		case H_RECENT:   snprintf(buf, n, "Recently Played"); break;
+		case H_FAVS:     snprintf(buf, n, "Favorites"); break;
 		case H_SYS:      snprintf(buf, n, "%s", SYS[home[i].sys].label); break;
 		case H_SETTINGS: snprintf(buf, n, "Settings"); break;
 		}
 		break;
 	case V_GAMES:
-		game_name(games[i], buf, n);
-		break;
 	case V_RECENT: {
 		char g[200];
+		int s = v->v == V_GAMES ? v->arg : recent[i].sys;
+		const char *file = v->v == V_GAMES ? games[i] : recent[i].file;
 
-		game_name(recent[i].file, g, sizeof g);
-		snprintf(buf, n, "%s", g);
+		game_name(file, g, sizeof g);
+		snprintf(buf, n, "%s%s", fav_find(s, file) >= 0 ? "* " : "", g);
 		break;
 	}
+	case V_FAVS:
+		game_name(favs[i].file, buf, n);
+		break;
 	case V_SETTINGS:
 		switch (i) {
 		case S_OUTPUT:    snprintf(buf, n, "Output: %s", output_name()); break;
@@ -939,6 +1014,7 @@ static const controls_t controls[] = {
 		{ "A",            "open" },
 		{ "B",            "back" },
 		{ "X",            "Now Playing" },
+		{ "Y (a game)",   "favorite on/off" },
 		{ "START",        "play / pause" },
 		{ "Power tap",    "dim Now Playing" } } },
 	{ "Now Playing", {
@@ -968,6 +1044,7 @@ static const char *view_title(const view *v)
 	case V_HOME:     return "plorpOS";
 	case V_GAMES:    return SYS[v->arg].label;
 	case V_RECENT:   return "Recently Played";
+	case V_FAVS:     return "Favorites";
 	case V_SETTINGS: return "plorpOS-Nano " TORTOS_VERSION;
 	case V_NOW:      return "Now Playing";
 	case V_ARTISTS:  return "Music";
@@ -989,6 +1066,7 @@ static const char *view_hint(const view *v)
 	case V_TRACKS: return "A play  B back  X music";
 	case V_QUEUE:  return "B back";
 	case V_CONTROLS: return "Left/Right page  B back";
+	case V_GAMES: case V_RECENT: case V_FAVS: return "A play  Y fav  B back";
 	}
 	return "A open  B back  X music";
 }
@@ -1449,6 +1527,7 @@ static void activate(void)
 		case H_NOW:      open_now(); break;
 		case H_MUSIC:    push(V_ARTISTS, 0); break;
 		case H_RECENT:   push(V_RECENT, 0); break;
+		case H_FAVS:     push(V_FAVS, 0); break;
 		case H_SYS:      games_load(home[v->sel].sys); push(V_GAMES, home[v->sel].sys); break;
 		case H_SETTINGS: push(V_SETTINGS, 0); break;
 		}
@@ -1458,6 +1537,9 @@ static void activate(void)
 		break;
 	case V_RECENT:
 		if (nrecent) launch(recent[v->sel].sys, recent[v->sel].file);
+		break;
+	case V_FAVS:
+		if (nfavs) launch(favs[v->sel].sys, favs[v->sel].file);
 		break;
 	case V_ARTISTS:
 		if (lib_ready && lib.nartists) push(V_ALBUMS, v->sel);
@@ -1596,6 +1678,13 @@ static void key(SDLKey k)
 		break;
 	case SDLK_y:
 		if (v->v == V_NOW) musec_set_mode((muq_mode)((musec_mode() + 1) % MUQ_MODES));
+		else if (n && (v->v == V_GAMES || v->v == V_RECENT || v->v == V_FAVS)) {
+			int s = v->v == V_GAMES ? v->arg : v->v == V_RECENT ? recent[v->sel].sys : favs[v->sel].sys;
+			const char *file = v->v == V_GAMES ? games[v->sel] : v->v == V_RECENT ? recent[v->sel].file
+			                                                                     : favs[v->sel].file;
+
+			set_note(fav_toggle(s, file) ? "Added to Favorites" : "Removed from Favorites");
+		}
 		break;
 	case SDLK_s: musec_toggle(); break;          /* START, everywhere */
 	case SDLK_q: dim(); break;                   /* the power key's tap */
@@ -1641,6 +1730,7 @@ int main(void)
 	}
 	for (s = 0; s < NSYS; s++) sys_shown[s] = sys_has_games(&SYS[s]);
 	recent_load();
+	favs_load();
 	settings_load();
 	battery_poll();
 	active_at = plat_now_ms();
