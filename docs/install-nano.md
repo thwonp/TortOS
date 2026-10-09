@@ -140,7 +140,7 @@ folder.
 ## Tidying your card
 
 FunKey's image also fills the card with things only its own menus use.
-Once plorpOS is installed these can be deleted: `Applications`,
+These folders can be safely deleted if you don't ever want to revert back: `Applications`,
 `Emulators`, `Native games`, `Settings` (FunKey's app launchers), and - if you
 won't go back to FunKey's menu to play them - `DOOM`, `Quake`, `Quake II`,
 `Wolfenstein 3D`, `Spear of Destiny` and `Libretro` (those games' engines).
@@ -191,7 +191,7 @@ on. Tap again for the brightness you had. While dimmed, B and X do nothing; with
   only when the Nano started as a USB drive.
 - **USB at start** - USB drive, Network (ssh) or adb, after a restart (see
   Connecting).
-- **Inactive shutdown** - 1, 2, 5, 10 or 30 minutes, or Never (default 1): the
+- **Inactive shutdown** - 1, 2, 5, 10 or 30 minutes, or Never (default 5): the
   Nano turns off after that long with no button pressed and no music playing,
   anywhere outside a game. Time in a game does not count.
 - **Dimmed button lock** - On (default): while dimmed, only a power tap does
@@ -204,7 +204,7 @@ Left/Right change a setting's choice; A steps to the next one.
 The header shows the battery (`+` while charging) and, beside it, whether music
 is playing.
 
-## A USB DAC
+## USB DAC
 
 Plug it into the Nano's USB-C port. The music moves to it within two seconds,
 and a game started while it is plugged in plays through it too. Pull it out and

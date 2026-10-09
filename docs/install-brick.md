@@ -10,7 +10,7 @@ and move it between a Brick and a Brick Pro, saves and all.
 
 You need the Brick, a microSD card and, just this once, a computer.
 
-Download **`plorpOS-brick-v1.5.zip`** from
+Download **`plorpOS-brick-v1.5.2.zip`** from
 [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it.
 It goes on the card as it is, this guide (`INSTALL.md`) included:
 
