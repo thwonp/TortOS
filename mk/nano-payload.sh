@@ -1,6 +1,8 @@
 #!/bin/sh
-# The RG Nano's install zip (plorpos-ggv.9): one folder, plorpOS/, for the
-# root of the card's shared partition (/mnt). Everything runs from there - the
+# The RG Nano's install zip (plorpos-ggv.9): plorpOS-nano-vVERSION/ holding
+# plorpOS/ and an empty adb, both for the root of the card's shared partition
+# (/mnt) - adb starts the Nano with the shell install-root.sh needs, and the
+# first install deletes it. Everything runs from there - the
 # partition is vfat but mounted exec, and the libraries are copied under their
 # soname file names, so it needs no symlinks.
 #
@@ -14,7 +16,8 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 V=$1
 PICOARCH=${PICOARCH:-$ROOT/build/nano/picoarch}
 STAGE=$ROOT/build/nano/payload
-P=$STAGE/plorpOS
+TOP=plorpOS-nano-v$V
+P=$STAGE/$TOP/plorpOS
 ZIP=$ROOT/out/plorpOS-nano-v$V.zip
 
 for f in nanoshelf muse musectl; do
@@ -55,6 +58,7 @@ FFmpeg 6.1 (lib/): LGPL-2.1-or-later, https://ffmpeg.org/releases/ffmpeg-6.1.tar
   configured as mk/fetch-nano-sdk.sh shows; licence in lib/COPYING.LGPLv2.1.
 Font (res/menu.ttf): SIL Open Font License, res/OFL.txt.
 T
+touch "$STAGE/$TOP/adb"
 rm -f "$ZIP"
-( cd "$STAGE" && zip -qrX "$ZIP" plorpOS )
+( cd "$STAGE" && zip -qrX "$ZIP" "$TOP" )
 echo "$ZIP ($(du -k "$ZIP" | cut -f1) kB, md5 $(md5sum "$ZIP" | cut -c1-8))"
