@@ -104,17 +104,15 @@ It:
   your saves stay;
 - makes plorpOS resume a game saved by the power key (in `/root/.profile`,
   FunKey's start script), so the music comes back with it;
-- the first time only, deletes the `adb` / `usbnet` file, so the Nano starts
-  as a USB drive again. To keep a shell, choose **Settings > USB at start**
-  after the first restart.
+- deletes the `adb` / `usbnet` file, so the Nano starts as a USB drive again.
+  To keep a shell, choose **Settings > USB at start** after the restart.
 
 FunKey's own USB-audio handling stays: it sets a DAC's level when it is
 plugged in and points the volume keys at it.
 
 **Updating:** copy the new `plorpOS` folder over the old one, and `adb` too,
-then run the same two `adb` commands. Your settings stay. An update does not
-delete `adb`, so afterwards choose **Settings > USB at start > USB drive** to
-have the Nano start as a USB drive again.
+then run the same two `adb` commands. Your settings stay, and the Nano is a
+USB drive again after the restart.
 
 ## Using it
 
