@@ -18,10 +18,14 @@ volume and brightness keys; it does not replace them.
 
 ## 1. Copy plorpOS to the card
 
-Download **`plorpOS-nano-v<version>.zip`** and unzip it. Copy the `plorpOS`
-folder to the root of the Nano's shared partition - the drive that appears
-when the Nano is connected to a computer by USB with nothing else set up, next
-to `Game Boy/`, `Music/` and the rest.
+Download **`plorpOS-nano-v<version>.zip`** and unzip it. It holds one folder,
+`plorpOS-nano-v<version>`; copy **what is inside it** - the `plorpOS` folder and
+the empty file `adb` - to the root of the Nano's shared partition: the drive
+that appears when the Nano is connected to a computer by USB, next to
+`Game Boy/`, `Music/` and the rest.
+
+The `adb` file makes the Nano start with a shell for step 2. The install
+deletes it, so afterwards the Nano is a USB drive again.
 
 Put music in `Music/`, one folder per artist and one per album inside it
 (`Music/<artist>/<album>/<tracks>`). MP3, FLAC, AAC/M4A, Ogg and Opus play.
@@ -80,11 +84,12 @@ RetroFE and GMenu2X, which it removes. Everything it changes or removes in the
 Nano's system is kept first in `plorpOS/backup/`, so it can be undone (see
 Removing).
 
-Connect a shell to the Nano (see [Connecting](#connecting)), then:
+Eject the drive, restart the Nano and leave it connected by USB. With
+[adb](#connecting) on the computer:
 
 ```
-sh /mnt/plorpOS/install-root.sh
-reboot
+adb shell sh /mnt/plorpOS/install-root.sh
+adb reboot
 ```
 
 It:
@@ -106,8 +111,10 @@ It:
 FunKey's own USB-audio handling stays: it sets a DAC's level when it is
 plugged in and points the volume keys at it.
 
-**Updating:** copy the new `plorpOS` folder over the old one, run
-`install-root.sh` again and restart. Your settings and USB mode stay.
+**Updating:** copy the new `plorpOS` folder over the old one, and `adb` too,
+then run the same two `adb` commands. Your settings stay. An update does not
+delete `adb`, so afterwards choose **Settings > USB at start > USB drive** to
+have the Nano start as a USB drive again.
 
 ## Using it
 
