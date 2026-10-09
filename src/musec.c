@@ -102,6 +102,7 @@ static void drop(const char *why, int err)
 	g_sink_waiting = g_asked = false;
 }
 
+static void sendf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void sendf(const char *fmt, ...)
 {
 	char line[1400];
