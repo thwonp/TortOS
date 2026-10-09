@@ -13,6 +13,8 @@
 #   /root/.profile             its `instant_play load` off (backup/root-profile.tar):
 #                              nanoshelf resumes a game the power key saved, so
 #                              the music is there during it
+#   /mnt/adb, /mnt/usbnet      removed on the first install only: the Nano
+#                              starts as a USB drive (Settings > USB at start)
 #   RetroFE and GMenu2X        removed (backup/root-menus.tar); FunKey's cores,
 #                              PicoArch's menu files and its apps stay
 # Run it again after copying a new plorpOS folder to the card: it updates
@@ -34,6 +36,10 @@ mkdir -p "$B"
 if [ ! -f "$B/root-stock.tar" ]; then
 	(cd / && tar -cf "$B/root-stock.tar" $FILES)
 	echo "kept FunKey's files in $B/root-stock.tar"
+	# The first install starts the Nano as a USB drive (no FunKey USB flag
+	# file); Settings > USB at start changes it. Installing again keeps it.
+	rm -f /mnt/adb /mnt/usbnet
+	echo "USB at start: USB drive (from the next start)"
 fi
 if [ ! -f "$B/root-menus.tar" ]; then
 	present=""
