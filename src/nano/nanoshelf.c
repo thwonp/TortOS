@@ -138,11 +138,21 @@ static bool sys_has_ext(const sys_t *s, const char *name)
 	return false;
 }
 
+/* The user's own core on the card first, then the one plorpOS updated
+ * (plorpos-ggv.39), then FunKey-OS's: a core plorpOS does not ship stays
+ * stock. */
 static void core_path(const sys_t *s, char *out, size_t n)
 {
-	snprintf(out, n, "/mnt/Libretro/cores/%s_libretro.so", s->core);
-	if (access(out, R_OK) != 0)
-		snprintf(out, n, "/usr/games/%s_libretro.so", s->core);
+	static const char *const dirs[] = {
+		"/mnt/Libretro/cores", "/usr/local/plorpos/cores", "/usr/games",
+	};
+	unsigned i;
+
+	for (i = 0; i < sizeof dirs / sizeof *dirs; i++) {
+		snprintf(out, n, "%s/%s_libretro.so", dirs[i], s->core);
+		if (access(out, R_OK) == 0)
+			return;
+	}
 }
 
 /* Whether a console's folder has a game: the first match is enough. */
