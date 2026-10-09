@@ -200,10 +200,25 @@ static void cards(void)
 	const char *longid =
 		" 4 [ABCDEFGHIJKLMNOP]: USB-Audio - Long\n"
 		"                      Long\n";
+	/* The RG Nano's own, read 2026-10-08 (plorpos-ggv.8), and the same with
+	 * a DAC as card 1: its kernel has USB audio (FunKey rg_nano branch). */
+	const char *nano =
+		" 0 [Codec          ]: V3s_Audio_Codec - V3s Audio Codec\n"
+		"                      V3s Audio Codec\n";
+	const char *nano_dac =
+		" 0 [Codec          ]: V3s_Audio_Codec - V3s Audio Codec\n"
+		"                      V3s Audio Codec\n"
+		" 1 [KA13           ]: USB-Audio - FIIO KA13\n"
+		"                      FIIO FIIO KA13 at usb-musb-hdrc.1.auto-1, high speed\n";
 	char dev[64];
 	int  card = -1;
 
 	printf("finding the DAC in /proc/asound/cards:\n");
+	ck(!aout_usb_card(nano, dev, sizeof dev, &card) && dev[0] == '\0',
+	   "the RG Nano's codec alone is no DAC");
+	ck(aout_usb_card(nano_dac, dev, sizeof dev, &card) &&
+	   !strcmp(dev, "plughw:CARD=KA13,DEV=0") && card == 1,
+	   "a DAC on the RG Nano, as card 1");
 	ck(aout_usb_card(sp, dev, sizeof dev, &card) && !strcmp(dev, USB) && card == 3,
 	   "the RG SP's, as card 3 by its id");
 	ck(!aout_usb_card(brick, dev, sizeof dev, &card) && dev[0] == '\0',

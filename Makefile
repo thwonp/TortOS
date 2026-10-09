@@ -30,6 +30,8 @@ SSH := sshpass -p 'tina' ssh -o StrictHostKeyChecking=no \
 
 ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl
+else ifeq ($(PLATFORM),nano)
+all: nano
 else ifeq ($(PLATFORM),h700)
 all: build/h700/tortos.elf build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so
 else
@@ -221,6 +223,41 @@ build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so &:
 	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
 		make -f mk/cross.mk PLATFORM=h700 BUILD=build/h700 SYSROOT=/work/sysroot-h700 \
 		build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so
+
+# The RG Nano (plorpos-ggv): FunKey's SDK and FFmpeg from mk/fetch-nano-sdk.sh,
+# no device needed. Its own makefile, mk/nano.mk - nothing of cross.mk applies.
+NANO_VERSION ?= 0.1
+NANO_BIN := build/nano/nanoshelf build/nano/muse build/nano/musectl build/nano/nanokey
+.PHONY: nano
+nano:
+	@[ -x sdk-nano/sdk/bin/arm-funkey-linux-musleabihf-gcc ] || { \
+		echo "no Nano SDK; run: mk/fetch-nano-sdk.sh" >&2; exit 1; }
+	docker run --rm -v $(CURDIR):/work -v $(CURDIR)/sdk-nano/sdk:/sdk:ro -w /work $(IMAGE) \
+		make -f mk/nano.mk NANO_VERSION=$(NANO_VERSION) $(NANO_BIN)
+
+# PicoArch for the Nano: the fork thwonp/picoarch (branch plorpos-nano) at
+# PICOARCH_REF, cloned to build/nano/picoarch and built in the container with
+# its build-nano.sh. PICOARCH=<dir> builds a local checkout of it instead.
+PICOARCH_URL := https://github.com/thwonp/picoarch.git
+PICOARCH_REF := 5b1f8c19b5e1163b9f40649e383657e4c0c02f7c
+PICOARCH_DIR := $(CURDIR)/build/nano/picoarch
+PICOARCH ?= $(PICOARCH_DIR)
+.PHONY: nano-picoarch
+nano-picoarch:
+	@if [ "$(PICOARCH)" = "$(PICOARCH_DIR)" ]; then \
+		[ -d $(PICOARCH_DIR)/.git ] || git clone -q $(PICOARCH_URL) $(PICOARCH_DIR) || exit 1; \
+		git -C $(PICOARCH_DIR) cat-file -e $(PICOARCH_REF)^{commit} 2>/dev/null || git -C $(PICOARCH_DIR) fetch -q origin; \
+		git -C $(PICOARCH_DIR) checkout -q $(PICOARCH_REF) && \
+		git -C $(PICOARCH_DIR) submodule update -q --init; \
+	fi
+	$(MAKE) -s -C $(PICOARCH) libpicofe/.patched   # host: the image has no patch(1)
+	docker run --rm -v $(PICOARCH):/w -v $(CURDIR)/sdk-nano/sdk:/sdk:ro -w /w $(IMAGE) ./build-nano.sh
+
+# out/plorpOS-nano-v$(NANO_VERSION).zip: plorpOS/ for the card's /mnt, with
+# PicoArch from PICOARCH (mk/nano-payload.sh).
+.PHONY: nano-zip
+nano-zip: nano nano-picoarch
+	PICOARCH=$(PICOARCH) ./mk/nano-payload.sh $(NANO_VERSION)
 
 # The check binaries are rebuilt every time, deliberately.
 #

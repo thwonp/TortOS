@@ -83,3 +83,4 @@ sysroot-rgsp/
 /.agents/
 /AGENTS.md
 /.beads.gate.lock
+sdk-nano/

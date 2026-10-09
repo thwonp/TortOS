@@ -50,6 +50,13 @@ void musec_play(const char *const *paths, int n, int start, double at, bool book
                 double speed, const char *artist, const char *album);
 
 /* Whether the queue is a book. */
+/* musec_play's queue without playing it: stopped on `start` until pause/play
+ * (plorpos-ggv.25, a queue kept over a restart). */
+void musec_load(const char *const *paths, int n, int start, double at, bool book,
+                double speed, const char *artist, const char *album);
+/* The queue in its own order, and the place in it of the track now. */
+int musec_queue(const char *const **paths, int *current, const char **artist,
+                const char **album);
 bool musec_is_book(void);
 
 /* A book's speed, 0.5 to 2.0 with the pitch kept - the daemon's SPEED. Set on

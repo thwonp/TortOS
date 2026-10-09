@@ -51,6 +51,7 @@
 #include <sys/un.h>
 #include <syslog.h>
 #include <time.h>
+#include <ucontext.h>
 #include <unistd.h>
 
 #include "cover.h"
@@ -135,6 +136,7 @@ static void wake(void)
 	if (write(g_wake[1], &b, 1) < 0) { /* full is fine: a wake is pending */ }
 }
 
+static void say(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void say(const char *fmt, ...)
 {
 	va_list ap;
@@ -289,7 +291,7 @@ static void handle(const qcmd *q)
 			/* Logged every time: it happens only at a handover, and how long
 			 * the other side took to let go is the number worth having. */
 			say("sink %s after %ld ms, %d tr%s", g_dev,
-			    (t1.tv_sec - t0.tv_sec) * 1000 + (t1.tv_nsec - t0.tv_nsec) / 1000000,
+			    (long)((t1.tv_sec - t0.tv_sec) * 1000 + (t1.tv_nsec - t0.tv_nsec) / 1000000),
 			    i + 1, i ? "ies" : "y");
 		}
 		snprintf(S.sink, sizeof S.sink, "%s", g_dev);
@@ -478,6 +480,7 @@ static const char *clean(const char *s, char *buf, size_t n)
 	return buf;
 }
 
+static void send_line(int fd, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 static void send_line(int fd, const char *fmt, ...)
 {
 	char line[2048];
@@ -683,7 +686,50 @@ static bool watch(void)
 /* A fatal signal leaves one line and the record, then dies the same way. Only
  * write(): Muse B's predecessor vanished mid-song on 2026-09-25 with nothing
  * in the log at all. */
-static void on_fatal(int sig)
+static void put_hex(char *p, unsigned long v)
+{
+	int i;
+
+	for (i = (int)sizeof v * 2 - 1; i >= 0; i--, v >>= 4)
+		p[i] = "0123456789abcdef"[v & 15];
+}
+
+/* Where it died, for a device with no core dumps (the Nano, plorpos-ggv.17):
+ * the fault address and pc/lr/sp, then the mappings to place them in. */
+static void fatal_where(const siginfo_t *si, const ucontext_t *uc)
+{
+	unsigned long r[4] = { (unsigned long)si->si_addr, 0, 0, 0 };
+	static const char *const name[4] = { " addr ", " pc ", " lr ", " sp " };
+	char line[128] = "muse:";
+	size_t n = 5;
+	int i, fd;
+
+#if defined(__arm__)
+	r[1] = uc->uc_mcontext.arm_pc; r[2] = uc->uc_mcontext.arm_lr; r[3] = uc->uc_mcontext.arm_sp;
+#elif defined(__aarch64__)
+	r[1] = uc->uc_mcontext.pc; r[2] = uc->uc_mcontext.regs[30]; r[3] = uc->uc_mcontext.sp;
+#else
+	(void)uc;
+#endif
+	for (i = 0; i < 4; i++) {
+		memcpy(line + n, name[i], strlen(name[i]));
+		n += strlen(name[i]);
+		put_hex(line + n, r[i]);
+		n += sizeof r[i] * 2;
+	}
+	line[n++] = '\n';
+	if (write(2, line, n) < 0) return;
+	if ((fd = open("/proc/self/maps", O_RDONLY)) >= 0) {
+		char buf[512];
+		ssize_t got;
+
+		while ((got = read(fd, buf, sizeof buf)) > 0)
+			if (write(2, buf, (size_t)got) < 0) break;
+		close(fd);
+	}
+}
+
+static void on_fatal(int sig, siginfo_t *si, void *uc)
 {
 	char line[80] = "muse: fatal signal ";
 	size_t n = strlen(line);
@@ -694,6 +740,7 @@ static void on_fatal(int sig)
 	memcpy(line + n, tail, strlen(tail) + 1);
 	if (write(2, line, strlen(line)) < 0) { /* nowhere left to say it */ }
 	pcm_trail_dump(2);
+	fatal_where(si, uc);
 	raise(sig);                         /* SA_RESETHAND: the default this time */
 }
 
@@ -724,8 +771,8 @@ int main(void)
 		size_t i;
 
 		memset(&sa, 0, sizeof sa);
-		sa.sa_handler = on_fatal;
-		sa.sa_flags = SA_RESETHAND;
+		sa.sa_sigaction = on_fatal;
+		sa.sa_flags = SA_RESETHAND | SA_SIGINFO;
 		for (i = 0; i < sizeof fatal / sizeof fatal[0]; i++)
 			sigaction(fatal[i], &sa, NULL);
 	}

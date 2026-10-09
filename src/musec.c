@@ -14,7 +14,7 @@
 
 #include "muselib.h"
 #include "musequeue.h"
-#include "platform.h"
+#include "platproc.h"
 
 #define MUSE_SOCK "/tmp/muse.sock"
 
@@ -102,6 +102,7 @@ static void drop(const char *why, int err)
 	g_sink_waiting = g_asked = false;
 }
 
+static void sendf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void sendf(const char *fmt, ...)
 {
 	char line[1400];
@@ -347,7 +348,12 @@ static void event(const char *line)
 		/* A track that will not open is skipped rather than ending the
 		 * album - but not forever: a whole album of files that fail is a
 		 * folder problem, and walking it at a frame a track says nothing. */
-		if (++g_skips < 8) advance(true); else g_now.state = MU_STOPPED;
+		/* Except an output that is busy - a game or a headset still holding
+		 * it: the next track would find it busy too, and an album ran out a
+		 * track a second that way (plorpos-ggv.24). Stopped where it is,
+		 * pause/play starts it again. */
+		if (strstr(v, "busy")) { g_asked = false; g_now.state = MU_STOPPED; }
+		else if (++g_skips < 8) advance(true); else g_now.state = MU_STOPPED;
 	}
 }
 
@@ -428,8 +434,18 @@ void musec_poll(void)
 	}
 }
 
+static void queue_set(const char *const *paths, int n, int start, double at, bool book,
+                      double speed, const char *artist, const char *album);
+
 void musec_play(const char *const *paths, int n, int start, double at, bool book,
                 double speed, const char *artist, const char *album)
+{
+	queue_set(paths, n, start, at, book, speed, artist, album);
+	play_current();
+}
+
+static void queue_set(const char *const *paths, int n, int start, double at, bool book,
+                      double speed, const char *artist, const char *album)
 {
 	int i, k = 0;
 
@@ -457,7 +473,37 @@ void musec_play(const char *const *paths, int n, int start, double at, bool book
 	g_ran_out = false;
 	snprintf(g_artist, sizeof g_artist, "%s", artist ? artist : "");
 	snprintf(g_album, sizeof g_album, "%s", album ? album : "");
-	play_current();
+}
+
+void musec_load(const char *const *paths, int n, int start, double at, bool book,
+                double speed, const char *artist, const char *album)
+{
+	int t;
+
+	queue_set(paths, n, start, at, book, speed, artist, album);
+	/* Stopped on its first track until played: what Now Playing shows. */
+	t = muq_current(&g_order);
+	g_now.state = MU_STOPPED;
+	g_now.title[0] = '\0';
+	if (t >= 0 && t < g_qn)
+		ml_track_name(strrchr(g_q[t], '/') ? strrchr(g_q[t], '/') + 1 : g_q[t],
+		              g_now.title, sizeof g_now.title);
+	snprintf(g_now.artist, sizeof g_now.artist, "%s", g_artist);
+	snprintf(g_now.album, sizeof g_now.album, "%s", g_album);
+	g_now.at = g_start_at;
+	g_now.len = 0;
+	g_now.index = g_order.pos;
+	g_now.count = g_qn;
+}
+
+int musec_queue(const char *const **paths, int *current, const char **artist,
+                const char **album)
+{
+	*paths = (const char *const *)g_q;
+	*current = muq_current(&g_order);
+	*artist = g_artist;
+	*album = g_album;
+	return g_qn;
 }
 
 /* Pause, and only pause - never the resume a toggle would be. When the output
