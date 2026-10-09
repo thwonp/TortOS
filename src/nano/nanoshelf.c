@@ -768,7 +768,7 @@ static void row_label(const view *v, int i, char *buf, size_t n)
 			if (set_sleep) snprintf(buf, n, "Inactive shutdown: %d min", set_sleep);
 			else snprintf(buf, n, "Inactive shutdown: Never");
 			break;
-		case S_LOCK:      snprintf(buf, n, "Sleep button lock: %s", set_lock ? "On" : "Off"); break;
+		case S_LOCK:      snprintf(buf, n, "Dimmed button lock: %s", set_lock ? "On" : "Off"); break;
 		case S_RESTART:   snprintf(buf, n, confirm == i ? "Restart? Press A again" : "Restart"); break;
 		case S_POWEROFF:  snprintf(buf, n, confirm == i ? "Power off? Press A again" : "Power off"); break;
 		case S_KEYS:      snprintf(buf, n, "Controls"); break;
