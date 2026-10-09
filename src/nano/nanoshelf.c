@@ -802,6 +802,20 @@ static void text(TTF_Font *f, int x, int y, int maxw, const char *s, SDL_Color c
  * on FN + A/Y and FN + X/B, which fkgpiod handles everywhere. */
 enum { S_OUTPUT, S_LIBRARY, S_USB_DRIVE, S_USB_MODE, S_SLEEP, S_LOCK, S_RESTART, S_POWEROFF,
        S_KEYS, S_COUNT };
+/* The rows shown: mounting the card on a computer only when this start made
+ * the Nano a USB drive (its mass-storage function exists only then). */
+static int srow[S_COUNT], nsrow;
+
+static void settings_rows(void)
+{
+	int i;
+
+	nsrow = 0;
+	for (i = 0; i < S_COUNT; i++)
+		if (i != S_USB_DRIVE ||
+		    !access("/sys/kernel/config/usb_gadget/FunKey/functions/mass_storage.mmcblk0p4", F_OK))
+			srow[nsrow++] = i;
+}
 static int confirm = -1;           /* the row whose A asks to be pressed again */
 static char note[96];              /* a line over the footer for a few seconds */
 static unsigned note_until;
@@ -914,7 +928,7 @@ static int view_len(const view *v)
 	case V_GAMES:    return ngames;
 	case V_RECENT:   return nrecent;
 	case V_FAVS:     return nfavs;
-	case V_SETTINGS: return S_COUNT;
+	case V_SETTINGS: return nsrow;
 	case V_ARTISTS:  return lib_ready ? lib.nartists : 0;
 	case V_ALBUMS:   return lib_ready ? lib.artists[v->arg].n : 0;
 	case V_TRACKS:   return lib_ready ? lib.albums[v->arg].n : 0;
@@ -961,10 +975,10 @@ static void row_label(const view *v, int i, char *buf, size_t n)
 		game_name(favs[i].file, buf, n);
 		break;
 	case V_SETTINGS:
-		switch (i) {
+		switch (srow[i]) {
 		case S_OUTPUT:    snprintf(buf, n, "Output: %s", output_name()); break;
 		case S_LIBRARY:   snprintf(buf, n, "Library: %d tracks", lib_ready ? lib.ntracks : 0); break;
-		case S_USB_DRIVE: snprintf(buf, n, "Share the card with a computer"); break;
+		case S_USB_DRIVE: snprintf(buf, n, "Mount card on computer"); break;
 		case S_USB_MODE:  snprintf(buf, n, "USB at start: %s", usb_mode_name(usb_mode())); break;
 		case S_SLEEP:
 			if (set_sleep) snprintf(buf, n, "Inactive shutdown: %d min", set_sleep);
@@ -1554,7 +1568,7 @@ static void activate(void)
 		musec_toggle();
 		break;
 	case V_SETTINGS:
-		switch (v->sel) {
+		switch (srow[v->sel]) {
 		case S_USB_DRIVE: usb_drive(); break;
 		case S_KEYS:      push(V_CONTROLS, 0); break;
 		case S_USB_MODE:
@@ -1569,7 +1583,7 @@ static void activate(void)
 			musec_stop();
 			music_tick();
 			sync();
-			if (v->sel == S_RESTART) system("touch /run/rebooting; sync; reboot");
+			if (srow[v->sel] == S_RESTART) system("touch /run/rebooting; sync; reboot");
 			else system("powerdown now");
 			want_quit = 1;
 			break;
@@ -1732,6 +1746,7 @@ int main(void)
 	recent_load();
 	favs_load();
 	settings_load();
+	settings_rows();
 	battery_poll();
 	active_at = plat_now_ms();
 	dsp_point(-1);
