@@ -847,7 +847,7 @@ static int usb_mode(void)
 #define SETTINGS DATA "/settings.txt"
 static const int sleep_choices[] = { 1, 2, 5, 10, 30, 0 };
 #define NSLEEP ((int)(sizeof sleep_choices / sizeof sleep_choices[0]))
-static int set_sleep = 1, set_lock = 1;
+static int set_sleep = 5, set_lock = 1;
 
 static void settings_load(void)
 {

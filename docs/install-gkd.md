@@ -9,7 +9,7 @@ before.
 You need the GKD with its stock ROCKNIX, a microSD card and a computer on the
 same Wi-Fi network.
 
-Download **`plorpOS-gkd-v1.5.zip`** from
+Download **`plorpOS-gkd-v1.5.2.zip`** from
 [Releases](https://github.com/thwonp/TortOS/releases/latest) and unzip it. It
 has two folders, and this guide as `INSTALL.md`:
 
