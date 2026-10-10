@@ -253,6 +253,12 @@ nano-picoarch:
 	$(MAKE) -s -C $(PICOARCH) libpicofe/.patched   # host: the image has no patch(1)
 	docker run --rm -v $(PICOARCH):/w -v $(CURDIR)/sdk-nano/sdk:/sdk:ro -w /w $(IMAGE) ./build-nano.sh
 
+# The glibc + SDL2 runtime for the owner's native PICO-8 on the Nano
+# (plorpos-ggv.42), into build/nano/pico8rt.
+.PHONY: nano-pico8rt
+nano-pico8rt:
+	mk/build-nano-pico8rt.sh
+
 # out/plorpOS-nano-v$(NANO_VERSION).zip: plorpOS/ for the card's /mnt, with
 # PicoArch from PICOARCH (mk/nano-payload.sh).
 .PHONY: nano-zip
