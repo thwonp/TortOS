@@ -77,7 +77,7 @@
  * is /usr/local/plorpos on the system partition (install-root.sh), so that
  * nothing runs from the card while it is lent to a computer as a USB drive;
  * tried out without installing, it is the card's /mnt/plorpOS. */
-static char picoarch_bin[PATH_MAX], muse_bin[PATH_MAX], font_path[PATH_MAX];
+static char picoarch_bin[PATH_MAX], muse_bin[PATH_MAX], font_path[PATH_MAX], pico8rt[PATH_MAX];
 
 static void app_paths(void)
 {
@@ -91,6 +91,7 @@ static void app_paths(void)
 	snprintf(picoarch_bin, sizeof picoarch_bin, "%s/bin/picoarch", exe);
 	snprintf(muse_bin, sizeof muse_bin, "%s/bin/muse", exe);
 	snprintf(font_path, sizeof font_path, "%s/res/menu.ttf", exe);
+	snprintf(pico8rt, sizeof pico8rt, "%s/pico8rt", exe);
 }
 
 /* ---------------------------------------------------------------- systems */
@@ -858,6 +859,7 @@ static int usb_mode(void)
 static const int sleep_choices[] = { 1, 2, 5, 10, 30, 0 };
 #define NSLEEP ((int)(sizeof sleep_choices / sizeof sleep_choices[0]))
 static int set_sleep = 5, set_lock = 1;
+static int set_pico8;              /* 1: the owner's PICO-8 for PICO-8 carts (ggv.42) */
 
 static void settings_load(void)
 {
@@ -869,6 +871,7 @@ static void settings_load(void)
 	while (fscanf(f, "%31s %d", k, &v) == 2) {
 		if (!strcmp(k, "shutdown")) set_sleep = v;
 		else if (!strcmp(k, "lock")) set_lock = !!v;
+		else if (!strcmp(k, "pico8")) set_pico8 = !!v;
 	}
 	fclose(f);
 }
@@ -878,7 +881,7 @@ static void settings_save(void)
 	FILE *f = fopen(SETTINGS ".new", "w");
 
 	if (!f) return;
-	fprintf(f, "shutdown %d\nlock %d\n", set_sleep, set_lock);
+	fprintf(f, "shutdown %d\nlock %d\npico8 %d\n", set_sleep, set_lock, set_pico8);
 	if (fclose(f) == 0) rename(SETTINGS ".new", SETTINGS);
 	else unlink(SETTINGS ".new");
 }
@@ -1084,6 +1087,48 @@ static const char *view_title(const view *v)
 	return "";
 }
 
+/* -------------------------------------------------------- native PICO-8 */
+
+/* The owner's PICO-8 instead of fake08 (plorpos-ggv.42): pico8_dyn and
+ * pico8.dat, from PICO-8's Raspberry Pi download, beside the other BIOS
+ * files, run on the glibc + SDL2 runtime in pico8rt with its preload
+ * (mk/build-nano-pico8rt.sh, tools/nano-pico8.c). fake08 stays the default;
+ * R on the PICO-8 list turns it over, only when all of it is there. */
+#define PICO8_BIOS GAME_HOME "/.picoarch/system"
+#define PICO8_HOME GAME_HOME "/.lexaloffle/pico-8"   /* PICO-8's own default under this HOME */
+
+static bool is_pico8(int s) { return !strcmp(SYS[s].core, "fake08"); }
+
+static bool pico8_native_ready(void)
+{
+	char ld[PATH_MAX + 32];
+
+	snprintf(ld, sizeof ld, "%s/ld-linux-armhf.so.3", pico8rt);
+	return access(PICO8_BIOS "/pico8_dyn", R_OK) == 0 &&
+	       access(PICO8_BIOS "/pico8.dat", R_OK) == 0 && access(ld, X_OK) == 0;
+}
+
+/* In the child: PICO-8 sized to the panel by its own flags, so its
+ * config.txt stays the owner's. SDL draws nowhere and reads no keys; the
+ * preload does both, and Muse's handover (see tools/nano-pico8.c). */
+static void pico8_exec(const char *rom)
+{
+	char ld[PATH_MAX + 32], pre[PATH_MAX + 32], root[512];
+	const char *slash = strrchr(rom, '/');
+
+	snprintf(ld, sizeof ld, "%s/ld-linux-armhf.so.3", pico8rt);
+	snprintf(pre, sizeof pre, "%s/nano-pico8.so", pico8rt);
+	snprintf(root, sizeof root, "%.*s", slash ? (int)(slash - rom) : 0, rom);
+	setenv("PLORPOS_PICO8_EXE", PICO8_BIOS "/pico8_dyn", 1);
+	setenv("SDL_VIDEODRIVER", "dummy", 1);
+	setenv("SDL_AUDIODRIVER", "dsp", 1);
+	execl(ld, "ld-linux-armhf.so.3", "--library-path", pico8rt, "--preload", pre,
+	      PICO8_BIOS "/pico8_dyn", "-home", PICO8_HOME, "-root_path", root,
+	      "-desktop", PICO8_HOME "/desktop", "-windowed", "1", "-width", "240",
+	      "-height", "240", "-draw_rect", "0,0,240,240", "-software_blit", "1",
+	      "-foreground_sleep_ms", "2", "-run", rom, (char *)NULL);
+}
+
 static const char *view_hint(const view *v)
 {
 	switch (v->v) {
@@ -1092,7 +1137,12 @@ static const char *view_hint(const view *v)
 	case V_TRACKS: return "A play  B back  X music";
 	case V_QUEUE:  return "B back";
 	case V_CONTROLS: return "Left/Right page  B back";
-	case V_GAMES: case V_RECENT: case V_FAVS: return "A play  Y fav  B back";
+	case V_GAMES:
+		/* R turns PICO-8's engine over, when there is a choice (ggv.42). */
+		if (is_pico8(v->arg) && pico8_native_ready())
+			return set_pico8 ? "A play  Y fav  R pico8" : "A play  Y fav  R fake08";
+		return "A play  Y fav  B back";
+	case V_RECENT: case V_FAVS: return "A play  Y fav  B back";
 	}
 	return "A open  B back  X music";
 }
@@ -1305,8 +1355,8 @@ static void lat_report(const char *when)
 	lat_n = lat_sum = lat_max = 0;
 }
 
-/* PicoArch with core and rom, music going on around it, then the shelf's
- * screen back. */
+/* PicoArch with core and rom - or the owner's PICO-8 when core is NULL -
+ * music going on around it, then the shelf's screen back. */
 static void run_game(const char *core, const char *rom)
 {
 	unsigned t0;
@@ -1324,7 +1374,8 @@ static void run_game(const char *core, const char *rom)
 
 		for (fd = 3; fd < 256; fd++) close(fd);
 		signal(SIGUSR1, SIG_DFL);
-		execl(picoarch_bin, "picoarch", core, rom, (char *)NULL);
+		if (core) execl(picoarch_bin, "picoarch", core, rom, (char *)NULL);
+		else pico8_exec(rom);
 		_exit(127);
 	}
 	if (pid > 0) {
@@ -1364,7 +1415,15 @@ static void launch(int s, const char *file_in)
 		system("mkdir -p " GAME_HOME "/.picoarch/system && "
 		       "cp /usr/games/lynxboot.img " GAME_HOME "/.picoarch/system/");
 	lat_report("before a game");
-	run_game(core, rom);
+	if (is_pico8(s) && set_pico8 && pico8_native_ready()) {
+		/* PICO-8 makes neither its -home nor its -desktop. */
+		mkdir(GAME_HOME "/.lexaloffle", 0755);
+		mkdir(PICO8_HOME, 0755);
+		mkdir(PICO8_HOME "/desktop", 0755);
+		run_game(NULL, rom);
+	} else {
+		run_game(core, rom);
+	}
 }
 
 /* ------------------------------------------------------------ instant play */
@@ -1730,7 +1789,13 @@ static void key(SDLKey k)
 	case SDLK_s: musec_toggle(); break;          /* START, everywhere */
 	case SDLK_q: dim(); break;                   /* the power key's tap */
 	case SDLK_m: if (v->v == V_NOW) musec_prev(); break;   /* L */
-	case SDLK_n: if (v->v == V_NOW) musec_next(); break;   /* R */
+	case SDLK_n:                                           /* R */
+		if (v->v == V_NOW) musec_next();
+		else if (v->v == V_GAMES && is_pico8(v->arg) && pico8_native_ready()) {
+			set_pico8 = !set_pico8;
+			settings_save();
+		}
+		break;
 	default: break;
 	}
 	publish();
