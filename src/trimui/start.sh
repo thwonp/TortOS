@@ -12,11 +12,8 @@ export HOME=$P
 export PATH=$P/bin:/usr/trimui/bin:/usr/bin:/usr/sbin:/bin:/sbin
 # SDL 1.2 and SDL_ttf are the system's own, in /usr/trimui/lib.
 export LD_LIBRARY_PATH=/usr/trimui/lib:/usr/lib:/lib
-# 58 MB of RAM: the stock 128 MB swap file on the card, for PlayStation.
-if [ -f /mnt/SDCARD/cachefile ]; then
-	swapon /mnt/SDCARD/cachefile 2>/dev/null ||
-		{ mkswap /mnt/SDCARD/cachefile >/dev/null && swapon /mnt/SDCARD/cachefile; }
-fi
+# No swap: the alpha's games fit in RAM (PlayStation peaked at 21 MB), and
+# swap on the card puts every process at the mercy of its slowest read.
 ./bin/trimuimon "$P/volume.txt" &
 # The shelf, again whenever it quits; five quick failures in a row and this
 # gives up, so the stock menu comes back rather than a black screen.
