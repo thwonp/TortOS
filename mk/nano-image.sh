@@ -12,7 +12,8 @@
 # GMenu2X gone (install-root.sh's MENUS) - and a clean card: FunKey's first
 # boot, which makes the shared partition, unzips plorpos_files.zip there
 # (plorpOS/, Music/, Bios/ and a folder per console in nanoshelf's SYS[])
-# in place of FunKey's freeware games, menu themes and OPKs, all removed.
+# in place of FunKey's freeware games, menu themes and OPKs, all removed, and
+# `share init` no longer makes FunKey's folder tree at every start.
 # /boot/zImage is DrUm78's kernel rebuilt with plorpOS's boot logo
 # (mk/build-nano-kernel.sh).
 # Everything else is DrUm78's image, byte for byte.
@@ -111,6 +112,10 @@ cmd "rm /etc/asound.conf"
 put "$P/root/asound.conf" /etc/asound.conf 0100644
 dbg "cat /root/.profile" > "$W/profile"
 sed -i 's|^instant_play load$|# instant_play load   (plorpOS: nanoshelf resumes the game)|' "$W/profile"
+# (and no folders for the menus it no longer has, at every start)
+sed -i -e '/^mkdir -p "${GMENU2X_HOME}"$/d' -e '/^mkdir -p "${RETROFE_HOME}"$/d' \
+       -e '/^mkdir -p "${RETROFE_HOME}\/layouts"$/d' "$W/profile"
+grep -q 'mkdir.*\(GMENU2X\|RETROFE\)' "$W/profile" && die "/root/.profile: menu folders still made"
 grep -q '^# instant_play load' "$W/profile" || die "/root/.profile: no instant_play load line"
 cmd "rm /root/.profile"
 put "$W/profile" /root/.profile 0100755
@@ -132,6 +137,14 @@ grep -q 'plorpos_files.zip' "$W/first_boot" && ! grep -q 'OPKs\|freeware\|funkey
 grep -q '^set -f' "$W/first_boot" || die "first_boot: lost its top-level set -f"
 cmd "rm /usr/local/sbin/first_boot"
 put "$W/first_boot" /usr/local/sbin/first_boot 0100755
+# ... and kept clean: FunKey's `share init`, at every start, makes its own
+# folder tree (FunKey's apps, Libretro, RetroFE's collections) on the card.
+dbg "cat /usr/local/sbin/share" > "$W/share"
+sed -i -e '/^\s*(cd \/mnt; mkdir -p "PICO-8"/d' -e '/^\s*(mkdir -p "\/mnt\/FunKey\/.retrofe\/collections"/d' \
+       -e 's|# Create the directory structure if required|# (plorpOS nano image: no FunKey folders made at every start)|' "$W/share"
+grep -q '^\s*(cd /mnt; mkdir\|retrofe/collections' "$W/share" && die "share: folder making still there"
+cmd "rm /usr/local/sbin/share"
+put "$W/share" /usr/local/sbin/share 0100755
 
 debugfs -w -f "$C" "$FS" > "$W/debugfs.log" 2>&1
 grep -i -E 'error|not found|could not|no free|exists' "$W/debugfs.log" && die "debugfs: see $W/debugfs.log"
