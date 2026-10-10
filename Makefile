@@ -259,7 +259,7 @@ nano-picoarch:
 nano-pico8rt:
 	mk/build-nano-pico8rt.sh
 
-# out/plorpOS-nano-v$(NANO_VERSION).zip: plorpOS/ for the card's /mnt, with
+# out/plorpOS-nano-v$(NANO_VERSION)-UPDATE.zip: plorpOS/ for the card's /mnt, with
 # PicoArch from PICOARCH (mk/nano-payload.sh).
 .PHONY: nano-zip
 nano-zip: nano nano-picoarch nano-pico8rt

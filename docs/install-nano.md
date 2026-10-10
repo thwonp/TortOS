@@ -152,7 +152,7 @@ same time.
 
 ## Updating
 
-Download **`plorpOS-nano-v<version>.zip`**, unzip it, and copy the `plorpOS`
+Download **`plorpOS-nano-v<version>-UPDATE.zip`**, unzip it, and copy the `plorpOS`
 folder inside over the one on the card (USB drive, or the card in the
 computer). At the next start the Nano installs it - FunKey's message
 **INSTALLING PLORPOS** - and restarts once by itself. Your settings, saves and
