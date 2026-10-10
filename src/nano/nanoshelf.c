@@ -1110,7 +1110,8 @@ static bool pico8_native_ready(void)
 
 /* In the child: PICO-8 sized to the panel by its own flags, so its
  * config.txt stays the owner's. SDL draws nowhere and reads no keys; the
- * preload does both, and Muse's handover (see tools/nano-pico8.c). */
+ * preload does both, Muse's handover, and the power tap's menu - FunKey's,
+ * from PicoArch run as `picoarch --menu` (see tools/nano-pico8.c). */
 static void pico8_exec(const char *rom)
 {
 	char ld[PATH_MAX + 32], pre[PATH_MAX + 32], root[512];
@@ -1120,6 +1121,7 @@ static void pico8_exec(const char *rom)
 	snprintf(pre, sizeof pre, "%s/nano-pico8.so", pico8rt);
 	snprintf(root, sizeof root, "%.*s", slash ? (int)(slash - rom) : 0, rom);
 	setenv("PLORPOS_PICO8_EXE", PICO8_BIOS "/pico8_dyn", 1);
+	setenv("PLORPOS_MENU", picoarch_bin, 1);      /* the power tap's: picoarch --menu */
 	setenv("SDL_VIDEODRIVER", "dummy", 1);
 	setenv("SDL_AUDIODRIVER", "dsp", 1);
 	execl(ld, "ld-linux-armhf.so.3", "--library-path", pico8rt, "--preload", pre,

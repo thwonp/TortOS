@@ -21,9 +21,14 @@
  * - The buttons, as fake08 has them on the Nano (picoarch's plat_funkey.c
  *   and fake08's libretro.cpp): B is O, A is X, START pauses. They are read
  *   from fkgpiod's keyboard, /dev/input/event0, whose letters (KEY_U,
- *   KEY_A, ...) become PICO-8's keys; the power key's tap (KEY_Q, picoarch's
- *   menu) quits. Every other key is dropped, so FN combos and the letters
+ *   KEY_A, ...) become PICO-8's keys; the power key's tap (KEY_Q) opens
+ *   the menu, below. Every other key is dropped, so FN combos and the letters
  *   PICO-8 would read as shortcuts do nothing.
+ * - The power key's tap opens FunKey's menu, as in every other game: music,
+ *   volume, brightness, exit, powerdown (plorpos-ggv.42.5). It is picoarch's
+ *   own, run as `picoarch --menu` (PLORPOS_MENU names it) over the frame on
+ *   the screen; PICO-8 waits meanwhile, its sound closed so the menu's music
+ *   page can have the codec. Leaving it by Exit quits PICO-8.
  * - Where pico8.dat is. PICO-8 looks beside /proc/self/exe, which here is the
  *   glibc loader; PLORPOS_PICO8_EXE names the binary it should see instead.
  * - Muse. The Nano has one codec and no dmix, so the game's sound is closed
@@ -36,6 +41,7 @@
 #define _GNU_SOURCE
 #include <SDL.h>
 #include <dlfcn.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <linux/fb.h>
 #include <linux/input.h>
@@ -47,6 +53,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -134,9 +141,11 @@ void SDL_PauseAudio(int on)
 	if (dev_open) real_SDL_PauseAudio(on);
 }
 
+static struct timespec follow_next;    /* zeroed: follow Muse on the next frame */
+
 static void audio_follow_muse(void)
 {
-	static struct timespec next;
+	struct timespec next = follow_next;
 	struct timespec t;
 	REAL(SDL_CloseAudio);
 
@@ -146,6 +155,7 @@ static void audio_follow_muse(void)
 	next = t;
 	next.tv_nsec += 500000000;
 	if (next.tv_nsec >= 1000000000) { next.tv_sec++; next.tv_nsec -= 1000000000; }
+	follow_next = next;
 
 	if (music_playing()) {
 		if (dev_open) {
@@ -216,17 +226,14 @@ static void pace(void)
 	last = t;
 }
 
-int SDL_UpdateWindowSurface(SDL_Window *w)
+/* The window surface to fb0's shown page - asked each time: one ioctl, and
+ * whoever drew last may have panned. */
+static void show(void)
 {
 	struct fb_var_screeninfo var;
-	SDL_Surface *s = SDL_GetWindowSurface(w);
-	REAL(SDL_UpdateWindowSurface);
+	SDL_Surface *s = win ? SDL_GetWindowSurface(win) : NULL;
 
-	win = w;
-	audio_follow_muse();
 	if (fb < 0) fb_open();
-	/* The shown page, asked each frame: one ioctl, and whoever drew last
-	 * may have panned. */
 	if (fbmem && s && s->format->BytesPerPixel == 4 &&
 	    ioctl(fb, FBIOGET_VSCREENINFO, &var) == 0) {
 		int w2 = s->w < (int)var.xres ? s->w : (int)var.xres;
@@ -244,6 +251,15 @@ int SDL_UpdateWindowSurface(SDL_Window *w)
 			}
 		}
 	}
+}
+
+int SDL_UpdateWindowSurface(SDL_Window *w)
+{
+	REAL(SDL_UpdateWindowSurface);
+
+	win = w;
+	audio_follow_muse();
+	show();
 	pace();
 	return real_SDL_UpdateWindowSurface(w);
 }
@@ -290,7 +306,7 @@ int SDL_GetDisplayBounds(int i, SDL_Rect *b)
 
 /* -------------------------------------------------------------- buttons */
 
-#define QUIT SDL_NUM_SCANCODES   /* not a key: the power tap */
+#define MENU SDL_NUM_SCANCODES   /* not a key: the power tap */
 
 static SDL_Scancode map(unsigned code)
 {
@@ -302,7 +318,7 @@ static SDL_Scancode map(unsigned code)
 	case KEY_B: return SDL_SCANCODE_Z;        /* O */
 	case KEY_A: return SDL_SCANCODE_X;        /* X */
 	case KEY_S: return SDL_SCANCODE_RETURN;   /* pause */
-	case KEY_Q: return (SDL_Scancode)QUIT;
+	case KEY_Q: return (SDL_Scancode)MENU;
 	default:    return SDL_SCANCODE_UNKNOWN;
 	}
 }
@@ -326,18 +342,70 @@ SDL_Window *SDL_GetKeyboardFocus(void)
 	return f ? f : win;
 }
 
+static void console_set(int kd)
+{
+	int tty = open("/dev/tty0", O_RDWR | O_CLOEXEC);
+
+	if (tty >= 0) {
+		ioctl(tty, KDSETMODE, kd);
+		if (kd == KD_GRAPHICS) ioctl(tty, KDSKBMODE, K_OFF);
+		close(tty);
+	}
+}
+
+static void console_off(void) { console_set(KD_GRAPHICS); }
+
 static void on_usr1(int sig) { (void)sig; quit = 1; }
 
 __attribute__((constructor)) static void init(void)
 {
-	int tty = open("/dev/tty0", O_RDWR | O_CLOEXEC);
-
 	signal(SIGUSR1, on_usr1);
-	if (tty >= 0) {
-		ioctl(tty, KDSETMODE, KD_GRAPHICS);
-		ioctl(tty, KDSKBMODE, K_OFF);
-		close(tty);
+	console_off();
+}
+
+extern char **environ;
+
+/* FunKey's menu, with PICO-8 waiting: 1 when it says to leave the game.
+ * Its environment is PICO-8's less the SDL 2 driver names, which SDL 1.2
+ * reads too and would put the menu on its dummy driver. Built before the
+ * fork: nothing that allocates runs between fork and exec. */
+static int run_menu(void)
+{
+	static char *env[256];
+	const char *bin = getenv("PLORPOS_MENU");
+	struct input_event ev;
+	int st = 0, n = 0, i;
+	pid_t pid;
+	REAL(SDL_CloseAudio);
+
+	if (!bin) return 0;
+	for (i = 0; environ[i] && n < 255; i++)
+		if (strncmp(environ[i], "SDL_VIDEODRIVER=", 16) &&
+		    strncmp(environ[i], "SDL_AUDIODRIVER=", 16))
+			env[n++] = environ[i];
+	env[n] = NULL;
+	/* The kernel will not switch away from a console in graphics mode, and
+	 * SDL 1.2 moves to a console of its own: the menu waited for it forever
+	 * on a black screen. Text mode for the menu, graphics again after - and
+	 * the frame again, which text mode blanked, for the menu to draw over. */
+	console_set(KD_TEXT);
+	show();
+	if (dev_open) {
+		real_SDL_CloseAudio();
+		dev_open = 0;
 	}
+	pid = fork();
+	if (pid == 0) {
+		execle(bin, "picoarch", "--menu", (char *)NULL, env);
+		_exit(127);
+	}
+	if (pid > 0) while (waitpid(pid, &st, 0) < 0 && errno == EINTR) ;
+	console_off();                       /* SDL 1.2 put back what it found, but surely */
+	while (kbd >= 0 && read(kbd, &ev, sizeof ev) > 0) ;   /* the menu's keys */
+	memset(keys, 0, sizeof keys);
+	memset(&follow_next, 0, sizeof follow_next);           /* sound back now if it may */
+	fprintf(stderr, "nano-pico8: menu, exit %d\n", WIFEXITED(st) ? WEXITSTATUS(st) : -1);
+	return pid > 0 && WIFEXITED(st) && WEXITSTATUS(st) == 1;
 }
 
 /* One button from event0 as an SDL event, or 0 when none is waiting. The
@@ -355,8 +423,8 @@ static int key_event(SDL_Event *e)
 
 		if (ev.type != EV_KEY || ev.value == 2) continue;   /* no autorepeat */
 		to = map(ev.code);
-		if (to == (SDL_Scancode)QUIT) {
-			if (ev.value) quit = 1;
+		if (to == (SDL_Scancode)MENU) {
+			if (ev.value && run_menu()) quit = 1;
 			continue;
 		}
 		if (to == SDL_SCANCODE_UNKNOWN) continue;
