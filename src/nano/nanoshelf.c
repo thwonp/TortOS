@@ -73,6 +73,7 @@
 #define CMD      STATE "/cmd"
 #define GAME_HOME "/mnt/FunKey"     /* where FunKey keeps .picoarch */
 #define SAVES    CARD "/Saves"        /* Saves/<console folder>/, as on the other devices */
+#define BIOS     CARD "/Bios"         /* BIOS files, loose, as on the other devices */
 
 /* Where the programs are: the folder above this one's bin/. Installed, that
  * is /usr/local/plorpos on the system partition (install-root.sh), so that
@@ -1095,7 +1096,6 @@ static const char *view_title(const view *v)
  * files, run on the glibc + SDL2 runtime in pico8rt with its preload
  * (mk/build-nano-pico8rt.sh, tools/nano-pico8.c). fake08 stays the default;
  * R on the PICO-8 list turns it over, only when all of it is there. */
-#define PICO8_BIOS GAME_HOME "/.picoarch/system"
 
 static bool is_pico8(int s) { return !strcmp(SYS[s].core, "fake08"); }
 
@@ -1104,8 +1104,8 @@ static bool pico8_native_ready(void)
 	char ld[PATH_MAX + 32];
 
 	snprintf(ld, sizeof ld, "%s/ld-linux-armhf.so.3", pico8rt);
-	return access(PICO8_BIOS "/pico8_dyn", R_OK) == 0 &&
-	       access(PICO8_BIOS "/pico8.dat", R_OK) == 0 && access(ld, X_OK) == 0;
+	return access(BIOS "/pico8_dyn", R_OK) == 0 &&
+	       access(BIOS "/pico8.dat", R_OK) == 0 && access(ld, X_OK) == 0;
 }
 
 /* In the child: PICO-8 sized to the panel by its own flags, so its
@@ -1121,12 +1121,12 @@ static void pico8_exec(const char *rom, const char *home)
 	snprintf(pre, sizeof pre, "%s/nano-pico8.so", pico8rt);
 	snprintf(root, sizeof root, "%.*s", slash ? (int)(slash - rom) : 0, rom);
 	snprintf(desk, sizeof desk, "%s/desktop", home);
-	setenv("PLORPOS_PICO8_EXE", PICO8_BIOS "/pico8_dyn", 1);
+	setenv("PLORPOS_PICO8_EXE", BIOS "/pico8_dyn", 1);
 	setenv("PLORPOS_MENU", picoarch_bin, 1);      /* the power tap's: picoarch --menu */
 	setenv("SDL_VIDEODRIVER", "dummy", 1);
 	setenv("SDL_AUDIODRIVER", "dsp", 1);
 	execl(ld, "ld-linux-armhf.so.3", "--library-path", pico8rt, "--preload", pre,
-	      PICO8_BIOS "/pico8_dyn", "-home", home, "-root_path", root,
+	      BIOS "/pico8_dyn", "-home", home, "-root_path", root,
 	      "-desktop", desk, "-windowed", "1", "-width", "240",
 	      "-height", "240", "-draw_rect", "0,0,240,240", "-software_blit", "1",
 	      "-foreground_sleep_ms", "2", "-run", rom, (char *)NULL);
@@ -1372,7 +1372,8 @@ static void saves_dir(const char *rom, char *out, size_t n)
 /* PicoArch with core and rom - or the owner's PICO-8 when core is NULL -
  * music going on around it, then the shelf's screen back. Its saves go to
  * Saves/<console folder>/ (PicoArch reads PLORPOS_SAVES; PICO-8 gets
- * native/ in it as its home, cartdata and all). */
+ * native/ in it as its home, cartdata and all); BIOS files come from Bios/
+ * (PLORPOS_BIOS). */
 static void run_game(const char *core, const char *rom)
 {
 	char saves[600], home[620];
@@ -1402,6 +1403,7 @@ static void run_game(const char *core, const char *rom)
 		for (fd = 3; fd < 256; fd++) close(fd);
 		signal(SIGUSR1, SIG_DFL);
 		setenv("PLORPOS_SAVES", saves, 1);
+		setenv("PLORPOS_BIOS", BIOS, 1);
 		if (core) execl(picoarch_bin, "picoarch", core, rom, (char *)NULL);
 		else pico8_exec(rom, home);
 		_exit(127);
@@ -1439,9 +1441,8 @@ static void launch(int s, const char *file_in)
 	snprintf(rom, sizeof rom, CARD "/%s/%s", SYS[s].dir, file);
 	recent_add(s, file);
 	if (!strcmp(SYS[s].core, "mednafen_lynx") &&
-	    access(GAME_HOME "/.picoarch/system/lynxboot.img", R_OK) != 0)
-		system("mkdir -p " GAME_HOME "/.picoarch/system && "
-		       "cp /usr/games/lynxboot.img " GAME_HOME "/.picoarch/system/");
+	    access(BIOS "/lynxboot.img", R_OK) != 0)
+		system("mkdir -p " BIOS " && cp /usr/games/lynxboot.img " BIOS "/");
 	lat_report("before a game");
 	run_game(is_pico8(s) && set_pico8 && pico8_native_ready() ? NULL : core, rom);
 }
