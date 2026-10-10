@@ -5,7 +5,7 @@
 # Every change to the read-only system partition, each kept first in
 # backup/ (the first install's copies are never replaced, so installing again
 # cannot overwrite them with plorpOS's):
-#   /usr/local/plorpos/        bin/ lib/ res/ start.sh, copied from here: run
+#   /usr/local/plorpos/        bin/ lib/ res/ cores/ pico8rt/ start.sh, copied from here: run
 #                              from the system partition, plorpOS can lend the
 #                              card to a computer (share), as RetroFE could
 #   /usr/local/sbin/frontend   FunKey's menu loop -> plorpOS's (root/frontend)
@@ -29,7 +29,8 @@ MENUS="usr/games/retrofe usr/games/RetroFE.ico usr/games/RetroFE.png usr/games/R
        usr/games/layouts usr/games/log.txt usr/games/meta.db usr/games/settings.conf
        usr/bin/gmenu2x usr/share/gmenu2x"
 
-for f in bin/nanoshelf bin/muse bin/picoarch start.sh root/frontend root/asound.conf; do
+for f in bin/nanoshelf bin/muse bin/picoarch start.sh root/frontend root/asound.conf \
+         cores/gambatte_libretro.so pico8rt/ld-linux-armhf.so.3; do
 	[ -f "$HERE/$f" ] || { echo "missing $HERE/$f" >&2; exit 1; }
 done
 mkdir -p "$B"
@@ -59,8 +60,8 @@ fi
 trap 'sync; /usr/local/sbin/ro 2>/dev/null || echo "(system partition read-only again after the restart)"' EXIT
 rm -rf "$APP.new"
 mkdir -p "$APP.new"
-cp -r "$HERE/bin" "$HERE/lib" "$HERE/res" "$HERE/start.sh" "$APP.new/"
-chmod 755 "$APP.new/bin/"* "$APP.new/start.sh"
+cp -r "$HERE/bin" "$HERE/lib" "$HERE/res" "$HERE/cores" "$HERE/pico8rt" "$HERE/start.sh" "$APP.new/"
+chmod 755 "$APP.new/bin/"* "$APP.new/start.sh" "$APP.new/pico8rt/ld-linux-armhf.so.3"
 rm -rf "$APP"
 mv "$APP.new" "$APP"
 cp "$HERE/root/frontend" /usr/local/sbin/frontend.new

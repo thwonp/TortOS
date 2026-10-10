@@ -226,7 +226,7 @@ build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so &:
 
 # The RG Nano (plorpos-ggv): FunKey's SDK and FFmpeg from mk/fetch-nano-sdk.sh,
 # no device needed. Its own makefile, mk/nano.mk - nothing of cross.mk applies.
-NANO_VERSION ?= 0.1
+NANO_VERSION ?= 0.2
 NANO_BIN := build/nano/nanoshelf build/nano/muse build/nano/musectl build/nano/nanokey
 .PHONY: nano
 nano:
@@ -239,7 +239,7 @@ nano:
 # PICOARCH_REF, cloned to build/nano/picoarch and built in the container with
 # its build-nano.sh. PICOARCH=<dir> builds a local checkout of it instead.
 PICOARCH_URL := https://github.com/thwonp/picoarch.git
-PICOARCH_REF := 5b1f8c19b5e1163b9f40649e383657e4c0c02f7c
+PICOARCH_REF := c92b278f221c9f6008a30de11d90389a7748c05e
 PICOARCH_DIR := $(CURDIR)/build/nano/picoarch
 PICOARCH ?= $(PICOARCH_DIR)
 .PHONY: nano-picoarch
@@ -262,7 +262,7 @@ nano-pico8rt:
 # out/plorpOS-nano-v$(NANO_VERSION).zip: plorpOS/ for the card's /mnt, with
 # PicoArch from PICOARCH (mk/nano-payload.sh).
 .PHONY: nano-zip
-nano-zip: nano nano-picoarch
+nano-zip: nano nano-picoarch nano-pico8rt
 	PICOARCH=$(PICOARCH) ./mk/nano-payload.sh $(NANO_VERSION)
 
 # The check binaries are rebuilt every time, deliberately.
