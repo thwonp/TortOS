@@ -1504,11 +1504,12 @@ static void lat_report(const char *when)
 
 #ifdef TRIMUI
 /* The Model S has no cpufreq: the clock is PLL_CPU's low half, written
- * through /dev/mem as MinUI does, with its values (720 MHz on the shelf,
- * 864, its "highest stable", in a game, where music costs ~15% of the CPU). */
+ * through /dev/mem as MinUI does, with its values. 720 MHz everywhere:
+ * MinUI's "highest stable" 864 (0x1a32) froze the whole device three times
+ * in games on the test unit (plorpos-80b.7). */
 #include <sys/mman.h>
 #define CPU_SHELF 0x1d22
-#define CPU_GAME  0x1a32
+#define CPU_GAME  0x1d22
 static void cpu_clock(unsigned low)
 {
 	int fd = open("/dev/mem", O_RDWR | O_SYNC);
