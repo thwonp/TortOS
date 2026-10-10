@@ -74,6 +74,7 @@
 #define GAME_HOME "/mnt/FunKey"     /* where FunKey keeps .picoarch */
 #define SAVES    CARD "/Saves"        /* Saves/<console folder>/, as on the other devices */
 #define BIOS     CARD "/Bios"         /* BIOS files, loose, as on the other devices */
+#define ROMS     CARD "/Roms"         /* Roms/<console folder>/, as on the other devices */
 
 /* Where the programs are: the folder above this one's bin/. Installed, that
  * is /usr/local/plorpos on the system partition (install-root.sh), so that
@@ -99,8 +100,8 @@ static void app_paths(void)
 /* ---------------------------------------------------------------- systems */
 
 /* The consoles, from FunKey-OS's own launchers (/usr/games/launchers/<name>_launch.sh,
- * collections/<dir>/settings.conf): the folder on the card, the PicoArch core,
- * and the extensions RetroFE listed. A core in /mnt/Libretro/cores wins over
+ * collections/<dir>/settings.conf): the folder in Roms/ (named as on the other
+ * devices), the PicoArch core, and the extensions RetroFE listed. A core in /mnt/Libretro/cores wins over
  * the stock one, as there. Shown only when its folder has a game in it. */
 typedef struct { const char *dir, *label, *core, *ext; } sys_t;
 static const sys_t SYS[] = {
@@ -109,18 +110,18 @@ static const sys_t SYS[] = {
 	{ "Game Boy Advance",      "Game Boy Advance",  "gpsp",                "gba,bin,agb,gbz,u1,zip" },
 	{ "NES",                   "NES",               "fceumm",              "fds,nes,unf,unif,zip" },
 	{ "SNES",                  "Super NES",         "snes9x2005",          "smc,fig,sfc,gd3,gd7,dx2,bsx,swc,zip" },
-	{ "Sega Genesis",          "Genesis",           "picodrive",           "bin,gen,smd,md,32x,cue,iso,chd,cso,m3u,68k,sgd,pco,zip" },
-	{ "Sega Master System",    "Master System",     "picodrive",           "bin,sms,gg,sg,sc,zip" },
+	{ "Genesis",               "Genesis",           "picodrive",           "bin,gen,smd,md,32x,cue,iso,chd,cso,m3u,68k,sgd,pco,zip" },
+	{ "Master System",         "Master System",     "picodrive",           "bin,sms,gg,sg,sc,zip" },
 	{ "Game Gear",             "Game Gear",         "picodrive",           "gg,zip" },
-	{ "PCE-TurboGrafx",        "PC Engine",         "mednafen_supergrafx", "pce,sgx,cue,ccd,chd,toc,m3u,zip" },
+	{ "TurboGrafx-16",         "PC Engine",         "mednafen_supergrafx", "pce,sgx,cue,ccd,chd,toc,m3u,zip" },
 	{ "Neo Geo Pocket",        "Neo Geo Pocket",    "mednafen_ngp",        "ngp,ngc,ngpc,npc,zip" },
 	{ "WonderSwan",            "WonderSwan",        "mednafen_wswan",      "ws,wsc,pc2,zip" },
-	{ "Atari lynx",            "Atari Lynx",        "mednafen_lynx",       "lnx,lyx,o,zip" },
+	{ "Atari Lynx",            "Atari Lynx",        "mednafen_lynx",       "lnx,lyx,o,zip" },
 	{ "Pokemon Mini",          "Pokemon Mini",      "pokemini",            "min,zip" },
-	{ "PICO-8",                "PICO-8",            "fake08",              "p8,png,zip" },
-	{ "PS1",                   "PlayStation",       "pcsx_rearmed",        "bin,cue,img,mdf,pbp,toc,cbn,m3u,chd,iso" },
-	{ "MAME 2000",             "Arcade (MAME)",     "mame2000",            "zip" },
-	{ "Final Burn Alpha 2012", "Arcade (FBA)",      "fbalpha2012",         "zip" },
+	{ "Pico-8",                "PICO-8",            "fake08",              "p8,png,zip" },
+	{ "PlayStation",           "PlayStation",       "pcsx_rearmed",        "bin,cue,img,mdf,pbp,toc,cbn,m3u,chd,iso" },
+	{ "Arcade (MAME 2000)",    "Arcade (MAME)",     "mame2000",            "zip" },
+	{ "Arcade (FBA 2012)",     "Arcade (FBA)",      "fbalpha2012",         "zip" },
 };
 #define NSYS ((int)(sizeof SYS / sizeof SYS[0]))
 
@@ -166,7 +167,7 @@ static bool sys_has_games(const sys_t *s)
 	struct dirent *e;
 	bool any = false;
 
-	snprintf(dir, sizeof dir, CARD "/%s", s->dir);
+	snprintf(dir, sizeof dir, ROMS "/%s", s->dir);
 	if (!(d = opendir(dir))) return false;
 	while (!any && (e = readdir(d)))
 		any = sys_has_ext(s, e->d_name);
@@ -196,7 +197,7 @@ static void games_load(int s)
 	free(games);
 	games = NULL;
 	games_sys = s;
-	snprintf(dir, sizeof dir, CARD "/%s", SYS[s].dir);
+	snprintf(dir, sizeof dir, ROMS "/%s", SYS[s].dir);
 	if (!(d = opendir(dir))) return;
 	while ((e = readdir(d))) {
 		if (!sys_has_ext(&SYS[s], e->d_name)) continue;
@@ -1358,12 +1359,12 @@ static void lat_report(const char *when)
 	lat_n = lat_sum = lat_max = 0;
 }
 
-/* A game at CARD/<folder>/<file> saves in SAVES/<folder>, made here. */
+/* A game at ROMS/<folder>/<file> saves in SAVES/<folder>, made here. */
 static void saves_dir(const char *rom, char *out, size_t n)
 {
-	const char *f = rom + sizeof CARD, *e;
+	const char *f = rom + sizeof ROMS, *e;
 
-	if (strncmp(rom, CARD "/", sizeof CARD) || !(e = strchr(f, '/'))) e = f = "";
+	if (strncmp(rom, ROMS "/", sizeof ROMS) || !(e = strchr(f, '/'))) e = f = "";
 	mkdir(SAVES, 0755);
 	snprintf(out, n, SAVES "/%.*s", (int)(e - f), f);
 	mkdir(out, 0755);
@@ -1438,7 +1439,7 @@ static void launch(int s, const char *file_in)
 	snprintf(file, sizeof file, "%s", file_in);
 
 	core_path(&SYS[s], core, sizeof core);
-	snprintf(rom, sizeof rom, CARD "/%s/%s", SYS[s].dir, file);
+	snprintf(rom, sizeof rom, ROMS "/%s/%s", SYS[s].dir, file);
 	recent_add(s, file);
 	if (!strcmp(SYS[s].core, "mednafen_lynx") &&
 	    access(BIOS "/lynxboot.img", R_OK) != 0)

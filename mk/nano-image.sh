@@ -11,7 +11,7 @@
 # asound.conf, /root/.profile without `instant_play load`, RetroFE and
 # GMenu2X gone (install-root.sh's MENUS) - and a clean card: FunKey's first
 # boot, which makes the shared partition, unzips plorpos_files.zip there
-# (plorpOS/, Music/, Bios/ and a folder per console in nanoshelf's SYS[])
+# (plorpOS/, Music/, Bios/ and Roms/ with a folder per console in nanoshelf's SYS[])
 # in place of FunKey's freeware games, menu themes and OPKs, all removed, and
 # `share init` no longer makes FunKey's folder tree at every start.
 # /boot/zImage is DrUm78's kernel rebuilt with plorpOS's boot logo
@@ -121,10 +121,10 @@ cmd "rm /root/.profile"
 put "$W/profile" /root/.profile 0100755
 
 # A clean card: first boot unzips plorpOS's folders only.
-mkdir -p "$W/card/plorpOS" "$W/card/Music" "$W/card/Bios"
+mkdir -p "$W/card/plorpOS" "$W/card/Music" "$W/card/Bios" "$W/card/Roms"
 sed -n '/^static const sys_t SYS\[\] = {/,/^};/s/^\t{ "\([^"]*\)".*/\1/p' "$ROOT/src/nano/nanoshelf.c" |
-	while read -r d; do mkdir -p "$W/card/$d"; done
-[ "$(ls "$W/card" | wc -l)" -gt 10 ] || die "no consoles read from nanoshelf.c SYS[]"
+	while read -r d; do mkdir -p "$W/card/Roms/$d"; done
+[ "$(ls "$W/card/Roms" | wc -l)" -gt 10 ] || die "no consoles read from nanoshelf.c SYS[]"
 ( cd "$W/card" && zip -qrX ../plorpos_files.zip . )
 put "$W/plorpos_files.zip" /usr/local/share/plorpos_files.zip 0100644
 dbg "cat /usr/local/sbin/first_boot" > "$W/first_boot"

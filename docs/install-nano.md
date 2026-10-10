@@ -29,36 +29,36 @@ up.
 
 Power off the Nano (hold the power button) and put the card in the computer -
 or leave it in and connect the Nano by USB: it starts as a USB drive (mount button is in settings). The
-card's big partition holds `plorpOS`, `Music`, `Bios`, one folder per console
-and `FunKey`. **Do not format the other partitions if Windows asks you to.**
+card's big partition holds `plorpOS`, `Music`, `Bios`, `Roms` (one folder per
+console) and `FunKey`. **Do not format the other partitions if Windows asks you to.**
 
 ## What goes where on the card
 
 Put music in `Music/`, one folder per artist and one per album inside it
 (`Music/<artist>/<album>/<tracks>`). MP3, FLAC, AAC/M4A, Ogg and Opus play.
 
-Games go in FunKey's folders, at the root of the card. plorpOS shows a console
-once its folder has a game in it.
+Games go in `Roms/`, one folder per console, named as on the other plorpOS
+devices. plorpOS shows a console once its folder has a game in it.
 
-| Folder | Shown as | Files |
+| Folder in `Roms/` | Shown as | Files |
 |---|---|---|
 | `Game Boy` | Game Boy | `.gb` `.dmg` `.zip` |
 | `Game Boy Color` | Game Boy Color | `.gbc` `.zip` |
 | `Game Boy Advance` | Game Boy Advance | `.gba` `.agb` `.gbz` `.bin` `.zip` |
 | `NES` | NES | `.nes` `.fds` `.unf` `.unif` `.zip` |
 | `SNES` | Super NES | `.smc` `.sfc` `.fig` `.swc` `.gd3` `.gd7` `.dx2` `.bsx` `.zip` |
-| `Sega Genesis` | Genesis | `.md` `.gen` `.smd` `.bin` `.32x` `.cue` `.iso` `.chd` `.cso` `.m3u` `.68k` `.sgd` `.pco` `.zip` |
-| `Sega Master System` | Master System | `.sms` `.gg` `.sg` `.sc` `.bin` `.zip` |
+| `Genesis` | Genesis | `.md` `.gen` `.smd` `.bin` `.32x` `.cue` `.iso` `.chd` `.cso` `.m3u` `.68k` `.sgd` `.pco` `.zip` |
+| `Master System` | Master System | `.sms` `.gg` `.sg` `.sc` `.bin` `.zip` |
 | `Game Gear` | Game Gear | `.gg` `.zip` |
-| `PCE-TurboGrafx` | PC Engine | `.pce` `.sgx` `.cue` `.ccd` `.chd` `.toc` `.m3u` `.zip` |
+| `TurboGrafx-16` | PC Engine | `.pce` `.sgx` `.cue` `.ccd` `.chd` `.toc` `.m3u` `.zip` |
 | `Neo Geo Pocket` | Neo Geo Pocket | `.ngp` `.ngc` `.ngpc` `.npc` `.zip` |
 | `WonderSwan` | WonderSwan | `.ws` `.wsc` `.pc2` `.zip` |
-| `Atari lynx` | Atari Lynx | `.lnx` `.lyx` `.o` `.zip` |
+| `Atari Lynx` | Atari Lynx | `.lnx` `.lyx` `.o` `.zip` |
 | `Pokemon Mini` | Pokemon Mini | `.min` `.zip` |
-| `PICO-8` | PICO-8 | `.p8` `.png` `.zip` |
-| `PS1` | PlayStation | `.cue` `.bin` `.chd` `.pbp` `.m3u` `.iso` `.img` `.mdf` `.toc` `.cbn` |
-| `MAME 2000` | Arcade (MAME) | `.zip` |
-| `Final Burn Alpha 2012` | Arcade (FBA) | `.zip` |
+| `Pico-8` | PICO-8 | `.p8` `.png` `.zip` |
+| `PlayStation` | PlayStation | `.cue` `.bin` `.chd` `.pbp` `.m3u` `.iso` `.img` `.mdf` `.toc` `.cbn` |
+| `Arcade (MAME 2000)` | Arcade (MAME) | `.zip` |
+| `Arcade (FBA 2012)` | Arcade (FBA) | `.zip` |
 
 **BIOS files** go loose in `Bios/`. None is required:
 
@@ -78,7 +78,7 @@ PicoArch's settings stay in `FunKey/.picoarch/`; keep that folder.
 **Native PICO-8.** With `pico8_dyn` and `pico8.dat` in `Bios/`, the PICO-8
 list's footer shows **R fake08** or **R pico8**: R switches the engine for
 PICO-8 games, and the footer shows the one in use. Native PICO-8 has no save
-states; its cartridge data is in `Saves/PICO-8/native/`. A power tap in it
+states; its cartridge data is in `Saves/Pico-8/native/`. A power tap in it
 opens the Nano's menu (music, volume, brightness, exit).
 
 ## Using it
@@ -154,6 +154,13 @@ computer). At the next start the Nano installs it - FunKey's message
 lists stay. If an install fails the Nano starts the version it had and leaves
 `plorpOS/update-failed.log` on the card.
 
+**From plorpOS nano v0.2**: games moved into `Roms/`, and some console folders
+were renamed (table above). Flash this image, or move the console folders
+into `Roms/` by hand and rename `Sega Genesis`, `Sega Master System`,
+`PCE-TurboGrafx`, `Atari lynx`, `PICO-8`, `PS1`, `MAME 2000` and
+`Final Burn Alpha 2012` - in `Saves/` too. Recently Played and Favorites
+forget the games of renamed folders.
+
 **From plorpOS nano v0.1** (the adb install): flash this image once. Flashing
 wipes the card, so first copy off your music, games, BIOS files and
 `FunKey/.picoarch/` (your saves are in its `data/` folders). Afterwards put
@@ -204,10 +211,12 @@ in its place. That wipes the card; copy off what you want to keep first.
 
 - The card image is DrUm78's FunKey-OS `fps-classics` image for the RG Nano
   (FunKey-OS 2.3.0; GPL and other licences, source:
-  [DrUm78/FunKey-OS](https://github.com/DrUm78/FunKey-OS/tree/fps-classics)),
+  [DrUm78/FunKey-OS](https://github.com/DrUm78/FunKey-OS/tree/fps-classics),
+  mirrored at [thwonp/FunKey-OS](https://github.com/thwonp/FunKey-OS/tree/fps-classics)),
   with plorpOS installed by `mk/nano-image.sh` in this repository, which says
   every change.
 - Its kernel is DrUm78's ([DrUm78/linux `v1.0-rg-nano`](https://github.com/DrUm78/linux/tree/v1.0-rg-nano),
+  mirrored at [thwonp/linux](https://github.com/thwonp/linux/tree/v1.0-rg-nano);
   GPL-2.0) built unchanged with his configuration, except the boot logo:
   `mk/build-nano-kernel.sh` and `res/nano/bootlogo.png`.
 - plorpOS's own programs, PicoArch, the cores, FFmpeg and the PICO-8 runtime:
