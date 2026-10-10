@@ -20,7 +20,7 @@ STAGE=$ROOT/build/trimui/payload
 TOP=plorpOS-trimui-v$V
 P=$STAGE/$TOP/plorpOS
 ZIP=$ROOT/out/plorpOS-trimui-v$V-UPDATE.zip
-CORES="gambatte gpsp picodrive fceumm snes9x2002 pcsx_rearmed"
+CORES="gambatte gpsp picodrive quicknes snes9x2002 pcsx_rearmed"
 
 for f in shelf muse musectl trimuimon; do
 	[ -x "$ROOT/build/trimui/$f" ] || { echo "no build/trimui/$f; run make trimui" >&2; exit 1; }

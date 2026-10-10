@@ -127,7 +127,12 @@ static const sys_t SYS[] = {
 	{ "Game Boy",              "Game Boy",          "gambatte",            "gb,dmg,zip" },
 	{ "Game Boy Color",        "Game Boy Color",    "gambatte",            "gbc,zip" },
 	{ "Game Boy Advance",      "Game Boy Advance",  "gpsp",                "gba,bin,agb,gbz,u1,zip" },
+#ifdef TRIMUI
+	/* QuickNES: twice fceumm's speed on the Model S's ARM9 (plorpos-80b.13). */
+	{ "NES",                   "NES",               "quicknes",            "nes,zip" },
+#else
 	{ "NES",                   "NES",               "fceumm",              "fds,nes,unf,unif,zip" },
+#endif
 #ifdef TRIMUI
 	{ "SNES",                  "Super NES",         "snes9x2002",          "smc,fig,sfc,gd3,gd7,dx2,bsx,swc,zip" },
 #else
