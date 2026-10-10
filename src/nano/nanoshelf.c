@@ -72,6 +72,7 @@
 #define NOW      STATE "/now"
 #define CMD      STATE "/cmd"
 #define GAME_HOME "/mnt/FunKey"     /* where FunKey keeps .picoarch */
+#define SAVES    CARD "/Saves"        /* Saves/<console folder>/, as on the other devices */
 
 /* Where the programs are: the folder above this one's bin/. Installed, that
  * is /usr/local/plorpos on the system partition (install-root.sh), so that
@@ -1095,7 +1096,6 @@ static const char *view_title(const view *v)
  * (mk/build-nano-pico8rt.sh, tools/nano-pico8.c). fake08 stays the default;
  * R on the PICO-8 list turns it over, only when all of it is there. */
 #define PICO8_BIOS GAME_HOME "/.picoarch/system"
-#define PICO8_HOME GAME_HOME "/.lexaloffle/pico-8"   /* PICO-8's own default under this HOME */
 
 static bool is_pico8(int s) { return !strcmp(SYS[s].core, "fake08"); }
 
@@ -1112,21 +1112,22 @@ static bool pico8_native_ready(void)
  * config.txt stays the owner's. SDL draws nowhere and reads no keys; the
  * preload does both, Muse's handover, and the power tap's menu - FunKey's,
  * from PicoArch run as `picoarch --menu` (see tools/nano-pico8.c). */
-static void pico8_exec(const char *rom)
+static void pico8_exec(const char *rom, const char *home)
 {
-	char ld[PATH_MAX + 32], pre[PATH_MAX + 32], root[512];
+	char ld[PATH_MAX + 32], pre[PATH_MAX + 32], root[512], desk[640];
 	const char *slash = strrchr(rom, '/');
 
 	snprintf(ld, sizeof ld, "%s/ld-linux-armhf.so.3", pico8rt);
 	snprintf(pre, sizeof pre, "%s/nano-pico8.so", pico8rt);
 	snprintf(root, sizeof root, "%.*s", slash ? (int)(slash - rom) : 0, rom);
+	snprintf(desk, sizeof desk, "%s/desktop", home);
 	setenv("PLORPOS_PICO8_EXE", PICO8_BIOS "/pico8_dyn", 1);
 	setenv("PLORPOS_MENU", picoarch_bin, 1);      /* the power tap's: picoarch --menu */
 	setenv("SDL_VIDEODRIVER", "dummy", 1);
 	setenv("SDL_AUDIODRIVER", "dsp", 1);
 	execl(ld, "ld-linux-armhf.so.3", "--library-path", pico8rt, "--preload", pre,
-	      PICO8_BIOS "/pico8_dyn", "-home", PICO8_HOME, "-root_path", root,
-	      "-desktop", PICO8_HOME "/desktop", "-windowed", "1", "-width", "240",
+	      PICO8_BIOS "/pico8_dyn", "-home", home, "-root_path", root,
+	      "-desktop", desk, "-windowed", "1", "-width", "240",
 	      "-height", "240", "-draw_rect", "0,0,240,240", "-software_blit", "1",
 	      "-foreground_sleep_ms", "2", "-run", rom, (char *)NULL);
 }
@@ -1357,13 +1358,37 @@ static void lat_report(const char *when)
 	lat_n = lat_sum = lat_max = 0;
 }
 
+/* A game at CARD/<folder>/<file> saves in SAVES/<folder>, made here. */
+static void saves_dir(const char *rom, char *out, size_t n)
+{
+	const char *f = rom + sizeof CARD, *e;
+
+	if (strncmp(rom, CARD "/", sizeof CARD) || !(e = strchr(f, '/'))) e = f = "";
+	mkdir(SAVES, 0755);
+	snprintf(out, n, SAVES "/%.*s", (int)(e - f), f);
+	mkdir(out, 0755);
+}
+
 /* PicoArch with core and rom - or the owner's PICO-8 when core is NULL -
- * music going on around it, then the shelf's screen back. */
+ * music going on around it, then the shelf's screen back. Its saves go to
+ * Saves/<console folder>/ (PicoArch reads PLORPOS_SAVES; PICO-8 gets
+ * native/ in it as its home, cartdata and all). */
 static void run_game(const char *core, const char *rom)
 {
+	char saves[600], home[620];
 	unsigned t0;
 	pid_t pid;
 	int st;
+
+	saves_dir(rom, saves, sizeof saves);
+	if (!core) {
+		/* PICO-8 makes neither its -home nor its -desktop. */
+		snprintf(home, sizeof home, "%s/native", saves);
+		mkdir(home, 0755);
+		snprintf(home, sizeof home, "%s/native/desktop", saves);
+		mkdir(home, 0755);
+		snprintf(home, sizeof home, "%s/native", saves);
+	}
 
 	launched = true;
 	dac_poll();
@@ -1376,8 +1401,9 @@ static void run_game(const char *core, const char *rom)
 
 		for (fd = 3; fd < 256; fd++) close(fd);
 		signal(SIGUSR1, SIG_DFL);
+		setenv("PLORPOS_SAVES", saves, 1);
 		if (core) execl(picoarch_bin, "picoarch", core, rom, (char *)NULL);
-		else pico8_exec(rom);
+		else pico8_exec(rom, home);
 		_exit(127);
 	}
 	if (pid > 0) {
@@ -1417,15 +1443,7 @@ static void launch(int s, const char *file_in)
 		system("mkdir -p " GAME_HOME "/.picoarch/system && "
 		       "cp /usr/games/lynxboot.img " GAME_HOME "/.picoarch/system/");
 	lat_report("before a game");
-	if (is_pico8(s) && set_pico8 && pico8_native_ready()) {
-		/* PICO-8 makes neither its -home nor its -desktop. */
-		mkdir(GAME_HOME "/.lexaloffle", 0755);
-		mkdir(PICO8_HOME, 0755);
-		mkdir(PICO8_HOME "/desktop", 0755);
-		run_game(NULL, rom);
-	} else {
-		run_game(core, rom);
-	}
+	run_game(is_pico8(s) && set_pico8 && pico8_native_ready() ? NULL : core, rom);
 }
 
 /* ------------------------------------------------------------ instant play */
