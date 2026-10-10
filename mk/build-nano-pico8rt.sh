@@ -9,9 +9,9 @@
 # alongside: Debian bookworm's armhf glibc (2.36) loader and libraries, run as
 # `ld-linux-armhf.so.3 --library-path DIR pico8_dyn`, and an SDL2 with nothing
 # but the dummy video driver and OSS audio. The Nano has no DRM and SDL2 has no
-# framebuffer driver; the screen is the preload's job (ggv.42.2), on the
-# window surface PICO-8 draws with blit_method 1. Measured in spike ggv.40:
-# 2.8 MB, 30 fps carts at full speed.
+# framebuffer driver; the screen, the buttons and Muse are the job of the
+# preload built here too, tools/nano-pico8.c (ggv.42.2). Measured in spike
+# ggv.40: 2.8 MB, 30 fps carts at full speed.
 #
 # Needs: docker. Downloads SDL2's release tarball once into build/nano.
 set -eu
@@ -30,7 +30,7 @@ echo "$SDL_SHA  $TAR" | sha256sum -c --quiet
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
-docker run --rm -v "$TAR:/sdl.tar.gz:ro" -v "$OUT:/out" -e SDL="$SDL" "$IMAGE" sh -c '
+docker run --rm -v "$TAR:/sdl.tar.gz:ro" -v "$ROOT/tools/nano-pico8.c:/nano-pico8.c:ro" -v "$OUT:/out" -e SDL="$SDL" "$IMAGE" sh -c '
 set -eu
 dpkg --add-architecture armhf
 apt-get update -qq
@@ -46,6 +46,10 @@ cmake ../$SDL -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=arm \
   -DSDL_OFFSCREEN=OFF -DSDL_LIBUDEV=OFF -DSDL_DBUS=OFF -DSDL_IBUS=OFF -DSDL_HIDAPI=OFF >/tmp/cmake.log
 grep -q "SDL_OSS .*: ON" /tmp/cmake.log || { echo "!! SDL2 without OSS" >&2; exit 1; }
 make -j"$(nproc)" >/dev/null
+cmake --install . --prefix /tmp/sdl >/dev/null
+arm-linux-gnueabihf-gcc -O2 -mcpu=cortex-a7 -mfpu=neon-vfpv4 -Wall -Wextra -shared -fPIC \
+  -I/tmp/sdl/include/SDL2 -o /out/nano-pico8.so /nano-pico8.c -L. -lSDL2-2.0 -ldl
+arm-linux-gnueabihf-strip --strip-unneeded /out/nano-pico8.so
 cp -L libSDL2-2.0.so.0 /out/
 arm-linux-gnueabihf-strip --strip-unneeded /out/libSDL2-2.0.so.0
 cp ../$SDL/LICENSE.txt /out/LICENSE.SDL2.txt
