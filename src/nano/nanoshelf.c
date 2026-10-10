@@ -52,7 +52,15 @@
 #define TORTOS_VERSION "dev"
 #endif
 
+/* The same shelf on the TrimUI Model S (plorpos-80b), built with -DTRIMUI:
+ * a 320x240 panel, the card at /mnt/SDCARD, no FunKey around it. */
+#ifdef TRIMUI
+#define W     320
+#define DEVICE "plorpOS trimui"
+#else
 #define W     240
+#define DEVICE "plorpOS nano"
+#endif
 #define H     240
 /* One text size, the rows from it; the bars stay as they were (at 15 that
  * fills the list exactly: 10 rows of 20). */
@@ -63,7 +71,11 @@
 #define ROW   (FONT_SZ + 5)
 #define ROWS  ((H - TOP - BOT) / ROW)
 
+#ifdef TRIMUI
+#define CARD     "/mnt/SDCARD"
+#else
 #define CARD     "/mnt"
+#endif
 #define DATA     CARD "/plorpOS"      /* what plorpOS keeps on the card */
 #define RECENT   DATA "/recent.txt"
 #define FAVS     DATA "/favorites.txt"
@@ -71,7 +83,11 @@
 #define STATE    "/tmp/plorpos"
 #define NOW      STATE "/now"
 #define CMD      STATE "/cmd"
+#ifdef TRIMUI
+#define GAME_HOME DATA              /* PicoArch's .picoarch */
+#else
 #define GAME_HOME "/mnt/FunKey"     /* where FunKey keeps .picoarch */
+#endif
 #define SAVES    CARD "/Saves"        /* Saves/<console folder>/, as on the other devices */
 #define BIOS     CARD "/Bios"         /* BIOS files, loose, as on the other devices */
 #define ROMS     CARD "/Roms"         /* Roms/<console folder>/, as on the other devices */
@@ -81,6 +97,7 @@
  * nothing runs from the card while it is lent to a computer as a USB drive;
  * tried out without installing, it is the card's /mnt/plorpOS. */
 static char picoarch_bin[PATH_MAX], muse_bin[PATH_MAX], font_path[PATH_MAX], pico8rt[PATH_MAX], maps_dir[PATH_MAX];
+static char cores_dir[PATH_MAX];
 
 static void app_paths(void)
 {
@@ -96,6 +113,7 @@ static void app_paths(void)
 	snprintf(font_path, sizeof font_path, "%s/res/menu.ttf", exe);
 	snprintf(maps_dir, sizeof maps_dir, "%s/res/maps", exe);
 	snprintf(pico8rt, sizeof pico8rt, "%s/pico8rt", exe);
+	snprintf(cores_dir, sizeof cores_dir, "%s/cores", exe);
 }
 
 /* ---------------------------------------------------------------- systems */
@@ -110,7 +128,11 @@ static const sys_t SYS[] = {
 	{ "Game Boy Color",        "Game Boy Color",    "gambatte",            "gbc,zip" },
 	{ "Game Boy Advance",      "Game Boy Advance",  "gpsp",                "gba,bin,agb,gbz,u1,zip" },
 	{ "NES",                   "NES",               "fceumm",              "fds,nes,unf,unif,zip" },
+#ifdef TRIMUI
+	{ "SNES",                  "Super NES",         "snes9x2002",          "smc,fig,sfc,gd3,gd7,dx2,bsx,swc,zip" },
+#else
 	{ "SNES",                  "Super NES",         "snes9x2005",          "smc,fig,sfc,gd3,gd7,dx2,bsx,swc,zip" },
+#endif
 	{ "Genesis",               "Genesis",           "picodrive",           "bin,gen,smd,md,32x,cue,iso,chd,cso,m3u,68k,sgd,pco,zip" },
 	{ "Master System",         "Master System",     "picodrive",           "bin,sms,gg,sg,sc,zip" },
 	{ "Game Gear",             "Game Gear",         "picodrive",           "gg,zip" },
@@ -148,9 +170,14 @@ static bool sys_has_ext(const sys_t *s, const char *name)
  * stock. */
 static void core_path(const sys_t *s, char *out, size_t n)
 {
+#ifdef TRIMUI
+	/* No stock cores: the ones plorpOS carries, in its cores/. */
+	const char *const dirs[] = { CARD "/Libretro/cores", cores_dir };
+#else
 	static const char *const dirs[] = {
 		"/mnt/Libretro/cores", "/usr/local/plorpos/cores", "/usr/games",
 	};
+#endif
 	unsigned i;
 
 	for (i = 0; i < sizeof dirs / sizeof *dirs; i++) {
@@ -168,6 +195,11 @@ static bool sys_has_games(const sys_t *s)
 	struct dirent *e;
 	bool any = false;
 
+#ifdef TRIMUI
+	/* Not every console has a core here yet: one without is not shown. */
+	core_path(s, dir, sizeof dir);
+	if (access(dir, R_OK) != 0) return false;
+#endif
 	snprintf(dir, sizeof dir, ROMS "/%s", s->dir);
 	if (!(d = opendir(dir))) return false;
 	while (!any && (e = readdir(d)))
@@ -906,10 +938,14 @@ static void settings_rows(void)
 	int i;
 
 	nsrow = 0;
-	for (i = 0; i < S_COUNT; i++)
+	for (i = 0; i < S_COUNT; i++) {
+#ifdef TRIMUI
+		if (i == S_USB_DRIVE || i == S_USB_MODE) continue;   /* FunKey's */
+#endif
 		if (i != S_USB_DRIVE ||
 		    !access("/sys/kernel/config/usb_gadget/FunKey/functions/mass_storage.mmcblk0p4", F_OK))
 			srow[nsrow++] = i;
+	}
 }
 static int confirm = -1;           /* the row whose A asks to be pressed again */
 static char note[96];              /* a line over the footer for a few seconds */
@@ -940,6 +976,11 @@ static int usb_mode(void)
 /* plorpOS's own settings, `name value` a line (ggv.28): the inactive
  * shutdown in minutes (0 = never) and the button lock while dimmed. */
 #define SETTINGS DATA "/settings.txt"
+#ifdef TRIMUI
+#define POWEROFF "poweroff"
+#else
+#define POWEROFF "powerdown now"
+#endif
 static const int sleep_choices[] = { 1, 2, 5, 10, 30, 0 };
 #define NSLEEP ((int)(sizeof sleep_choices / sizeof sleep_choices[0]))
 static int set_sleep = 5, set_lock = 1;
@@ -1120,6 +1161,26 @@ static void row_label(const view *v, int i, char *buf, size_t n)
 
 /* Settings > Controls: what each button does, a page per place (ggv.21). */
 typedef struct { const char *name; const char *rows[8][2]; } controls_t;
+#ifdef TRIMUI
+static const controls_t controls[] = {
+	{ "Shelf", {
+		{ "Up / Down",    "move" },
+		{ "Left / Right", "page" },
+		{ "A",            "open" },
+		{ "B",            "back" },
+		{ "X or MENU",    "Now Playing" },
+		{ "Y (a game)",   "favorite on/off" },
+		{ "START",        "play / pause" } } },
+	{ "Now Playing", {
+		{ "L / R",        "track back / next" },
+		{ "Left / Right", "seek 10 s" },
+		{ "Y",            "play mode" },
+		{ "X",            "queue" } } },
+	{ "In a game", {
+		{ "MENU",         "game menu" },
+		{ "B",            "close menu" } } },
+};
+#else
 static const controls_t controls[] = {
 	{ "Shelf", {
 		{ "Up / Down",    "move" },
@@ -1147,6 +1208,7 @@ static const controls_t controls[] = {
 		{ "SELECT (FN)+Up",    "screenshot" },
 		{ "Power hold",        "off; a game resumes" } } },
 };
+#endif
 #define NCONTROLS ((int)(sizeof controls / sizeof controls[0]))
 
 static const char *view_title(const view *v)
@@ -1154,11 +1216,11 @@ static const char *view_title(const view *v)
 	static char t[160];
 
 	switch (v->v) {
-	case V_HOME:     return "plorpOS nano";
+	case V_HOME:     return DEVICE;
 	case V_GAMES:    return SYS[v->arg].label;
 	case V_RECENT:   return "Recently Played";
 	case V_FAVS:     return "Favorites";
-	case V_SETTINGS: return "plorpOS nano v" TORTOS_VERSION;
+	case V_SETTINGS: return DEVICE " v" TORTOS_VERSION;
 	case V_NOW:      return "Now Playing";
 	case V_ARTISTS:  return "Music";
 	case V_ALBUMS:   snprintf(t, sizeof t, "%s", lib.artists[v->arg].name); return t;
@@ -1440,6 +1502,27 @@ static void lat_report(const char *when)
 	lat_n = lat_sum = lat_max = 0;
 }
 
+#ifdef TRIMUI
+/* The Model S has no cpufreq: the clock is PLL_CPU's low half, written
+ * through /dev/mem as MinUI does, with its values (720 MHz on the shelf,
+ * 864, its "highest stable", in a game, where music costs ~15% of the CPU). */
+#include <sys/mman.h>
+#define CPU_SHELF 0x1d22
+#define CPU_GAME  0x1a32
+static void cpu_clock(unsigned low)
+{
+	int fd = open("/dev/mem", O_RDWR | O_SYNC);
+	volatile uint32_t *pll;
+
+	if (fd < 0) return;
+	pll = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x01c20000);
+	close(fd);
+	if (pll == MAP_FAILED) return;
+	*pll = (*pll & 0xffff0000u) | low;
+	munmap((void *)pll, 4096);
+}
+#endif
+
 /* A game at ROMS/<folder>/<file> saves in SAVES/<folder>, made here. */
 static void saves_dir(const char *rom, char *out, size_t n)
 {
@@ -1474,6 +1557,9 @@ static void run_game(const char *core, const char *rom)
 	}
 
 	launched = true;
+#ifdef TRIMUI
+	cpu_clock(CPU_GAME);
+#endif
 	dac_poll();
 	dsp_point(dac_card);
 	video_stop();
@@ -1504,7 +1590,11 @@ static void run_game(const char *core, const char *rom)
 	active_at = plat_now_ms();          /* a game is not inactivity */
 	/* What FunKey's frontend loop does after every program: a game killed
 	 * mid-way leaves VT switching locked and the keyboard dead. */
+#ifdef TRIMUI
+	cpu_clock(CPU_SHELF);
+#else
 	system("termfix_all >/dev/null 2>&1; keymap default >/dev/null 2>&1");
+#endif
 	if (!video_start()) {
 		fprintf(stderr, "nanoshelf: video after the game: %s\n", SDL_GetError());
 		want_quit = 1;
@@ -1771,7 +1861,7 @@ static void activate(void)
 			music_tick();
 			sync();
 			if (srow[v->sel] == S_RESTART) system("touch /run/rebooting; sync; reboot");
-			else system("powerdown now");
+			else system(POWEROFF);
 			want_quit = 1;
 			break;
 		}
@@ -1795,6 +1885,7 @@ static bool     dimmed;
 static unsigned dim_at;
 static char     backlight[16];
 
+#ifndef TRIMUI
 static void dim(void)
 {
 	int fd = open(BACKLIGHT, O_RDONLY);
@@ -1810,6 +1901,7 @@ static void dim(void)
 	dimmed = true;
 	dim_at = plat_now_ms();
 }
+#endif
 
 static void undim(const char *by)
 {
@@ -1843,7 +1935,7 @@ static void shutdown_tick(void)
 	fprintf(stderr, "nanoshelf: inactive %d min: power off\n", set_sleep);
 	queue_save();
 	sync();
-	system("powerdown now");
+	system(POWEROFF);
 	want_quit = 1;
 }
 
@@ -1890,7 +1982,11 @@ static void key(SDLKey k)
 		}
 		break;
 	case SDLK_s: musec_toggle(); break;          /* START, everywhere */
+#ifdef TRIMUI
+	case SDLK_q: open_now(); break;              /* MENU: no backlight file to dim */
+#else
 	case SDLK_q: dim(); break;                   /* the power key's tap */
+#endif
 	case SDLK_m: if (v->v == V_NOW) musec_prev(); break;   /* L */
 	case SDLK_n:                                           /* R */
 		if (v->v == V_NOW) musec_next();
@@ -1902,6 +1998,32 @@ static void key(SDLKey k)
 	default: break;
 	}
 	publish();
+}
+
+/* The keys, as the code above names them: FunKey's fkgpiod sends the Nano's
+ * buttons as letters, and the Model S's gpio-keys send PicoArch's trimui
+ * keys (plat_trimui.c), which are turned into those letters here. */
+static SDLKey key_from(SDLKey k)
+{
+#ifdef TRIMUI
+	switch (k) {
+	case SDLK_UP:        return SDLK_u;
+	case SDLK_DOWN:      return SDLK_d;
+	case SDLK_LEFT:      return SDLK_l;
+	case SDLK_RIGHT:     return SDLK_r;
+	case SDLK_SPACE:     return SDLK_a;
+	case SDLK_LCTRL:     return SDLK_b;
+	case SDLK_LSHIFT:    return SDLK_x;
+	case SDLK_LALT:      return SDLK_y;
+	case SDLK_RETURN:    return SDLK_s;
+	case SDLK_TAB:       return SDLK_m;      /* L */
+	case SDLK_BACKSPACE: return SDLK_n;      /* R */
+	case SDLK_ESCAPE:    return SDLK_q;      /* MENU */
+	default:             return SDLK_UNKNOWN;
+	}
+#else
+	return k;
+#endif
 }
 
 /* -------------------------------------------------------------------- main */
@@ -1923,7 +2045,11 @@ int main(void)
 	 * what moves the volume keys to the DAC), so "default" is not always
 	 * the speaker; monocard (/etc/asound.conf) is. A DAC is chosen with
 	 * SINK instead (dac_poll). */
+#ifndef TRIMUI
 	setenv("MUSE_CODEC", "monocard", 1);
+#else
+	cpu_clock(CPU_SHELF);
+#endif
 	up_start = uptime_ms();
 	pid_record(getpid());
 
@@ -1959,7 +2085,9 @@ int main(void)
 			if (e.type == SDL_KEYDOWN) {
 				if (!t_in) t_in = plat_now_ms();
 				active_at = t_in;
-				if (!dimmed || !dimmed_key(e.key.keysym.sym)) key(e.key.keysym.sym);
+				SDLKey k = key_from(e.key.keysym.sym);
+
+				if (!dimmed || !dimmed_key(k)) key(k);
 				dirty = true;
 			} else if (e.type == SDL_QUIT) {
 				want_quit = 1;
