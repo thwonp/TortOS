@@ -181,7 +181,8 @@ static bool sys_has_games(const sys_t *s)
 /* Arcade games are named by set ("mslug.zip"): res/maps/<core>.txt gives
  * the title, `set.zip<TAB>Title` a line, from the core's own romset (ggv.46).
  * A console's map is read the first time one of its games is named, then
- * kept, sorted by file for bsearch. No map, or a file not in it: the file. */
+ * kept, sorted by file for bsearch. No map, or a file not in it: the file.
+ * A title starting with "." hides the set (BIOS sets). */
 typedef struct { const char *file, *title; } map_ent;
 static struct { bool read; char *buf; map_ent *e; int n; } maps[NSYS];
 
@@ -286,13 +287,18 @@ static void games_load(int s)
 	}
 	closedir(d);
 	game_sort *g = malloc((size_t)ngames * sizeof *g);
-	int i;
+	int i, k = 0;
 
 	if (!g) return;
 	for (i = 0; i < ngames; i++) {
-		g[i].file = games[i];
-		game_name(s, games[i], g[i].name, sizeof g[i].name);
+		g[k].file = games[i];
+		game_name(s, games[i], g[k].name, sizeof g[k].name);
+		/* A title starting with "." is a BIOS set the core loads by
+		 * itself (neogeo.zip): not a game to show. */
+		if (g[k].name[0] == '.') free(games[i]);
+		else k++;
 	}
+	ngames = k;
 	qsort(g, ngames, sizeof *g, cmp_name);
 	for (i = 0; i < ngames; i++) games[i] = g[i].file;
 	free(g);
