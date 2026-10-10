@@ -157,9 +157,9 @@ lists stay. If an install fails the Nano starts the version it had and leaves
 **From plorpOS nano v0.2**: games moved into `Roms/`, and some console folders
 were renamed (table above). Flash this image, or move the console folders
 into `Roms/` by hand and rename `Sega Genesis`, `Sega Master System`,
-`PCE-TurboGrafx`, `Atari lynx`, `PICO-8`, `PS1`, `MAME 2000` and
-`Final Burn Alpha 2012` - in `Saves/` too. Recently Played and Favorites
-forget the games of renamed folders.
+`PCE-TurboGrafx`, `PS1`, `MAME 2000` and `Final Burn Alpha 2012` - in
+`Saves/` too (`PICO-8` and `Atari lynx` work as they are: the card ignores
+case). Recently Played and Favorites forget the games of renamed folders.
 
 **From plorpOS nano v0.1** (the adb install): flash this image once. Flashing
 wipes the card, so first copy off your music, games, BIOS files and
