@@ -53,7 +53,7 @@ mv "$STAGE/$CORES/cores" "$P/cores"
 cp "$STAGE/$CORES/NANO-CORES.md" "$STAGE/$CORES/SOURCES.txt" "$P/cores/"
 rm -rf "$STAGE/$CORES"
 cp -r "$ROOT/build/nano/pico8rt" "$P/pico8rt"
-for f in start.sh install-root.sh uninstall-root.sh; do
+for f in start.sh install-root.sh; do
 	[ -f "$ROOT/src/nano/$f" ] && cp "$ROOT/src/nano/$f" "$P/"
 done
 [ -d "$ROOT/src/nano/root" ] && cp -r "$ROOT/src/nano/root" "$P/"

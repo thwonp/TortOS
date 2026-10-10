@@ -3,7 +3,7 @@
 plorpOS nano is a super stripped down plorpOS for the **RG Nano**, where music comes first:
 the shelf plays your albums, and they keep playing while you play a game. It is
 not the full plorpOS - the Nano has 64 MB of memory and one slow core - but
-three things in one folder:
+three things:
 
 - **nanoshelf UI**, the menu: your consoles, their games, Recently Played,
   Favorites, and Music (Now Playing, artists > albums > tracks, the queue);
@@ -12,89 +12,29 @@ three things in one folder:
   of [DrUm78's](https://github.com/DrUm78/picoarch), with a MUSIC page in its
   menu), using the cores already on the Nano.
 
-It runs on [DrUm78's FunKey OS Build](https://github.com/DrUm78/FunKey-OS/releases/tag/fps-classics), using its games folders, cores, saves,
-volume and brightness keys; it does not replace them.
+It comes as a card image: [DrUm78's FunKey OS build](https://github.com/DrUm78/FunKey-OS/releases/tag/fps-classics)
+for the RG Nano with plorpOS already installed in place of FunKey's menus, the
+updated cores, and nothing else on the card. FunKey's volume and brightness
+keys, its game menu and its power key work as before.
 
-## 1. Flash DrUm78's FunKey-OS
+## 1. Flash the card
 
-plorpOS nano installs on top of **DrUm78's FunKey-OS for the RG Nano**. If your
-Nano doesn't run it yet, or for a fresh card:
+Download **`plorpOS-nano-v<version>-sdcard.zip`** and write it to a microSD
+card with [balenaEtcher](https://etcher.balena.io/) (it takes the zip as it
+is), or unzip it and use any image tool (`dd`, Raspberry Pi Imager,
+Win32 Disk Imager). Flashing **wipes the card**.
 
-1. Download **`FunKey-sdcard-DrUm78_RG_Nano.img`** from DrUm78's
-   [FunKey-OS release](https://github.com/DrUm78/FunKey-OS/releases/tag/fps-classics).
-   Flashing it **wipes the card**.
-2. Write it to the microSD card with an image tool such as
-   [balenaEtcher](https://etcher.balena.io/) or
-   [Win32 Disk Imager](https://win32-disk-imager.en.uptodown.com), following
-   the release notes there.
-3. Put the card in the Nano and turn it on. The first start finishes the
-   install and resizes the card's partition - let it finish, until FunKey's
-   menu shows.
+Put the card in the Nano and turn it on. The first start sets the card up -
+FunKey's six steps on the screen, under a minute - and then the shelf comes
+up. That is the install; there is nothing else to run.
 
-## 2. Copy plorpOS to the card
+## 2. Copy your files
 
-Power off the Nano (hold the power button) and put its microSD card in the
-computer. The card's big partition - the one with `Game Boy/`, `Music/` and
-the rest - is the one to copy to. **Do not reformat the other partitions if Windows asks you to**. 
-
-Download **`plorpOS-nano-v<version>.zip`** and unzip it. It holds one folder,
-`plorpOS-nano-v<version>`; copy **what is inside it** - the `plorpOS` folder and
-the empty file `adb` - to the root of that partition.
-
-The `adb` file makes the Nano start with a shell for step 3. The install
-deletes it, so afterwards the Nano is a USB drive again.
-
-**NOTE**: If you want to clean up your card, see [Tidying your card](#tidying-your-card). Leaving the default folders is harmless.
-
-Copy your media according to [What goes where on the card](#what-goes-where-on-the-card).
-
-## 3. Make plorpOS the Nano's menu
-
-This makes plorpOS the menu the Nano starts into, in place of FunKey's
-RetroFE and GMenu2X, which it removes. Everything it changes or removes in the
-Nano's system is kept first in `plorpOS/backup/`, so it can be undone (see
-Removing).
-
-Eject the card, put it back in the Nano, turn the Nano on and connect it to
-the computer by USB. With [adb](#connecting) on the computer, first check that
-the Nano is there:
-
-```
-adb devices
-```
-
-It should list one device, followed by `device`. If the list is empty, check
-the cable and that `adb` is at the root of the card, then restart the Nano. 
-If you're having connection troubles, a USB A-C cable is more reliable.
-
-Then:
-
-```
-adb shell sh /mnt/plorpOS/install-root.sh
-adb reboot
-```
-
-It:
-
-- copies plorpOS's programs to `/usr/local/plorpos/` and runs them from there,
-  so the card can be lent to a computer while plorpOS is running;
-- changes `/usr/local/sbin/frontend`, FunKey's menu loop, to start plorpOS (and
-  start it again if it ever stops);
-- changes `/etc/asound.conf`, the speaker mix, to half level per channel so
-  music is not clipped on the mono speaker;
-- removes RetroFE and GMenu2X. FunKey's cores, PicoArch's menu, the apps and
-  your saves stay;
-- makes plorpOS resume a game saved by the power key (in `/root/.profile`,
-  FunKey's start script), so the music comes back with it;
-- deletes the `adb` / `usbnet` file, so the Nano starts as a USB drive again.
-  To keep a shell, choose **Settings > USB at start** after the restart.
-
-FunKey's own USB-audio handling stays: it sets a DAC's level when it is
-plugged in and points the volume keys at it.
-
-**Updating:** copy the new `plorpOS` folder over the old one, and `adb` too,
-then run the same two `adb` commands. Your settings stay, and the Nano is a
-USB drive again after the restart.
+Power off the Nano (hold the power button) and put the card in the computer -
+or leave it in and connect the Nano by USB: it starts as a USB drive. The
+card's big partition holds `plorpOS`, `Music`, `Bios`, one folder per console
+and `FunKey`. **Do not format the other partitions if the computer offers
+to.**
 
 ## What goes where on the card
 
@@ -124,7 +64,7 @@ once its folder has a game in it.
 | `MAME 2000` | Arcade (MAME) | `.zip` |
 | `Final Burn Alpha 2012` | Arcade (FBA) | `.zip` |
 
-**BIOS files** go in `FunKey/.picoarch/system/`. None is required:
+**BIOS files** go loose in `Bios/`. None is required:
 
 | System | File | Without it |
 |---|---|---|
@@ -133,21 +73,17 @@ once its folder has a game in it.
 | PC Engine CD | `syscard3.pce` | CD games don't start (cards play) |
 | Pokemon Mini | `bios.min` | a built-in BIOS |
 | Atari Lynx | `lynxboot.img` | none needed - FunKey ships it and plorpOS puts it there |
+| PICO-8 | `pico8_dyn` and `pico8.dat`, from your own PICO-8's Raspberry Pi download | the fake-08 core plays carts |
 
-Saves and PicoArch's settings are in `FunKey/.picoarch/` too - keep that
-folder.
+**Saves** - battery saves and save states, the power key's too - go in
+`Saves/<console folder>/`, made at the first play, named after the game.
+PicoArch's settings stay in `FunKey/.picoarch/`; keep that folder.
 
-## Tidying your card
-
-FunKey's image also fills the card with things only its own menus use.
-These folders can be safely deleted if you don't ever want to revert back: `Applications`,
-`Emulators`, `Native games`, `Settings` (FunKey's app launchers), and - if you
-won't go back to FunKey's menu to play them - `DOOM`, `Quake`, `Quake II`,
-`Wolfenstein 3D`, `Spear of Destiny` and `Libretro` (those games' engines).
-Keep `FunKey`, `Music`, `plorpOS` and the game folders above (empty ones are
-fine). The sample games in the game folders are free homebrew; delete any you
-don't want.
-
+**Native PICO-8.** With `pico8_dyn` and `pico8.dat` in `Bios/`, the PICO-8
+list's footer shows **R fake08** or **R pico8**: R switches the engine for
+PICO-8 games, and the footer shows the one in use. Native PICO-8 has no save
+states; its cartridge data is in `Saves/PICO-8/native/`. A power tap in it
+opens the Nano's menu (music, volume, brightness, exit).
 
 ## Using it
 
@@ -158,7 +94,7 @@ don't want.
 | B | back | back |
 | X | Now Playing | the queue |
 | Y | a game: Favorites on/off | play mode (in order, repeat all, repeat one, shuffle) |
-| L / R | | previous / next track |
+| L / R | R in the PICO-8 list: fake08 / native PICO-8 | previous / next track |
 | START | pause / play, anywhere | pause / play |
 | Power (tap) | dim to Now Playing | brightness back |
 
@@ -213,42 +149,39 @@ the music stops, paused, on the speaker.
 The Nano has one USB port, so a DAC and a computer cannot be connected at the
 same time.
 
+## Updating
+
+Download **`plorpOS-nano-v<version>.zip`**, unzip it, and copy the `plorpOS`
+folder inside over the one on the card (USB drive, or the card in the
+computer). At the next start the Nano installs it - FunKey's message
+**INSTALLING PLORPOS** - and restarts once by itself. Your settings, saves and
+lists stay. If an install fails the Nano starts the version it had and leaves
+`plorpOS/update-failed.log` on the card.
+
+**From plorpOS nano v0.1** (the adb install): flash this image once. Flashing
+wipes the card, so first copy off your music, games, BIOS files and
+`FunKey/.picoarch/` (your saves are in its `data/` folders). Afterwards put
+BIOS files in `Bios/` and copy the `.srm` / `.sav` / `.st*` files of each game
+into `Saves/<console folder>/`; their names already match.
+
 ## Connecting
 
-The install needs a shell on the Nano once. The simplest is **adb**, from
-Google's [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools)
-(Windows, macOS, Linux; unzip it and run `adb` from that folder). On Linux it is
-also a package: `android-tools` (Arch), `adb` (Debian, Ubuntu).
-
-FunKey's USB modes are chosen by a file on the shared partition, read when the
-Nano starts:
+A shell is not needed to install or update, only for poking around. FunKey's
+USB modes are chosen in plorpOS's **Settings > USB at start**, after a
+restart, or by a file at the root of the card:
 
 | File at the root of the drive | The Nano is |
 |---|---|
 | none | a USB drive (copying files) |
 | `usbnet` | a network device: `ssh root@192.168.137.2`, password `funkey`, after giving the computer's side `192.168.137.1/24` |
-| `adb` | an Android Debug Bridge device: `adb shell` |
-
-Create the empty file, safely eject, restart the Nano - or choose it in
-plorpOS's **Settings > USB at start** and restart.
-
-## Trying it without installing
-
-Over `adb shell` or ssh, with FunKey's menu still installed:
-
-```
-touch /mnt/disable_frontend; kill -9 $(pidof retrofe gmenu2x)
-setsid sh /mnt/plorpOS/start.sh &
-```
-
-`rm /mnt/disable_frontend` and a restart bring FunKey's menu back.
+| `adb` | an Android Debug Bridge device: `adb shell` ([platform-tools](https://developer.android.com/tools/releases/platform-tools)) |
 
 ## Notes
 
 - **What it keeps where.** plorpOS: `/mnt/plorpOS/` (`recent.txt`,
   `favorites.txt`, `settings.txt`, and `queue.txt` - the queue and place, kept
-  over a restart, stopped until you press play). Game saves and PicoArch settings: FunKey's own,
-  `/mnt/FunKey/.picoarch/`. Logs: `/tmp/nanoshelf.log`, gone at restart.
+  over a restart, stopped until you press play). Saves: `/mnt/Saves/<console folder>/`. BIOS
+  files: `/mnt/Bios/`. PicoArch settings: `/mnt/FunKey/.picoarch/`. Logs: `/tmp/nanoshelf.log`, gone at restart.
 - **Full speed with music playing** was measured for Game Boy, Game Boy Advance
   and Genesis. Heavier systems may slow down while music decodes.
 - **Resume.** When a game exits, FunKey saves its place, and the next start of
@@ -267,13 +200,20 @@ setsid sh /mnt/plorpOS/start.sh &
 
 ## Removing plorpOS
 
-If you ran `install-root.sh`:
+Flash DrUm78's FunKey-OS image
+([`FunKey-sdcard-DrUm78_RG_Nano.img`](https://github.com/DrUm78/FunKey-OS/releases/tag/fps-classics))
+in its place. That wipes the card; copy off what you want to keep first.
 
-```
-sh /mnt/plorpOS/uninstall-root.sh
-reboot
-```
+## Sources and licences
 
-This puts back what `install-root.sh` changed or removed - FunKey's menu loop
-and sound settings, RetroFE and GMenu2X - from `/mnt/plorpOS/backup/`, and
-removes `/usr/local/plorpos`. Then delete the `plorpOS` folder.
+- The card image is DrUm78's FunKey-OS `fps-classics` image for the RG Nano
+  (FunKey-OS 2.3.0; GPL and other licences, source:
+  [DrUm78/FunKey-OS](https://github.com/DrUm78/FunKey-OS/tree/fps-classics)),
+  with plorpOS installed by `mk/nano-image.sh` in this repository, which says
+  every change.
+- Its kernel is DrUm78's ([DrUm78/linux `v1.0-rg-nano`](https://github.com/DrUm78/linux/tree/v1.0-rg-nano),
+  GPL-2.0) built unchanged with his configuration, except the boot logo:
+  `mk/build-nano-kernel.sh` and `res/nano/bootlogo.png`.
+- plorpOS's own programs, PicoArch, the cores, FFmpeg and the PICO-8 runtime:
+  `plorpOS/src/SOURCE.txt` and `/usr/local/plorpos/` on the card, with their
+  licences.

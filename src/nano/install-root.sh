@@ -1,6 +1,8 @@
 #!/bin/sh
 # plorpOS nano: make plorpOS the RG Nano's menu (docs/install-nano.md).
-# Run as root on the Nano, then reboot. Undone by uninstall-root.sh.
+# The flashable image has it applied already (mk/nano-image.sh); installed,
+# plorpOS's frontend runs it at a start when the card's plorpOS folder is a
+# different VERSION. By hand: as root on the Nano, then reboot.
 #
 # Every change to the read-only system partition, each kept first in
 # backup/ (the first install's copies are never replaced, so installing again
