@@ -8,7 +8,8 @@
 # sha256, its system partition (the second, ext4) is copied out and changed
 # with debugfs, and put back. The changes are install-root.sh's, made
 # offline - /usr/local/plorpos from the payload, plorpOS's frontend and
-# asound.conf, /root/.profile without `instant_play load`, RetroFE and
+# asound.conf, /root/.profile without `instant_play load`, screenshots to
+# Screenshots/, RetroFE and
 # GMenu2X gone (install-root.sh's MENUS) - and a clean card: FunKey's first
 # boot, which makes the shared partition, unzips plorpos_files.zip there
 # (plorpOS/, Music/, Bios/ and Roms/ with a folder per console in nanoshelf's SYS[])
@@ -119,6 +120,11 @@ grep -q 'mkdir.*\(GMENU2X\|RETROFE\)' "$W/profile" && die "/root/.profile: menu 
 grep -q '^# instant_play load' "$W/profile" || die "/root/.profile: no instant_play load line"
 cmd "rm /root/.profile"
 put "$W/profile" /root/.profile 0100755
+dbg "cat /usr/local/sbin/snapshot" > "$W/snapshot"
+sed -i 's|^SNAPSHOT_DIR=/mnt/FunKey/snapshots$|SNAPSHOT_DIR=/mnt/Screenshots|' "$W/snapshot"
+grep -q '^SNAPSHOT_DIR=/mnt/Screenshots$' "$W/snapshot" || die "snapshot: SNAPSHOT_DIR not as expected"
+cmd "rm /usr/local/sbin/snapshot"
+put "$W/snapshot" /usr/local/sbin/snapshot 0100755
 
 # A clean card: first boot unzips plorpOS's folders only.
 mkdir -p "$W/card/plorpOS" "$W/card/Music" "$W/card/Bios" "$W/card/Roms"

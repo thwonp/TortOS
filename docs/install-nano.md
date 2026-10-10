@@ -103,7 +103,7 @@ opens the Nano's menu (music, volume, brightness, exit).
 
 **FN is the SELECT button.** Volume and brightness are FunKey's keys
 everywhere: **SELECT + A / Y** and **SELECT + X / B**; **SELECT + Up** saves a
-screenshot to `FunKey/snapshots/`.
+screenshot to `Screenshots/`.
 
 **In a game**, tap the **power** button: that is the Nano's MENU. The first
 page is **MUSIC**: the track playing, A to pause or play, left/right for the
@@ -189,7 +189,7 @@ restart, or by a file at the root of the card:
 - **What it keeps where.** plorpOS: `/mnt/plorpOS/` (`recent.txt`,
   `favorites.txt`, `settings.txt`, and `queue.txt` - the queue and place, kept
   over a restart, stopped until you press play). Saves: `/mnt/Saves/<console folder>/`. BIOS
-  files: `/mnt/Bios/`. PicoArch settings: `/mnt/FunKey/.picoarch/`. Logs: `/tmp/nanoshelf.log`, gone at restart.
+  files: `/mnt/Bios/`. Screenshots: `/mnt/Screenshots/`. PicoArch settings: `/mnt/FunKey/.picoarch/`. Logs: `/tmp/nanoshelf.log`, gone at restart.
 - **Full speed with music playing** was measured for Game Boy, Game Boy Advance
   and Genesis. Heavier systems may slow down while music decodes.
 - **Resume.** When a game exits, FunKey saves its place, and the next start of

@@ -12,6 +12,8 @@
 #                              card to a computer (share), as RetroFE could
 #   /usr/local/sbin/frontend   FunKey's menu loop -> plorpOS's (root/frontend)
 #   /etc/asound.conf           speaker mix at half per channel (root/asound.conf)
+#   /usr/local/sbin/snapshot   FN+Up screenshots to the card's Screenshots/
+#                              (FunKey: FunKey/snapshots/)
 #   /root/.profile             its `instant_play load` off (backup/root-profile.tar):
 #                              nanoshelf resumes a game the power key saved, so
 #                              the music is there during it
@@ -26,7 +28,7 @@ set -e
 HERE=/mnt/plorpOS
 B=$HERE/backup
 APP=/usr/local/plorpos
-FILES="usr/local/sbin/frontend etc/asound.conf"
+FILES="usr/local/sbin/frontend etc/asound.conf usr/local/sbin/snapshot"
 MENUS="usr/games/retrofe usr/games/RetroFE.ico usr/games/RetroFE.png usr/games/README.txt
        usr/games/collections usr/games/controls.conf usr/games/launchers usr/games/layout.conf
        usr/games/layouts usr/games/log.txt usr/games/meta.db usr/games/settings.conf
@@ -70,6 +72,9 @@ chmod 755 /usr/local/sbin/frontend.new
 mv -f /usr/local/sbin/frontend.new /usr/local/sbin/frontend
 cp "$HERE/root/asound.conf" /etc/asound.conf.new
 mv -f /etc/asound.conf.new /etc/asound.conf
+sed 's|^SNAPSHOT_DIR=/mnt/FunKey/snapshots$|SNAPSHOT_DIR=/mnt/Screenshots|' /usr/local/sbin/snapshot > /usr/local/sbin/snapshot.new
+chmod 755 /usr/local/sbin/snapshot.new
+mv -f /usr/local/sbin/snapshot.new /usr/local/sbin/snapshot
 cp -p /root/.profile /root/.profile.new
 sed 's|^instant_play load$|# instant_play load   (plorpOS: nanoshelf resumes the game)|' /root/.profile > /root/.profile.new
 mv -f /root/.profile.new /root/.profile
