@@ -1,40 +1,36 @@
 # Installing on an Anbernic RG Nano
 
-plorpOS nano is a super stripped down plorpOS for the **RG Nano**, where music comes first:
-the shelf plays your albums, and they keep playing while you play a game. It is
-not the full plorpOS - the Nano has 64 MB of memory and one slow core - but
-three things:
+plorpOS nano is a super stripped down plorp for the **RG Nano**, it has a simple UX and music can keep playing over a game.
 
-- **nanoshelf UI**, the menu: your consoles, their games, Recently Played,
-  Favorites, and Music (Now Playing, artists > albums > tracks, the queue);
-- **Muse**, plorpOS's music player, in the background;
-- **PicoArch** for the games ([plorpOS's fork](https://github.com/thwonp/picoarch/tree/plorpos-nano)
-  of [DrUm78's](https://github.com/DrUm78/picoarch), with a MUSIC page in its
-  menu), using the cores already on the Nano.
+- **Minimal UI**: your consoles, their games, Recently Played,
+  Favorites, and Music
+- **Muse** music player, works in the background
+- **Fully updated PicoArch cores** for all platforms via ([plorpOS's fork](https://github.com/thwonp/picoarch/tree/plorpos-nano)
+  of [DrUm78's](https://github.com/DrUm78/picoarch), with a Music page in its
+  menu
+- **Native PICO-8** support
+- **Simple** folder structure - BIOS and Saves are easy to find
 
-It comes as a card image: [DrUm78's FunKey OS build](https://github.com/DrUm78/FunKey-OS/releases/tag/fps-classics)
-for the RG Nano with plorpOS already installed in place of FunKey's menus, the
-updated cores, and nothing else on the card. FunKey's volume and brightness
+It is a rebundled fork of [DrUm78's FunKey OS build](https://github.com/DrUm78/FunKey-OS/releases/tag/fps-classics)
+for the RG Nano with plorpOS installed in place of FunKey's menus, the
+updated cores, and no extra junk on the card. FunKey's volume and brightness
 keys, its game menu and its power key work as before.
 
 ## 1. Flash the card
 
-Download **`plorpOS-nano-v<version>-sdcard.zip`** and write it to a microSD
-card with [balenaEtcher](https://etcher.balena.io/) (it takes the zip as it
-is), or unzip it and use any image tool (`dd`, Raspberry Pi Imager,
-Win32 Disk Imager). Flashing **wipes the card**.
+Download **`plorpOS-nano-v<version>-sdcard.zip`**, unzip the image, and flash it to a microSD
+card with [Rufus](https://rufus.ie/en/) or any other image tool. Flashing **wipes the card**.
 
 Put the card in the Nano and turn it on. The first start sets the card up -
 FunKey's six steps on the screen, under a minute - and then the shelf comes
-up. That is the install; there is nothing else to run.
+up.
 
 ## 2. Copy your files
 
 Power off the Nano (hold the power button) and put the card in the computer -
-or leave it in and connect the Nano by USB: it starts as a USB drive. The
+or leave it in and connect the Nano by USB: it starts as a USB drive (mount button is in settings). The
 card's big partition holds `plorpOS`, `Music`, `Bios`, one folder per console
-and `FunKey`. **Do not format the other partitions if the computer offers
-to.**
+and `FunKey`. **Do not format the other partitions if Windows asks you to.**
 
 ## What goes where on the card
 
@@ -73,7 +69,7 @@ once its folder has a game in it.
 | PC Engine CD | `syscard3.pce` | CD games don't start (cards play) |
 | Pokemon Mini | `bios.min` | a built-in BIOS |
 | Atari Lynx | `lynxboot.img` | none needed - FunKey ships it and plorpOS puts it there |
-| PICO-8 | `pico8_dyn` and `pico8.dat`, from your own PICO-8's Raspberry Pi download | the fake-08 core plays carts |
+| PICO-8 | `pico8_dyn` and `pico8.dat`, from your native PICO-8's Raspberry Pi download | the fake-08 core plays carts |
 
 **Saves** - battery saves and save states, the power key's too - go in
 `Saves/<console folder>/`, made at the first play, named after the game.
@@ -114,7 +110,7 @@ exit.
 **Favorites:** Y on a game adds it or takes it off; Favorites appears on the
 shelf, A-Z, under Recently Played, once it has a game.
 
-**Dim.** A power tap outside a game dims the screen to Now Playing (the
+**Dimmed Music Mode** A power tap outside a game dims the screen to Now Playing (the
 lowest backlight - the Nano's screen cannot go fully dark) and the music goes
 on. Tap again for the brightness you had. While dimmed, B and X do nothing; with
 **Dimmed button lock** on, nothing but the power tap does.
