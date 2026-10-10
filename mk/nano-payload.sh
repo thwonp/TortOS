@@ -48,6 +48,7 @@ for l in libavformat.so.60 libavcodec.so.60 libavfilter.so.9 libswresample.so.4 
 done
 cp "$ROOT/sdk-nano/ffmpeg/usr/lib/COPYING.LGPLv2.1" "$P/lib/"
 cp "$ROOT/res/fonts/menu.ttf" "$ROOT/res/fonts/OFL.txt" "$P/res/"
+cp -r "$ROOT/res/nano/maps" "$P/res/"
 unzip -q "$CORES_ZIP" -d "$STAGE"
 mv "$STAGE/$CORES/cores" "$P/cores"
 cp "$STAGE/$CORES/NANO-CORES.md" "$STAGE/$CORES/SOURCES.txt" "$P/cores/"
@@ -80,6 +81,8 @@ pico8rt/: the runtime for the owner's PICO-8 (mk/build-nano-pico8rt.sh):
 FFmpeg 6.1 (lib/): LGPL-2.1-or-later, https://ffmpeg.org/releases/ffmpeg-6.1.tar.gz,
   configured as mk/fetch-nano-sdk.sh shows; licence in lib/COPYING.LGPLv2.1.
 Font (res/menu.ttf): SIL Open Font License, res/OFL.txt.
+Arcade titles (res/maps/): set -> title, from the MAME 2000 and FB Alpha 2012
+  romset lists.
 T
 rm -f "$ZIP"
 ( cd "$STAGE" && zip -qrX "$ZIP" "$TOP" )

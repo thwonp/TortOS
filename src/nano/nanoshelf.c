@@ -80,7 +80,7 @@
  * is /usr/local/plorpos on the system partition (install-root.sh), so that
  * nothing runs from the card while it is lent to a computer as a USB drive;
  * tried out without installing, it is the card's /mnt/plorpOS. */
-static char picoarch_bin[PATH_MAX], muse_bin[PATH_MAX], font_path[PATH_MAX], pico8rt[PATH_MAX];
+static char picoarch_bin[PATH_MAX], muse_bin[PATH_MAX], font_path[PATH_MAX], pico8rt[PATH_MAX], maps_dir[PATH_MAX];
 
 static void app_paths(void)
 {
@@ -94,6 +94,7 @@ static void app_paths(void)
 	snprintf(picoarch_bin, sizeof picoarch_bin, "%s/bin/picoarch", exe);
 	snprintf(muse_bin, sizeof muse_bin, "%s/bin/muse", exe);
 	snprintf(font_path, sizeof font_path, "%s/res/menu.ttf", exe);
+	snprintf(maps_dir, sizeof maps_dir, "%s/res/maps", exe);
 	snprintf(pico8rt, sizeof pico8rt, "%s/pico8rt", exe);
 }
 
@@ -175,14 +176,88 @@ static bool sys_has_games(const sys_t *s)
 	return any;
 }
 
+/* ----------------------------------------------------------- game names */
+
+/* Arcade games are named by set ("mslug.zip"): res/maps/<core>.txt gives
+ * the title, `set.zip<TAB>Title` a line, from the core's own romset (ggv.46).
+ * A console's map is read the first time one of its games is named, then
+ * kept, sorted by file for bsearch. No map, or a file not in it: the file. */
+typedef struct { const char *file, *title; } map_ent;
+static struct { bool read; char *buf; map_ent *e; int n; } maps[NSYS];
+
+static int cmp_map(const void *a, const void *b)
+{
+	return strcasecmp(((const map_ent *)a)->file, ((const map_ent *)b)->file);
+}
+
+static void map_read(int s)
+{
+	char path[PATH_MAX], *p, *nl, *tab;
+	FILE *f;
+	long len;
+	int cap = 0;
+
+	maps[s].read = true;
+	snprintf(path, sizeof path, "%s/%s.txt", maps_dir, SYS[s].core);
+	if (!(f = fopen(path, "r"))) return;
+	if (fseek(f, 0, SEEK_END) || (len = ftell(f)) <= 0 || fseek(f, 0, SEEK_SET) ||
+	    !(maps[s].buf = malloc((size_t)len + 1)) || fread(maps[s].buf, 1, (size_t)len, f) != (size_t)len) {
+		fclose(f);
+		return;
+	}
+	fclose(f);
+	maps[s].buf[len] = '\0';
+	for (p = maps[s].buf; p && *p; p = nl) {
+		size_t k;
+
+		if ((nl = strchr(p, '\n'))) *nl++ = '\0';
+		if ((k = strlen(p)) && p[k - 1] == '\r') p[k - 1] = '\0';
+		if (!(tab = strchr(p, '\t')) || !tab[1]) continue;
+		*tab = '\0';
+		if (maps[s].n == cap) {
+			map_ent *e = realloc(maps[s].e, (cap = cap ? cap * 2 : 1024) * sizeof *e);
+
+			if (!e) break;
+			maps[s].e = e;
+		}
+		maps[s].e[maps[s].n++] = (map_ent){ p, tab + 1 };
+	}
+	qsort(maps[s].e, maps[s].n, sizeof *maps[s].e, cmp_map);
+	fprintf(stderr, "nanoshelf: %d titles for %s\n", maps[s].n, SYS[s].dir);
+}
+
+/* "Sonic 3D Blast.md" -> "Sonic 3D Blast"; "mslug.zip" -> "Metal Slug: Super Vehicle-001" */
+static void game_name(int s, const char *file, char *out, size_t n)
+{
+	map_ent key = { file, NULL }, *m;
+	const char *dot = strrchr(file, '.');
+	size_t k = dot && dot != file ? (size_t)(dot - file) : strlen(file);
+
+	if (!maps[s].read) map_read(s);
+	if (maps[s].n && (m = bsearch(&key, maps[s].e, maps[s].n, sizeof key, cmp_map))) {
+		snprintf(out, n, "%s", m->title);
+		return;
+	}
+	if (k >= n) k = n - 1;
+	memcpy(out, file, k);
+	out[k] = '\0';
+}
+
 /* ------------------------------------------------------------------ games */
 
 static char **games;            /* file names in the open console's folder */
 static int    ngames, games_sys = -1;
 
+/* A list sorts by the name shown, looked up once a game, then by file
+ * (clones share a title). */
+typedef struct { char *file; char name[200]; } game_sort;
+
 static int cmp_name(const void *a, const void *b)
 {
-	return strcasecmp(*(char *const *)a, *(char *const *)b);
+	const game_sort *x = a, *y = b;
+	int c = strcasecmp(x->name, y->name);
+
+	return c ? c : strcasecmp(x->file, y->file);
 }
 
 static void games_load(int s)
@@ -210,19 +285,19 @@ static void games_load(int s)
 		games[ngames++] = strdup(e->d_name);
 	}
 	closedir(d);
-	qsort(games, ngames, sizeof *games, cmp_name);
+	game_sort *g = malloc((size_t)ngames * sizeof *g);
+	int i;
+
+	if (!g) return;
+	for (i = 0; i < ngames; i++) {
+		g[i].file = games[i];
+		game_name(s, games[i], g[i].name, sizeof g[i].name);
+	}
+	qsort(g, ngames, sizeof *g, cmp_name);
+	for (i = 0; i < ngames; i++) games[i] = g[i].file;
+	free(g);
 }
 
-/* "Sonic 3D Blast.md" -> "Sonic 3D Blast" */
-static void game_name(const char *file, char *out, size_t n)
-{
-	const char *dot = strrchr(file, '.');
-	size_t k = dot && dot != file ? (size_t)(dot - file) : strlen(file);
-
-	if (k >= n) k = n - 1;
-	memcpy(out, file, k);
-	out[k] = '\0';
-}
 
 /* --------------------------------------------------------- recently played */
 
@@ -327,9 +402,9 @@ static bool fav_toggle(int s, const char *file_in)
 		return false;
 	}
 	if (nfavs == NFAVS) return false;
-	game_name(file, a, sizeof a);
+	game_name(s, file, a, sizeof a);
 	for (i = 0; i < nfavs; i++) {
-		game_name(favs[i].file, b, sizeof b);
+		game_name(favs[i].sys, favs[i].file, b, sizeof b);
 		if (strcasecmp(a, b) < 0) break;
 	}
 	memmove(&favs[i + 1], &favs[i], (size_t)(nfavs - i) * sizeof favs[0]);
@@ -985,12 +1060,12 @@ static void row_label(const view *v, int i, char *buf, size_t n)
 		int s = v->v == V_GAMES ? v->arg : recent[i].sys;
 		const char *file = v->v == V_GAMES ? games[i] : recent[i].file;
 
-		game_name(file, g, sizeof g);
+		game_name(s, file, g, sizeof g);
 		snprintf(buf, n, "%s%s", fav_find(s, file) >= 0 ? "* " : "", g);
 		break;
 	}
 	case V_FAVS:
-		game_name(favs[i].file, buf, n);
+		game_name(favs[i].sys, favs[i].file, buf, n);
 		break;
 	case V_SETTINGS:
 		switch (srow[i]) {

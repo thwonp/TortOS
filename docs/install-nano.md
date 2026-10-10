@@ -60,6 +60,9 @@ devices. plorpOS shows a console once its folder has a game in it.
 | `Arcade (MAME 2000)` | Arcade (MAME) | `.zip` |
 | `Arcade (FBA 2012)` | Arcade (FBA) | `.zip` |
 
+Arcade games keep their set names (`mslug.zip`); the lists show their titles
+(Metal Slug: Super Vehicle-001), from each core's own romset list.
+
 **BIOS files** go loose in `Bios/`. None is required:
 
 | System | File | Without it |
