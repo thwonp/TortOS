@@ -32,6 +32,8 @@ ifeq ($(PLATFORM),gkd)
 all: build/gkd/tortos.elf build/gkd/muse build/gkd/musectl
 else ifeq ($(PLATFORM),nano)
 all: nano
+else ifeq ($(PLATFORM),trimui)
+all: trimui
 else ifeq ($(PLATFORM),h700)
 all: build/h700/tortos.elf build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so
 else
@@ -223,6 +225,18 @@ build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so &:
 	docker run --rm -v $(CURDIR):/work -w /work $(IMAGE) \
 		make -f mk/cross.mk PLATFORM=h700 BUILD=build/h700 SYSROOT=/work/sysroot-h700 \
 		build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so
+
+# The TrimUI Model S (plorpos-80b): the union trimui toolchain and integer
+# FFmpeg from mk/fetch-trimui-sdk.sh. Its own makefile, mk/trimui.mk - the
+# Nano's sources with -DTRIMUI.
+TRIMUI_VERSION ?= 0.1
+TRIMUI_BIN := build/trimui/shelf build/trimui/muse build/trimui/musectl build/trimui/trimuikey
+.PHONY: trimui
+trimui:
+	@[ -x sdk-trimui/sdk/usr/bin/arm-buildroot-linux-gnueabi-gcc ] || { \
+		echo "no TrimUI SDK; run: mk/fetch-trimui-sdk.sh" >&2; exit 1; }
+	docker run --rm -v $(CURDIR):/work -v $(CURDIR)/sdk-trimui/sdk:/sdk:ro -w /work $(IMAGE) \
+		make -f mk/trimui.mk TRIMUI_VERSION=$(TRIMUI_VERSION) $(TRIMUI_BIN)
 
 # The RG Nano (plorpos-ggv): FunKey's SDK and FFmpeg from mk/fetch-nano-sdk.sh,
 # no device needed. Its own makefile, mk/nano.mk - nothing of cross.mk applies.

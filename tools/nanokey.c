@@ -48,9 +48,18 @@ static void emit(int type, int code, int value)
 
 static int code(char c)
 {
+#ifdef TRIMUI
+	/* The TrimUI Model S (plorpos-80b): the same letters for the same
+	 * buttons, on its gpio-keys codes (k = SELECT, q = MENU). */
+	static const char keys[] = "udlrabxyskmnq";
+	static const int codes[] = { KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_SPACE,
+		KEY_LEFTCTRL, KEY_LEFTSHIFT, KEY_LEFTALT, KEY_ENTER, KEY_RIGHTCTRL, KEY_TAB,
+		KEY_BACKSPACE, KEY_ESC };
+#else
 	static const char keys[] = "udlrabxyskmnqvohji";
 	static const int codes[] = { KEY_U, KEY_D, KEY_L, KEY_R, KEY_A, KEY_B, KEY_X,
 		KEY_Y, KEY_S, KEY_K, KEY_M, KEY_N, KEY_Q, KEY_V, KEY_O, KEY_H, KEY_J, KEY_I };
+#endif
 	const char *p = strchr(keys, c);
 
 	return p && c ? codes[p - keys] : -1;
