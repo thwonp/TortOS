@@ -265,6 +265,12 @@ nano-pico8rt:
 nano-zip: nano nano-picoarch nano-pico8rt
 	PICOARCH=$(PICOARCH) ./mk/nano-payload.sh $(NANO_VERSION)
 
+# out/plorpOS-nano-v$(NANO_VERSION)-sdcard.zip: DrUm78's FunKey-OS image with
+# that payload installed, flashed once (mk/nano-image.sh; plorpos-ggv.41).
+.PHONY: nano-image
+nano-image: nano-zip
+	./mk/nano-image.sh $(NANO_VERSION)
+
 # The check binaries are rebuilt every time, deliberately.
 #
 # They take about a second each, and make's mtime comparison is second-granular
