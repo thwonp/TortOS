@@ -35,3 +35,7 @@ $(BUILD)/musectl: tools/musectl.c
 $(BUILD)/trimuikey: tools/nanokey.c
 	mkdir -p $(BUILD)
 	$(CC) $(OPT) $(WARN) -DTRIMUI -o $@ $<
+
+$(BUILD)/trimuimon: tools/trimuimon.c
+	mkdir -p $(BUILD)
+	$(CC) $(OPT) $(WARN) -o $@ $<

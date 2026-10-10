@@ -230,13 +230,21 @@ build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so &:
 # FFmpeg from mk/fetch-trimui-sdk.sh. Its own makefile, mk/trimui.mk - the
 # Nano's sources with -DTRIMUI.
 TRIMUI_VERSION ?= 0.1
-TRIMUI_BIN := build/trimui/shelf build/trimui/muse build/trimui/musectl build/trimui/trimuikey
+TRIMUI_BIN := build/trimui/shelf build/trimui/muse build/trimui/musectl build/trimui/trimuikey \
+              build/trimui/trimuimon
 .PHONY: trimui
 trimui:
 	@[ -x sdk-trimui/sdk/usr/bin/arm-buildroot-linux-gnueabi-gcc ] || { \
 		echo "no TrimUI SDK; run: mk/fetch-trimui-sdk.sh" >&2; exit 1; }
 	docker run --rm -v $(CURDIR):/work -v $(CURDIR)/sdk-trimui/sdk:/sdk:ro -w /work $(IMAGE) \
 		make -f mk/trimui.mk TRIMUI_VERSION=$(TRIMUI_VERSION) $(TRIMUI_BIN)
+
+# out/plorpOS-trimui-v$(TRIMUI_VERSION)-UPDATE.zip: .tmp_update/ and plorpOS/
+# for the card's root, PicoArch and the cores from PICOARCH, a checkout of the
+# fork built with its build-trimui.sh and build-trimui-cores.sh.
+.PHONY: trimui-zip
+trimui-zip: trimui
+	PICOARCH=$(PICOARCH) ./mk/trimui-payload.sh $(TRIMUI_VERSION)
 
 # The RG Nano (plorpos-ggv): FunKey's SDK and FFmpeg from mk/fetch-nano-sdk.sh,
 # no device needed. Its own makefile, mk/nano.mk - nothing of cross.mk applies.

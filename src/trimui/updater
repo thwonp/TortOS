@@ -1,0 +1,7 @@
+#!/bin/sh
+# plorpOS's hook on the TrimUI Model S (plorpos-80b): the card's
+# .tmp_update/updater. The stock boot loop (/etc/init.d/main) runs it when
+# the folder exists and deletes the folder once it returns, so while plorpOS
+# is on the card it never returns. No plorpOS/ (removed, or a broken copy):
+# it returns, and the stock menu comes back.
+[ -f /mnt/SDCARD/plorpOS/start.sh ] && exec sh /mnt/SDCARD/plorpOS/start.sh
