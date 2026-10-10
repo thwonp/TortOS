@@ -239,7 +239,7 @@ nano:
 # PICOARCH_REF, cloned to build/nano/picoarch and built in the container with
 # its build-nano.sh. PICOARCH=<dir> builds a local checkout of it instead.
 PICOARCH_URL := https://github.com/thwonp/picoarch.git
-PICOARCH_REF := 918fffdd72196a063664f4a3e53a3d8ad7a18362
+PICOARCH_REF := bc7e8931b1807d3b4e09ad3182ec88263053be41
 PICOARCH_DIR := $(CURDIR)/build/nano/picoarch
 PICOARCH ?= $(PICOARCH_DIR)
 .PHONY: nano-picoarch

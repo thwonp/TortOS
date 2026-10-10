@@ -11,7 +11,7 @@
 # PicoArch is the fork thwonp/picoarch, checked out and built at $PICOARCH by
 # `make nano-picoarch`. It is GPL-2.0-or-later: the zip names the fork's
 # commit and carries the changes against DrUm78/picoarch as a patch.
-# The cores are the fork's release nano-cores-2026.10 (plorpos-ggv.39),
+# The cores are the fork's release nano-cores-2026.10.1 (plorpos-ggv.39, .47),
 # downloaded once into build/nano; native PICO-8's runtime is
 # build/nano/pico8rt from `make nano-pico8rt` (plorpos-ggv.42).
 set -eu
@@ -22,8 +22,8 @@ STAGE=$ROOT/build/nano/payload
 TOP=plorpOS-nano-v$V
 P=$STAGE/$TOP/plorpOS
 ZIP=$ROOT/out/plorpOS-nano-v$V.zip
-CORES=picoarch-nano-cores-2026.10
-CORES_SHA=8512914b2fd5d2fc24c5ba618a93c23db266f09e698bfcda8642280bc83bf1c9
+CORES=picoarch-nano-cores-2026.10.1
+CORES_SHA=84d78ac36e456804339c0e5e3c7be4e87981c1a8c92f45ae949627791725d19e
 CORES_ZIP=$ROOT/build/nano/$CORES.zip
 
 for f in nanoshelf muse musectl; do

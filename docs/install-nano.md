@@ -62,6 +62,8 @@ devices. plorpOS shows a console once its folder has a game in it.
 
 Arcade games keep their set names (`mslug.zip`); the lists show their titles
 (Metal Slug: Super Vehicle-001), from each core's own romset list.
+Vertical arcade games come up upright; PicoArch's **Screen rotation** (in the
+game menu's settings) turns the picture further if you hold the Nano sideways.
 
 **BIOS files** go loose in `Bios/`. None is required:
 
