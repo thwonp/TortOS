@@ -226,7 +226,7 @@ build/h700/muse build/h700/musectl build/h700/btplayer build/h700/pico8sdl.so &:
 
 # The RG Nano (plorpos-ggv): FunKey's SDK and FFmpeg from mk/fetch-nano-sdk.sh,
 # no device needed. Its own makefile, mk/nano.mk - nothing of cross.mk applies.
-NANO_VERSION ?= 0.2
+NANO_VERSION ?= 1.0
 NANO_BIN := build/nano/nanoshelf build/nano/muse build/nano/musectl build/nano/nanokey
 .PHONY: nano
 nano:
