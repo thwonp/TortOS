@@ -1,8 +1,8 @@
 #!/bin/sh
-# The RG Nano's install zip (plorpos-ggv.9): plorpOS-nano-vVERSION/ holding
-# plorpOS/ and an empty adb, both for the root of the card's shared partition
-# (/mnt) - adb starts the Nano with the shell install-root.sh needs, and the
-# first install deletes it. Everything runs from there - the
+# The RG Nano's update zip (plorpos-ggv.9, .41.3): plorpOS-nano-vVERSION/
+# holding plorpOS/, for the root of the card's shared partition (/mnt); the
+# installed frontend installs it at the next start (its VERSION differs), and
+# the flashable image carries the same files. Everything runs from there - the
 # partition is vfat but mounted exec, and the libraries are copied under their
 # soname file names, so it needs no symlinks.
 #
@@ -57,6 +57,7 @@ for f in start.sh install-root.sh uninstall-root.sh; do
 	[ -f "$ROOT/src/nano/$f" ] && cp "$ROOT/src/nano/$f" "$P/"
 done
 [ -d "$ROOT/src/nano/root" ] && cp -r "$ROOT/src/nano/root" "$P/"
+echo "$V" > "$P/VERSION"     # a different one installs at the next start (root/frontend)
 BASE=$(git -C "$PICOARCH" merge-base HEAD origin/main)
 git -C "$PICOARCH" diff "$BASE" HEAD -- . ':!libpicofe' \
 	> "$P/src/picoarch-plorpos.patch"
@@ -80,7 +81,6 @@ FFmpeg 6.1 (lib/): LGPL-2.1-or-later, https://ffmpeg.org/releases/ffmpeg-6.1.tar
   configured as mk/fetch-nano-sdk.sh shows; licence in lib/COPYING.LGPLv2.1.
 Font (res/menu.ttf): SIL Open Font License, res/OFL.txt.
 T
-touch "$STAGE/$TOP/adb"
 rm -f "$ZIP"
 ( cd "$STAGE" && zip -qrX "$ZIP" "$TOP" )
 echo "$ZIP ($(du -k "$ZIP" | cut -f1) kB, md5 $(md5sum "$ZIP" | cut -c1-8))"

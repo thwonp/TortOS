@@ -13,12 +13,13 @@
 #   /root/.profile             its `instant_play load` off (backup/root-profile.tar):
 #                              nanoshelf resumes a game the power key saved, so
 #                              the music is there during it
-#   /mnt/adb, /mnt/usbnet      removed on every run: the Nano starts as a USB
-#                              drive (Settings > USB at start changes it)
 #   RetroFE and GMenu2X        removed (backup/root-menus.tar); FunKey's cores,
 #                              PicoArch's menu files and its apps stay
 # Run it again after copying a new plorpOS folder to the card: it updates
-# /usr/local/plorpos.
+# /usr/local/plorpos. Installed, plorpOS's frontend runs it by itself at the
+# next start when the card's VERSION differs from the installed one.
+# Backups are made only from FunKey's own system: once plorpOS's frontend is
+# in place (installed before, or the flashable image), there is no stock to keep.
 set -e
 HERE=/mnt/plorpOS
 B=$HERE/backup
@@ -29,26 +30,24 @@ MENUS="usr/games/retrofe usr/games/RetroFE.ico usr/games/RetroFE.png usr/games/R
        usr/games/layouts usr/games/log.txt usr/games/meta.db usr/games/settings.conf
        usr/bin/gmenu2x usr/share/gmenu2x"
 
-for f in bin/nanoshelf bin/muse bin/picoarch start.sh root/frontend root/asound.conf \
+for f in VERSION bin/nanoshelf bin/muse bin/picoarch start.sh root/frontend root/asound.conf \
          cores/gambatte_libretro.so pico8rt/ld-linux-armhf.so.3; do
 	[ -f "$HERE/$f" ] || { echo "missing $HERE/$f" >&2; exit 1; }
 done
-mkdir -p "$B"
-if [ ! -f "$B/root-stock.tar" ]; then
+STOCK=1
+grep -q plorpOS /usr/local/sbin/frontend 2>/dev/null && STOCK=
+[ -n "$STOCK" ] && mkdir -p "$B"
+if [ -n "$STOCK" ] && [ ! -f "$B/root-stock.tar" ]; then
 	(cd / && tar -cf "$B/root-stock.tar" $FILES)
 	echo "kept FunKey's files in $B/root-stock.tar"
 fi
-# The zip's adb file was only for running this: start the Nano as a USB drive
-# again (no FunKey USB flag file). Settings > USB at start changes it.
-rm -f /mnt/adb /mnt/usbnet
-echo "USB at start: USB drive (from the next start)"
-if [ ! -f "$B/root-menus.tar" ]; then
+if [ -n "$STOCK" ] && [ ! -f "$B/root-menus.tar" ]; then
 	present=""
 	for m in $MENUS; do [ -e "/$m" ] && present="$present $m"; done
 	(cd / && tar -cf "$B/root-menus.tar" $present)
 	echo "kept RetroFE and GMenu2X in $B/root-menus.tar"
 fi
-if [ ! -f "$B/root-profile.tar" ]; then
+if [ -n "$STOCK" ] && [ ! -f "$B/root-profile.tar" ]; then
 	(cd / && tar -cf "$B/root-profile.tar" root/.profile)
 	echo "kept FunKey's /root/.profile in $B/root-profile.tar"
 fi
@@ -60,7 +59,7 @@ fi
 trap 'sync; /usr/local/sbin/ro 2>/dev/null || echo "(system partition read-only again after the restart)"' EXIT
 rm -rf "$APP.new"
 mkdir -p "$APP.new"
-cp -r "$HERE/bin" "$HERE/lib" "$HERE/res" "$HERE/cores" "$HERE/pico8rt" "$HERE/start.sh" "$APP.new/"
+cp -r "$HERE/VERSION" "$HERE/bin" "$HERE/lib" "$HERE/res" "$HERE/cores" "$HERE/pico8rt" "$HERE/start.sh" "$APP.new/"
 chmod 755 "$APP.new/bin/"* "$APP.new/start.sh" "$APP.new/pico8rt/ld-linux-armhf.so.3"
 rm -rf "$APP"
 mv "$APP.new" "$APP"

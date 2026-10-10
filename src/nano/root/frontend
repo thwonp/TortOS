@@ -8,15 +8,40 @@
 # kept RetroFE or GMenu2X running.
 #   /mnt/disable_frontend   holds it, as before (`frontend set none`)
 #   /run/rebooting          ends it, as before
+# At init, before the first start: a plorpOS folder on the card whose VERSION
+# differs from the installed one is installed (its install-root.sh), under
+# FunKey's notification, and the Nano restarts - updating is copying the
+# folder and restarting.
 LOCK=/var/lock/frontend.lock
 DISABLE=/mnt/disable_frontend
 REBOOTING=/run/rebooting
 START=/usr/local/plorpos/start.sh
+CARD=/mnt/plorpOS
+
+update_from_card() {
+	[ -f "$CARD/VERSION" ] && [ -f "$CARD/install-root.sh" ] || return 0
+	cmp -s "$CARD/VERSION" /usr/local/plorpos/VERSION && return 0
+	notif set 0 " INSTALLING PLORPOS $(cat "$CARD/VERSION")^DO NOT TURN OFF THE CONSOLE"
+	if sh "$CARD/install-root.sh" >/tmp/plorpos-update.log 2>&1; then
+		# Restarted at once: this loop and the system partition, held
+		# writable while it runs, come back as installed.
+		rm -f "$CARD/update-failed.log"
+		notif set 2 " PLORPOS $(cat "$CARD/VERSION") INSTALLED^RESTARTING"
+		sync
+		reboot
+		exit 0
+	else
+		cp /tmp/plorpos-update.log "$CARD/update-failed.log"
+		notif set 5 " PLORPOS UPDATE FAILED^SEE PLORPOS/UPDATE-FAILED.LOG"
+		notif clear
+	fi
+}
 
 case "$1" in
 init)
 	if [ -f "$LOCK" ]; then echo "$LOCK already exists" >&2; exit 1; fi
 	touch "$LOCK"
+	update_from_card
 	while [ ! -f "$REBOOTING" ]; do
 		if [ -f "$DISABLE" ] || [ ! -f "$START" ]; then
 			sleep 5
