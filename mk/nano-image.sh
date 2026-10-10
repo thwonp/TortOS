@@ -13,6 +13,8 @@
 # boot, which makes the shared partition, unzips plorpos_files.zip there
 # (plorpOS/, Music/, Bios/ and a folder per console in nanoshelf's SYS[])
 # in place of FunKey's freeware games, menu themes and OPKs, all removed.
+# /boot/zImage is DrUm78's kernel rebuilt with plorpOS's boot logo
+# (mk/build-nano-kernel.sh).
 # Everything else is DrUm78's image, byte for byte.
 #
 # Needs: debugfs, e2fsck (e2fsprogs), sfdisk, zip, unzip, curl.
@@ -35,6 +37,7 @@ for t in debugfs e2fsck sfdisk zip unzip curl; do
 	command -v $t >/dev/null || die "need $t"
 done
 [ "$(cat "$P/VERSION" 2>/dev/null)" = "$V" ] || die "no v$V payload in $P; run make nano-zip"
+[ -f "$ROOT/build/nano/zImage" ] || die "no build/nano/zImage; run make nano-kernel"
 [ -f "$BASE" ] || curl -fL -o "$BASE" "$BASE_URL"
 echo "$BASE_SHA  $BASE" | sha256sum -c --quiet
 
@@ -90,6 +93,10 @@ eval "$(sed -n '/^MENUS="/,/"$/p' "$ROOT/src/nano/install-root.sh")"
 for m in $MENUS; do gone "/$m"; done
 for f in freeware_games.zip funkey_files.zip; do gone "/usr/local/share/$f"; done
 gone /usr/local/share/OPKs
+
+# The kernel with plorpOS's boot logo.
+cmd "rm /boot/zImage"
+put "$ROOT/build/nano/zImage" /boot/zImage 0100644
 
 # install-root.sh, offline.
 mkd /usr/local/plorpos

@@ -266,7 +266,12 @@ nano-zip: nano nano-picoarch nano-pico8rt
 	PICOARCH=$(PICOARCH) ./mk/nano-payload.sh $(NANO_VERSION)
 
 # out/plorpOS-nano-v$(NANO_VERSION)-sdcard.zip: DrUm78's FunKey-OS image with
-# that payload installed, flashed once (mk/nano-image.sh; plorpos-ggv.41).
+# that payload installed and plorpOS's boot logo in its kernel (build/nano/zImage,
+# make nano-kernel), flashed once (mk/nano-image.sh; plorpos-ggv.41).
+.PHONY: nano-kernel
+nano-kernel:
+	mk/build-nano-kernel.sh
+
 .PHONY: nano-image
 nano-image: nano-zip
 	./mk/nano-image.sh $(NANO_VERSION)
