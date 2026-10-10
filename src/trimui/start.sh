@@ -22,6 +22,9 @@ fi
 # gives up, so the stock menu comes back rather than a black screen.
 fails=0
 while [ $fails -lt 5 ]; do
+	# A shelf that died during a game left the game running: a new one on
+	# top of it would start a second game (and two do not fit in 58 MB).
+	while pidof picoarch > /dev/null; do sleep 1; done
 	t0=$(cut -d. -f1 /proc/uptime)
 	./bin/shelf 2>> /tmp/shelf.log
 	if [ $(( $(cut -d. -f1 /proc/uptime) - t0 )) -lt 10 ]; then fails=$((fails + 1)); else fails=0; fi
