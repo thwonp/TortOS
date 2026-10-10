@@ -211,7 +211,11 @@ static void handle(const qcmd *q)
 		 * daemon: a 1.5x set for one audiobook played every song after it
 		 * rushed. Found on the device 2026-09-18, the first time the launcher
 		 * rather than a test drove it. */
+#ifdef MUSE_FIXED
+		S.speed = 1.0;   /* no atempo without an FPU (dec.c) */
+#else
 		S.speed = q->speed > 0 ? q->speed : 1.0;
+#endif
 		pcm_drop();
 		if (reopen(q->at)) {
 			snapshot();
@@ -241,6 +245,9 @@ static void handle(const qcmd *q)
 		wake();
 		break;
 	case C_SPEED:
+#ifdef MUSE_FIXED
+		break;
+#endif
 		if (q->speed < 0.5 || q->speed > 2.0) break;
 		S.speed = q->speed;
 		if (S.state == ST_STOPPED) break;

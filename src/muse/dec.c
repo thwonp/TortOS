@@ -33,10 +33,22 @@
  * all, and costs 2 dB at the top of the volume scale and nothing else - a
  * limiter would keep the loudness, for CPU, latency and a changed sound on
  * exactly the loud songs this is about. */
+#ifdef MUSE_FIXED
+/* A CPU with no FPU (the TrimUI Model S, plorpos-80b): soft-float makes the
+ * chain above cost 95% of the CPU, measured. So integer all the way: the
+ * headroom in 8-bit fixed point, and a 16-tap resampler working in s16 - the
+ * whole decode + resample measured at 17% of the CPU at 720 MHz. No atempo,
+ * which is float only (muse.c holds the speed at 1). */
+#define GRAPH_TAIL \
+	"volume=-2dB:precision=fixed," \
+	"aresample=48000:filter_size=16:internal_sample_fmt=s16p," \
+	"aformat=sample_fmts=s16:channel_layouts=stereo"
+#else
 #define GRAPH_TAIL \
 	"volume=-2dB:precision=float," \
 	"aresample=48000:filter_size=64:cutoff=0.97:dither_method=triangular," \
 	"aformat=sample_fmts=s16:channel_layouts=stereo"
+#endif
 
 struct dec {
 	AVFormatContext *fmt;
